@@ -1,0 +1,55 @@
+0000000000000000000000000000000000000000 456952644d761cbf82cb0799425419936295b4e7 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783308335 +0530	branch: Created from HEAD
+456952644d761cbf82cb0799425419936295b4e7 af18035ecd3bf3e3c79697b2584a91223df0ad1d Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783313156 +0530	commit: Fixed some isseus and Add color change for GRN
+af18035ecd3bf3e3c79697b2584a91223df0ad1d 093cee95ac84172ba97a57280677fb7882d3fcae Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783343622 +0530	commit: add PO,GRN Print & PDF , and improve some UI UX
+093cee95ac84172ba97a57280677fb7882d3fcae 6725eb0af224206c7159c128c38f115ac9f8516e Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783350348 +0530	commit: Fixed some UI issue
+6725eb0af224206c7159c128c38f115ac9f8516e 3b018ab4b457598d7be312fdf698cc14cb4c759b Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783350859 +0530	commit: add GRN product item dth
+3b018ab4b457598d7be312fdf698cc14cb4c759b 1edf5e77ef453d14702ae040fbe4565b887ec602 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783398647 +0530	commit: fixed some issue
+1edf5e77ef453d14702ae040fbe4565b887ec602 005a33bd4145e9ce93db506e2f621aa2f6fe1b1a Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783413423 +0530	commit: Bin Card Report
+005a33bd4145e9ce93db506e2f621aa2f6fe1b1a 1b9902ed6c30b59d6d546328065216ebaf74030b Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783446794 +0530	commit: Stock Movement summery
+1b9902ed6c30b59d6d546328065216ebaf74030b 62763e90aecc1efdad0ffc203771a05070bdceba Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783459469 +0530	commit: piece Lable & collapsable BinCard
+62763e90aecc1efdad0ffc203771a05070bdceba 87106686164473ba864f0e394d62811f307f2d94 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783460860 +0530	commit: Fixed some issues
+87106686164473ba864f0e394d62811f307f2d94 09b10514c26b930658016dcb71fc1116c6dff603 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783512790 +0530	commit: Sales Order Feature
+09b10514c26b930658016dcb71fc1116c6dff603 f78514adaf87c847a8a01dd501eddf0c783d9426 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783529405 +0530	commit: fixed some issue
+f78514adaf87c847a8a01dd501eddf0c783d9426 9759fefc7791131640e6dce1c8d42748e460e686 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783580846 +0530	commit: DO & Invoice
+9759fefc7791131640e6dce1c8d42748e460e686 6eec152ddf1f31fc2c231f20b19e88c78508ca5b Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783622326 +0530	commit: Fixed some issue
+6eec152ddf1f31fc2c231f20b19e88c78508ca5b d2c29e15b92325dac2ed9ad57795c963597be0d1 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783673402 +0530	commit: Costing items, product pricing & DO dispatch fields
+d2c29e15b92325dac2ed9ad57795c963597be0d1 76292ac9f2ca41632c741aceae34086bc18d0112 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783750568 +0530	merge master: Fast-forward
+76292ac9f2ca41632c741aceae34086bc18d0112 f1ddbcbb3159fb15f37fa875f43cd00d98e0a148 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783751466 +0530	commit: Remove 500-char cap on attribute name input
+f1ddbcbb3159fb15f37fa875f43cd00d98e0a148 6b7bff071829ab4a4bff907d0e013bdfa32453f4 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783775944 +0530	commit: UOM with convertion rates
+6b7bff071829ab4a4bff907d0e013bdfa32453f4 16794923155637d8bd6f65c1377170f263110305 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783801157 +0530	commit: SO UOM changes
+16794923155637d8bd6f65c1377170f263110305 398fbdd04b3e9a78a96431fc65c97778292a9b46 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783830382 +0530	commit: feat: add Money component for formatted currency display
+398fbdd04b3e9a78a96431fc65c97778292a9b46 803386f4f3fc97a63dac53a7fd0695342f00a008 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783848672 +0530	commit: fixed some issue
+803386f4f3fc97a63dac53a7fd0695342f00a008 13db1fefb4ef8afa12cbc8df56406cedb9deaaab Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783905590 +0530	commit: Mobile app
+13db1fefb4ef8afa12cbc8df56406cedb9deaaab 386cf072362be08decb551189929c86f3f39a383 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784000142 +0530	commit: Fixed QR print Page changes
+386cf072362be08decb551189929c86f3f39a383 4ea26e5b345a9d9e248f6f22b33f7e26596c5145 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784004538 +0530	commit: user permission
+4ea26e5b345a9d9e248f6f22b33f7e26596c5145 d29847a7b8de60e34aed1bdda41df1066b8e1a62 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784019709 +0530	commit: add QR details font weight
+d29847a7b8de60e34aed1bdda41df1066b8e1a62 4691cddbefb3b9a446d55417c7f82c42c2ad45bd Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784022624 +0530	commit: GRN changes
+4691cddbefb3b9a446d55417c7f82c42c2ad45bd 765f091733657c12dbb3a12c403991a0f7e97906 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784119247 +0530	commit: re create Costing feature
+765f091733657c12dbb3a12c403991a0f7e97906 dbeafa9c43105f3039241832f6d5f7caf282f1a1 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784159957 +0530	commit: Costing Page changes
+dbeafa9c43105f3039241832f6d5f7caf282f1a1 8dcfb1926ce7d9b49025387b907f8e67b9c135d9 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784172265 +0530	commit: Group By color For Easy Costing
+8dcfb1926ce7d9b49025387b907f8e67b9c135d9 cf96db349dd8dd15c3329819f65b3ab8ecee2f41 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784172859 +0530	commit: ADD COLOUR SCROLL FOR COSTING PAD
+cf96db349dd8dd15c3329819f65b3ab8ecee2f41 59391ff488556f75a64df4487ac87a502ac011bf Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784182369 +0530	commit: AAdd some changes on Costing
+59391ff488556f75a64df4487ac87a502ac011bf 3de196ad19bdbc9c066a1e6864c06825ecd5d9f1 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784213320 +0530	commit: Create Creat Invoice Y for M price
+3de196ad19bdbc9c066a1e6864c06825ecd5d9f1 670bd0af1196298b1b780f0dae8b71b3399e68e7 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784213934 +0530	merge master: Fast-forward
+670bd0af1196298b1b780f0dae8b71b3399e68e7 75f931f4a9a4d21480c1f795986c368ebeb88b86 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784215536 +0530	commit: Fixed p issue
+75f931f4a9a4d21480c1f795986c368ebeb88b86 9691c3f5020ecdeb38c70eb5788582f6e2a7bfc6 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784216657 +0530	commit: fixed roundup issue
+9691c3f5020ecdeb38c70eb5788582f6e2a7bfc6 d26e9e11935eb4473ed9e0f3ea3e789cbc16cff7 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784344926 +0530	merge master: Fast-forward
+d26e9e11935eb4473ed9e0f3ea3e789cbc16cff7 cf4eb029e95875622c27a94e270207a9513c52fc Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784349659 +0530	commit: CReate Receipt PDF PRint
+cf4eb029e95875622c27a94e270207a9513c52fc db206860ae1e8cf88aa2e53bb7354ffad8ad58b3 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784689430 +0530	commit: DO add Roll No
+db206860ae1e8cf88aa2e53bb7354ffad8ad58b3 20d7691374fd41cc5686963c89b6bb885c5019b4 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784876043 +0530	merge master: Fast-forward
+20d7691374fd41cc5686963c89b6bb885c5019b4 fef9ba8497b1535e76fcadb9a2b748f3d4a29fad Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784877495 +0530	commit: remove P's & S's Tin for Non Tax Invoice
+fef9ba8497b1535e76fcadb9a2b748f3d4a29fad ca73b6e0633620f56ccbdab6a28abb2756bd2c01 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784880170 +0530	commit: Change Tax Invoice No Format as IRD standered
+ca73b6e0633620f56ccbdab6a28abb2756bd2c01 d89cc6f4d8d3bb29ce14c6ead0ac7dc032a6ea28 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784953170 +0530	merge master: Fast-forward
+d89cc6f4d8d3bb29ce14c6ead0ac7dc032a6ea28 321f999d49dfa4bf26a550494f984069d74396fb Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1785043394 +0530	commit: Sales By Item Summary Report
+321f999d49dfa4bf26a550494f984069d74396fb c031a4c4e1a1073aefe18efc2437bd163d66c1d1 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1785073118 +0530	commit: Supplier Wise GRN Details
+c031a4c4e1a1073aefe18efc2437bd163d66c1d1 702d354761cfe5f5b003a40f61a5b26b8b55a90c Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1785086069 +0530	commit: Item Search Report
+702d354761cfe5f5b003a40f61a5b26b8b55a90c f26539d0db0de99d7661bf082dd8ca375817322f Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1785203319 +0530	commit: Fixed some filter issue - Item Search Report
+f26539d0db0de99d7661bf082dd8ca375817322f 67f32b9ee683c493e031b8650933e6420b54c43a Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1785204945 +0530	commit: add Product Name Dropdown select field for Product Name at Item Search Report filter
+67f32b9ee683c493e031b8650933e6420b54c43a 2ddaccbeabff2e8613076725ec0bbf33372c899c Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1785208464 +0530	commit: Outstanding Summary Report
+2ddaccbeabff2e8613076725ec0bbf33372c899c 61e33fa165d7619fc146985fafc2cfbb9ffa86a4 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1785230739 +0530	commit: Refactor inventory reports and forms
+61e33fa165d7619fc146985fafc2cfbb9ffa86a4 7636539e2a6850a8011205e79de4ae3a6095de22 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1785232408 +0530	commit: Invoice amount Roundup
+7636539e2a6850a8011205e79de4ae3a6095de22 c7f86816c20216b3c5894d7b9c4a43cd54a00c83 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1785235680 +0530	commit: Enhance sales order and goods received note functionality with supplier-based product filtering and stock validation
+c7f86816c20216b3c5894d7b9c4a43cd54a00c83 f4b1a9443b58036df040a8704b6f87607c03d656 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1785238936 +0530	commit: Refactor stock validation logic in sales order request and form to improve handling of non-serial products and enhance user feedback for out-of-stock items and fixed "Sales By Item Summary" report List with "Paid & Issues" invoices
+f4b1a9443b58036df040a8704b6f87607c03d656 5625174546b65d7b39efd65ea468a91f90b568e4 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1785646238 +0530	commit: add Sales Summary report
+5625174546b65d7b39efd65ea468a91f90b568e4 f5c2650e9d88812a41b2bf05116c85a7648850fd Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1785648411 +0530	commit: add GRN "Product Qty Summary" details
+f5c2650e9d88812a41b2bf05116c85a7648850fd ef84b7ce90c0a0572ff222757aae819d98da7ec2 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1785817705 +0530	commit: add product filter for stock movement & sales by item summary reports

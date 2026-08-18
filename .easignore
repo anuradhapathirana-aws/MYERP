@@ -1,0 +1,13 @@
+# EAS Build packages the whole repo when building mobile/. Everything except
+# the mobile app is excluded here — most importantly backend/public/storage,
+# a symlink that Windows cannot recreate during the EAS shallow copy (EPERM).
+backend/
+frontend/
+references/
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+*.sql
+*.md
+deploy.sh
+.claude/

@@ -1,0 +1,89 @@
+0000000000000000000000000000000000000000 c247a49c0635a5b7cfceddec0660112dac8ed5f9 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781202511 +0530	commit (initial): Initiate Laravel Fresh Project
+c247a49c0635a5b7cfceddec0660112dac8ed5f9 65d3f812ca867c7c59f56be83aff5733d444f2fa Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781202904 +0530	commit: Multi-Tenancy Setup
+65d3f812ca867c7c59f56be83aff5733d444f2fa df95a2efb9926c382c826c96190fa86206006837 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781203284 +0530	commit: The Module Setup
+df95a2efb9926c382c826c96190fa86206006837 eef6bcfc91cb3a1c29cfa17d85dc059ac78b4078 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781204523 +0530	commit: Central Authentication
+eef6bcfc91cb3a1c29cfa17d85dc059ac78b4078 03a4a4a17282e8350a0e1dcaffe55d9f90ff363c Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781209105 +0530	commit: Units of Measure
+03a4a4a17282e8350a0e1dcaffe55d9f90ff363c 32001552bbec5eea07bb98ab9bef38e24842fffe Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781209880 +0530	commit: The Frontend Connection with Login Page
+32001552bbec5eea07bb98ab9bef38e24842fffe 26564e6aa95d8e08cbda2d6b76a63e79c9498596 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781234408 +0530	commit: fixed some issue
+26564e6aa95d8e08cbda2d6b76a63e79c9498596 4b998e924eb2b5d87c38912e71a13bd88ee9d15a Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781250270 +0530	commit: change the architecture
+4b998e924eb2b5d87c38912e71a13bd88ee9d15a 00157bdf430661426b924c8be592d71147849367 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781264310 +0530	commit: Product master and Generate some migration files
+00157bdf430661426b924c8be592d71147849367 f5d1efa9fc29137549c2490d2d18907e79b8f31f Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781270980 +0530	commit: sales chanel
+f5d1efa9fc29137549c2490d2d18907e79b8f31f e351c458b3d87c53444db373472532f05ad395d0 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781274744 +0530	commit: supplier
+e351c458b3d87c53444db373472532f05ad395d0 b7636f8a2e76723b1dcb2a0364d02e0ba394cd49 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781279564 +0530	commit: Location
+b7636f8a2e76723b1dcb2a0364d02e0ba394cd49 8a3a3667ae27660eca34bc02d54dabc8f16cd30d Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781316174 +0530	commit: add several pages
+8a3a3667ae27660eca34bc02d54dabc8f16cd30d badc2e0efc52a71442524b7db693863712848103 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781317085 +0530	commit: Fixed some changes with QA round
+badc2e0efc52a71442524b7db693863712848103 04c65ea478b253d04a2889c321e949df5efa62a3 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781324291 +0530	commit: Fixed some issue After QA round 2
+04c65ea478b253d04a2889c321e949df5efa62a3 ae247429440e7dcf1f9e673de9ca7f6b869ea9cd Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781338032 +0530	commit: QA Round 3 - Fixed some issue
+ae247429440e7dcf1f9e673de9ca7f6b869ea9cd 091add0a9dd26af91e4017e059714cb23bf5e731 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781343491 +0530	commit: QA Round 3 - Fixed some issue
+091add0a9dd26af91e4017e059714cb23bf5e731 8abf4b15f9085e513ade22640f847af6b80b5fff Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781352417 +0530	commit: QA round 4 - Fixe user permission issue and some other issues
+8abf4b15f9085e513ade22640f847af6b80b5fff 020f03396d67e9d9e67f834ead816a828359a6d1 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781369468 +0530	commit: Fixed some issue
+020f03396d67e9d9e67f834ead816a828359a6d1 ab96afc580b19e8d62e9d6db8120d47a7fa1ef6d Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781375409 +0530	commit: Fixed some issue QA 6
+ab96afc580b19e8d62e9d6db8120d47a7fa1ef6d 99002d900bf71de2777352a9ed5e851312a2f591 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781405856 +0530	commit: Fixed some issue
+99002d900bf71de2777352a9ed5e851312a2f591 61204374425dae32d8fa0640b0afdf9c0ecd5825 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781406420 +0530	commit: Add Location Filter
+61204374425dae32d8fa0640b0afdf9c0ecd5825 ab43f0daa6484a493966afc404c83902bbee36a1 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781413119 +0530	commit: QA Round 9 - Fixed Some UI Improvements and some issues
+ab43f0daa6484a493966afc404c83902bbee36a1 d0f7e2398635bdec95a8c73f0c083f388735f53e Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781526474 +0530	commit: Fixed Some UI/UX issue
+d0f7e2398635bdec95a8c73f0c083f388735f53e de6530cb79c54536f5be9872d5a78c8bc0d43183 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781684524 +0530	commit: Add some changes
+de6530cb79c54536f5be9872d5a78c8bc0d43183 89a832f9750649fd53434f60cd26ade3e68c7e77 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781892427 +0530	commit: PR PO GRN & some UI UX improvements
+89a832f9750649fd53434f60cd26ade3e68c7e77 ff0cbc8c527517fc96ba6a89ee361dca6782eab1 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781916171 +0530	commit: add some changes
+ff0cbc8c527517fc96ba6a89ee361dca6782eab1 e73cb81a803460df408b10daff0ad2922db3161b Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781920582 +0530	commit: Fixed some Devops changes with some code development
+e73cb81a803460df408b10daff0ad2922db3161b 444c4402a1937d01a124036cab2dfb8aeab441b2 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781921989 +0530	commit: PO data table Status feature removed
+444c4402a1937d01a124036cab2dfb8aeab441b2 7e29201103ea72a4d3aa728701d74c3c074e18f2 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781923539 +0530	commit: Add some changes
+7e29201103ea72a4d3aa728701d74c3c074e18f2 400ea26dc74768cfdcb688c12b9bdadacdfeb267 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781931700 +0530	commit: remove additional Tracking type
+400ea26dc74768cfdcb688c12b9bdadacdfeb267 6f4771d5dffdcfff61efac1fbc25ece794c0b86e Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781936537 +0530	commit: Add some changes
+6f4771d5dffdcfff61efac1fbc25ece794c0b86e 1234fdf231d6ae636d521f4b6964e1fa4c8b60a8 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781937188 +0530	commit: Fixed UI issues
+1234fdf231d6ae636d521f4b6964e1fa4c8b60a8 d4ec3921b23b7100835e0aad6444a7e00494432a Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781943551 +0530	commit: Batch Feature
+d4ec3921b23b7100835e0aad6444a7e00494432a 915f337ef5e0b92336278c200639187b1217668e Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1781943878 +0530	commit: remove Tracking Type from Products Data Table
+915f337ef5e0b92336278c200639187b1217668e 7f7ad87484315b1ae49a4ca538f0b4e5bff84b33 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1782025009 +0530	commit: Costing Feature
+7f7ad87484315b1ae49a4ca538f0b4e5bff84b33 62f4ccc8987a2b59723cbe1c996330f89fcf817b Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1782047395 +0530	commit: fixed some material cost issue
+62f4ccc8987a2b59723cbe1c996330f89fcf817b 197b12cf3731cd18446a3ac419bd1f5f68501b5b Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1782111147 +0530	commit: Fixed some UI UX developments
+197b12cf3731cd18446a3ac419bd1f5f68501b5b 87be03be3f8aa9458e0814ceaeb664be388fce44 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1782111890 +0530	commit: fixed some issues
+87be03be3f8aa9458e0814ceaeb664be388fce44 043624c366b5a5db37ce8cfee188341d938877ef Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1782117632 +0530	commit: fixed some issues
+043624c366b5a5db37ce8cfee188341d938877ef 0b13afc1160d872b2e63ce54a3ee2fc4a26f9b5b Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1782119142 +0530	commit: Fixed some UI issues
+0b13afc1160d872b2e63ce54a3ee2fc4a26f9b5b 1533a1a6cbbbb1a4f1812ef1cef9b3515f35d271 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1782124069 +0530	commit: fixed UOM issue
+1533a1a6cbbbb1a4f1812ef1cef9b3515f35d271 a2825a5d3bbc76cb46254c69f519bd496cf68f6a Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1782131672 +0530	commit: fixed some changes
+a2825a5d3bbc76cb46254c69f519bd496cf68f6a 64755fee08ed003dc0e976ac9d92337f4d312b58 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1782131941 +0530	commit: Fixed pagination issues
+64755fee08ed003dc0e976ac9d92337f4d312b58 bbdd2e1eb54696cf11cf378d2cd9fd048a5f96d9 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1782134001 +0530	commit: add some keyboard shortcuts
+bbdd2e1eb54696cf11cf378d2cd9fd048a5f96d9 3f924ce83d32ad2dad4aef19521d58e429e91e71 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1782175863 +0530	commit: Add All Purchasing Related Reports Fixed some changes.
+3f924ce83d32ad2dad4aef19521d58e429e91e71 4ce1f65d78706f8acd545ab6d05bb92bf3cb8e12 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1782177454 +0530	commit: merge Migrations
+4ce1f65d78706f8acd545ab6d05bb92bf3cb8e12 5928b413cf987a50aa7bc5dcd9e1577a4eedd77a Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1782179194 +0530	commit: add sample Inventory related seeder files
+5928b413cf987a50aa7bc5dcd9e1577a4eedd77a bd4b56375b9b2cba0b63e0c5fc9f5e0f6489e99c Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1782180364 +0530	commit: assign batch Yes No Box
+bd4b56375b9b2cba0b63e0c5fc9f5e0f6489e99c 3c8e3a3dd98559a504699ae07ac1b58cb815e5f3 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1782436927 +0530	commit: add some changes
+3c8e3a3dd98559a504699ae07ac1b58cb815e5f3 c394b781395975980c00f2a97e397de7b1d27fda Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1782437713 +0530	commit: change Costing expenses
+c394b781395975980c00f2a97e397de7b1d27fda d182c51192fa2a39729ddd5ef76e58838fa04f72 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1782980187 +0530	commit: add No Of Pieces.
+d182c51192fa2a39729ddd5ef76e58838fa04f72 f9b38dec62a7757abfaea1974eafca1dc96e0b44 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783006911 +0530	commit: Add QR for grn items
+f9b38dec62a7757abfaea1974eafca1dc96e0b44 a5cabccb0f977f3a22a71b2840e082b92e800125 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783052363 +0530	commit: Add numbered pagination, supplier payments feature
+a5cabccb0f977f3a22a71b2840e082b92e800125 b5901de488b81ad6086c7b2a08b3b51d0469ab1a Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783060634 +0530	commit: Supplier Code & Product Code Generator one by One,
+b5901de488b81ad6086c7b2a08b3b51d0469ab1a 37e90343495c40bb345b6279aef6180737a61cf1 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783063473 +0530	commit: set Attribute Type dropdown for parent category related
+37e90343495c40bb345b6279aef6180737a61cf1 25d947e0eb02bbb152c594062d64b91fd3bfcead Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783065902 +0530	commit: fixed some issues
+25d947e0eb02bbb152c594062d64b91fd3bfcead 7e7607ba6c272cf2d0dd8216c794da842d826f78 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783226327 +0530	commit: add multi attribute per type
+7e7607ba6c272cf2d0dd8216c794da842d826f78 84ad071307c8f8deba00243682af3e2b4a775899 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783234321 +0530	commit: fixed some issues
+84ad071307c8f8deba00243682af3e2b4a775899 f0e720e1e29cce293a520b8528dfeb038fc600ff Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783240050 +0530	commit: fixed some changes
+f0e720e1e29cce293a520b8528dfeb038fc600ff 456952644d761cbf82cb0799425419936295b4e7 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783308327 +0530	commit: Add GRN roll details, PO/GRN attribute linking, shipping code, and roll assignment UI
+456952644d761cbf82cb0799425419936295b4e7 d2c29e15b92325dac2ed9ad57795c963597be0d1 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783675036 +0530	merge qa: Fast-forward
+d2c29e15b92325dac2ed9ad57795c963597be0d1 fbc10b501244f10b3a38ef7199f64b7fc27bfb02 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783686866 +0530	commit: fixed UOM issue on GRN
+fbc10b501244f10b3a38ef7199f64b7fc27bfb02 5c145c00155a50a9ea8ed03c09d4a4545a37e6d3 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783687113 +0530	commit: set 4 cards per row in Manage RollsManage Roll popup
+5c145c00155a50a9ea8ed03c09d4a4545a37e6d3 76292ac9f2ca41632c741aceae34086bc18d0112 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783687421 +0530	commit: Shipping/Contract No
+76292ac9f2ca41632c741aceae34086bc18d0112 f1ddbcbb3159fb15f37fa875f43cd00d98e0a148 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783751470 +0530	merge qa: Fast-forward
+f1ddbcbb3159fb15f37fa875f43cd00d98e0a148 13db1fefb4ef8afa12cbc8df56406cedb9deaaab Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1783905731 +0530	merge origin/qa: Fast-forward
+13db1fefb4ef8afa12cbc8df56406cedb9deaaab 4ea26e5b345a9d9e248f6f22b33f7e26596c5145 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784004644 +0530	merge qa: Fast-forward
+4ea26e5b345a9d9e248f6f22b33f7e26596c5145 d29847a7b8de60e34aed1bdda41df1066b8e1a62 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784020071 +0530	merge qa: Fast-forward
+d29847a7b8de60e34aed1bdda41df1066b8e1a62 4691cddbefb3b9a446d55417c7f82c42c2ad45bd Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784027686 +0530	merge qa: Fast-forward
+4691cddbefb3b9a446d55417c7f82c42c2ad45bd dbeafa9c43105f3039241832f6d5f7caf282f1a1 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784159993 +0530	merge qa: Fast-forward
+dbeafa9c43105f3039241832f6d5f7caf282f1a1 59391ff488556f75a64df4487ac87a502ac011bf Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784182564 +0530	merge qa: Fast-forward
+59391ff488556f75a64df4487ac87a502ac011bf 3de196ad19bdbc9c066a1e6864c06825ecd5d9f1 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784213503 +0530	merge qa: Fast-forward
+3de196ad19bdbc9c066a1e6864c06825ecd5d9f1 670bd0af1196298b1b780f0dae8b71b3399e68e7 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784213915 +0530	commit: change UOM Quantity coloum near by
+670bd0af1196298b1b780f0dae8b71b3399e68e7 9691c3f5020ecdeb38c70eb5788582f6e2a7bfc6 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784216823 +0530	merge qa: Fast-forward
+9691c3f5020ecdeb38c70eb5788582f6e2a7bfc6 8e1f2ac20cce2bf301aacb54032d4c08d89a692c Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784293442 +0530	commit: Create DO INVOICE add button per page
+8e1f2ac20cce2bf301aacb54032d4c08d89a692c d26e9e11935eb4473ed9e0f3ea3e789cbc16cff7 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784344285 +0530	commit: create Customer payment receipt
+d26e9e11935eb4473ed9e0f3ea3e789cbc16cff7 cf4eb029e95875622c27a94e270207a9513c52fc Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784349680 +0530	merge qa: Fast-forward
+cf4eb029e95875622c27a94e270207a9513c52fc db206860ae1e8cf88aa2e53bb7354ffad8ad58b3 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784689518 +0530	merge qa: Fast-forward
+db206860ae1e8cf88aa2e53bb7354ffad8ad58b3 20d7691374fd41cc5686963c89b6bb885c5019b4 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784699123 +0530	commit: Add Cus Receipt Short Cuts
+20d7691374fd41cc5686963c89b6bb885c5019b4 fef9ba8497b1535e76fcadb9a2b748f3d4a29fad Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784877522 +0530	merge qa: Fast-forward
+fef9ba8497b1535e76fcadb9a2b748f3d4a29fad ca73b6e0633620f56ccbdab6a28abb2756bd2c01 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784880338 +0530	merge qa: Fast-forward
+ca73b6e0633620f56ccbdab6a28abb2756bd2c01 4edb835c267eb64698563d5b93e08011be5c3834 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784881353 +0530	commit: add signing space for Receipt
+4edb835c267eb64698563d5b93e08011be5c3834 f6c1c9e36b04c3b2c845bcdadb4b4137972cf31a Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784883836 +0530	commit: change Customer Code issues. Disable editing
+f6c1c9e36b04c3b2c845bcdadb4b4137972cf31a d85014f8c9041b813b55e099e57fa6e24f60ac60 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784891264 +0530	commit: set Signing at Footer
+d85014f8c9041b813b55e099e57fa6e24f60ac60 b1987698e0ab1641ddd5fc6de7a11558ebc72108 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784892033 +0530	commit: add Dotted Line For Invoice Sign Space
+b1987698e0ab1641ddd5fc6de7a11558ebc72108 d89cc6f4d8d3bb29ce14c6ead0ac7dc032a6ea28 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1784946610 +0530	commit: Add New Email Field to Company Form
+d89cc6f4d8d3bb29ce14c6ead0ac7dc032a6ea28 f4b1a9443b58036df040a8704b6f87607c03d656 Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1785388494 +0530	merge qa: Fast-forward
+f4b1a9443b58036df040a8704b6f87607c03d656 f5c2650e9d88812a41b2bf05116c85a7648850fd Anuradha Pathirana <anuradhapathi.zincat@gmail.com> 1785648546 +0530	merge qa: Fast-forward

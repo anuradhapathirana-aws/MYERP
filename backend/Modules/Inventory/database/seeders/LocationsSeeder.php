@@ -1,0 +1,150 @@
+<?php
+
+namespace Modules\Inventory\Database\Seeders;
+
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
+
+class LocationsSeeder extends Seeder
+{
+    public function run(): void
+    {
+        $companyId  = DB::table('inv_companies')->where('company_name', 'SilkRoute Fabrics (Pvt) Ltd')->value('id');
+        $industryId = DB::table('inv_industries')->where('name', 'Textile & Fabrics')->value('id');
+
+        $locations = [
+            [
+                'company_id'               => $companyId,
+                'industry_id'              => $industryId,
+                'parent_location_id'       => null,
+                'location_code'            => 'LOC-HQ-001',
+                'location_name'            => 'Head Office – Katunayake',
+                'location_type'            => 'Head Office',
+                'country'                  => 'Sri Lanka',
+                'loc_street_address'       => 'No. 45, Industrial Zone',
+                'loc_city'                 => 'Katunayake',
+                'loc_country'              => 'Sri Lanka',
+                'loc_state'                => 'Western Province',
+                'loc_postal_zip_code'      => '11450',
+                'billing_same_as_location' => true,
+                'company_email'            => 'info@silkroute.lk',
+                'company_phone'            => '+94 11 2345678',
+                'base_currency'            => 'LKR',
+                'time_zone'                => 'Asia/Colombo',
+                'financial_year'           => '2024-2025',
+                'stock_releasing_method'   => 'FIFO',
+                'date_format'              => 'M d, Y',
+                'number_format'            => '#,###.##',
+                'time_format'              => 'H:i:s',
+                'float_precision'          => 3,
+            ],
+            [
+                'company_id'               => $companyId,
+                'industry_id'              => $industryId,
+                'parent_location_id'       => null,
+                'location_code'            => 'LOC-FAC-001',
+                'location_name'            => 'Main Factory – Katunayake EPZ',
+                'location_type'            => 'Factory',
+                'country'                  => 'Sri Lanka',
+                'loc_street_address'       => 'Plot 22, EPZ North, Katunayake',
+                'loc_city'                 => 'Katunayake',
+                'loc_country'              => 'Sri Lanka',
+                'loc_state'                => 'Western Province',
+                'loc_postal_zip_code'      => '11450',
+                'billing_same_as_location' => false,
+                'bill_street_address'      => 'No. 45, Industrial Zone',
+                'bill_city'                => 'Katunayake',
+                'bill_country'             => 'Sri Lanka',
+                'bill_state'               => 'Western Province',
+                'bill_postal_zip_code'     => '11450',
+                'company_email'            => 'factory@silkroute.lk',
+                'company_phone'            => '+94 11 2345690',
+                'base_currency'            => 'LKR',
+                'time_zone'                => 'Asia/Colombo',
+                'financial_year'           => '2024-2025',
+                'stock_releasing_method'   => 'FIFO',
+                'date_format'              => 'M d, Y',
+                'number_format'            => '#,###.##',
+                'time_format'              => 'H:i:s',
+                'float_precision'          => 3,
+                'open_hours_from'          => '06:00:00',
+                'open_hours_to'            => '18:00:00',
+            ],
+            [
+                'company_id'               => $companyId,
+                'industry_id'              => $industryId,
+                'parent_location_id'       => null,
+                'location_code'            => 'LOC-WH-001',
+                'location_name'            => 'Central Warehouse – Peliyagoda',
+                'location_type'            => 'Warehouse',
+                'country'                  => 'Sri Lanka',
+                'loc_street_address'       => 'No. 88, Nattandiya Road, Peliyagoda',
+                'loc_city'                 => 'Peliyagoda',
+                'loc_country'              => 'Sri Lanka',
+                'loc_state'                => 'Western Province',
+                'loc_postal_zip_code'      => '11300',
+                'billing_same_as_location' => false,
+                'bill_street_address'      => 'No. 45, Industrial Zone',
+                'bill_city'                => 'Katunayake',
+                'bill_country'             => 'Sri Lanka',
+                'bill_state'               => 'Western Province',
+                'bill_postal_zip_code'     => '11450',
+                'company_email'            => 'warehouse@silkroute.lk',
+                'company_phone'            => '+94 11 2345700',
+                'base_currency'            => 'LKR',
+                'time_zone'                => 'Asia/Colombo',
+                'financial_year'           => '2024-2025',
+                'stock_releasing_method'   => 'FIFO',
+                'date_format'              => 'M d, Y',
+                'number_format'            => '#,###.##',
+                'time_format'              => 'H:i:s',
+                'float_precision'          => 3,
+                'open_hours_from'          => '07:00:00',
+                'open_hours_to'            => '17:00:00',
+            ],
+            [
+                'company_id'               => $companyId,
+                'industry_id'              => $industryId,
+                'parent_location_id'       => null,
+                'location_code'            => 'LOC-SHW-001',
+                'location_name'            => 'Showroom & Sales Office – Colombo 3',
+                'location_type'            => 'Showroom',
+                'country'                  => 'Sri Lanka',
+                'loc_street_address'       => 'No. 5, Galle Road, Colombo 3',
+                'loc_city'                 => 'Colombo',
+                'loc_country'              => 'Sri Lanka',
+                'loc_state'                => 'Western Province',
+                'loc_postal_zip_code'      => '00300',
+                'billing_same_as_location' => false,
+                'bill_street_address'      => 'No. 45, Industrial Zone',
+                'bill_city'                => 'Katunayake',
+                'bill_country'             => 'Sri Lanka',
+                'bill_state'               => 'Western Province',
+                'bill_postal_zip_code'     => '11450',
+                'company_email'            => 'showroom@silkroute.lk',
+                'company_phone'            => '+94 11 2345720',
+                'mobile'                   => '+94 77 1234567',
+                'base_currency'            => 'LKR',
+                'time_zone'                => 'Asia/Colombo',
+                'financial_year'           => '2024-2025',
+                'stock_releasing_method'   => 'FIFO',
+                'date_format'              => 'M d, Y',
+                'number_format'            => '#,###.##',
+                'time_format'              => 'H:i:s',
+                'float_precision'          => 3,
+                'open_hours_from'          => '09:00:00',
+                'open_hours_to'            => '18:00:00',
+            ],
+        ];
+
+        foreach ($locations as $location) {
+            DB::table('inv_locations')->updateOrInsert(
+                ['location_code' => $location['location_code']],
+                array_merge($location, [
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ])
+            );
+        }
+    }
+}

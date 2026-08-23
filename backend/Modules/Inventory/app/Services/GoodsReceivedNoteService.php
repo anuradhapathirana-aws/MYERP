@@ -492,7 +492,8 @@ class GoodsReceivedNoteService
         $grn->delete();
     }
 
-    private function syncPoStatusAfterGrn(int $poId): void
+    /** Public so other correction flows (e.g. StockReconciliationService) can reuse it. */
+    public function syncPoStatusAfterGrn(int $poId): void
     {
         $po = PurchaseOrder::with('items')->find($poId);
         if (!$po) {

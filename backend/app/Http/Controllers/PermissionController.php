@@ -46,6 +46,7 @@ class PermissionController extends Controller
                 'purchase_orders'       => ['label' => 'Purchase Orders',       'actions' => ['view', 'create', 'edit', 'delete']],
                 'grns'                  => ['label' => 'Goods Received Notes',   'actions' => ['view', 'create', 'edit', 'delete', 'confirm']],
                 'costings'              => ['label' => 'Costings',              'actions' => ['view', 'create', 'edit', 'delete', 'confirm']],
+                'stock_reconciliations' => ['label' => 'Stock Reconciliations', 'actions' => ['view', 'create', 'edit', 'delete', 'approve']],
                 'costing_expense_types' => ['label' => 'Costing Expense Types', 'actions' => ['manage']],
                 'sales_orders'          => ['label' => 'Sales Orders',          'actions' => ['view', 'create', 'edit', 'delete']],
                 'delivery_orders'       => ['label' => 'Delivery Orders',       'actions' => ['view', 'create', 'edit', 'delete']],

@@ -43,6 +43,7 @@ class RolesAndPermissionsSeeder extends Seeder
         'purchase_orders'       => ['view', 'create', 'edit', 'delete'],
         'grns'                  => ['view', 'create', 'edit', 'delete', 'confirm'],
         'costings'              => ['view', 'create', 'edit', 'delete', 'confirm'],
+        'stock_reconciliations' => ['view', 'create', 'edit', 'delete', 'approve'],
         'costing_expense_types' => ['manage'],
         'sales_orders'          => ['view', 'create', 'edit', 'delete'],
         'delivery_orders'       => ['view', 'create', 'edit', 'delete'],

@@ -50,6 +50,8 @@ const PieceScanResultPage       = lazy(() => import('./pages/inventory/PieceScan
 const PrintPieceLabelsPage      = lazy(() => import('./pages/inventory/PrintPieceLabelsPage'))
 const CostingsPage              = lazy(() => import('./pages/inventory/CostingsPage'))
 const CostingFormPage           = lazy(() => import('./pages/inventory/CostingFormPage'))
+const StockReconciliationsPage    = lazy(() => import('./pages/inventory/StockReconciliationsPage'))
+const StockReconciliationFormPage = lazy(() => import('./pages/inventory/StockReconciliationFormPage'))
 const SupplierPaymentsPage      = lazy(() => import('./pages/inventory/SupplierPaymentsPage'))
 const SupplierPaymentFormPage   = lazy(() => import('./pages/inventory/SupplierPaymentFormPage'))
 const SupplierCreditNotesPage   = lazy(() => import('./pages/inventory/SupplierCreditNotesPage'))
@@ -208,6 +210,10 @@ export default function App() {
         <Route path="/inventory/costings/create"               element={<Lazy component={CostingFormPage} />} />
         <Route path="/inventory/costings/:id"                  element={<Lazy component={CostingFormPage} />} />
         <Route path="/inventory/costings/:id/edit"             element={<Lazy component={CostingFormPage} />} />
+        <Route path="/inventory/stock-reconciliations"          element={<Lazy component={StockReconciliationsPage} />} />
+        <Route path="/inventory/stock-reconciliations/create"   element={<Lazy component={StockReconciliationFormPage} />} />
+        <Route path="/inventory/stock-reconciliations/:id"      element={<Lazy component={StockReconciliationFormPage} />} />
+        <Route path="/inventory/stock-reconciliations/:id/edit" element={<Lazy component={StockReconciliationFormPage} />} />
         <Route path="/inventory/supplier-payments"             element={<Lazy component={SupplierPaymentsPage} />} />
         <Route path="/inventory/supplier-payments/create"      element={<Lazy component={SupplierPaymentFormPage} />} />
         <Route path="/inventory/supplier-payments/:id/edit"    element={<Lazy component={SupplierPaymentFormPage} />} />

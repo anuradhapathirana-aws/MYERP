@@ -56,6 +56,7 @@ use Modules\Inventory\Http\Controllers\DeliveryOrderController;
 use Modules\Inventory\Http\Controllers\DeliveryOrderPdfController;
 use Modules\Inventory\Http\Controllers\InvoiceController;
 use Modules\Inventory\Http\Controllers\InvoicePdfController;
+use Modules\Inventory\Http\Controllers\StockReconciliationController;
 
 Route::middleware(['auth:sanctum', 'module:inventory'])->prefix('v1')->group(function (): void {
     // Named routes before apiResource so static segments are not swallowed by {unit_category}
@@ -267,6 +268,13 @@ Route::middleware(['auth:sanctum', 'module:inventory'])->prefix('v1')->group(fun
         ->name('inventory.grns.confirm');
     Route::get('goods-received-notes/{goods_received_note}/pdf', [GrnPdfController::class, 'download'])
         ->name('inventory.grns.pdf');
+    Route::get('stock-reconciliations/next-reconciliation-no', [StockReconciliationController::class, 'nextReconciliationNo']);
+    Route::get('stock-reconciliations/available-rolls/{productId}', [StockReconciliationController::class, 'availableRolls']);
+    Route::post('stock-reconciliations/{stock_reconciliation}/submit', [StockReconciliationController::class, 'submit']);
+    Route::post('stock-reconciliations/{stock_reconciliation}/approve', [StockReconciliationController::class, 'approve']);
+    Route::post('stock-reconciliations/{stock_reconciliation}/reject', [StockReconciliationController::class, 'reject']);
+    Route::apiResource('stock-reconciliations', StockReconciliationController::class);
+
     Route::get('goods-received-notes/{goods_received_note}/piece-labels/pdf', [GrnPieceLabelPdfController::class, 'download'])
         ->name('inventory.grns.piece-labels.pdf');
     Route::apiResource('goods-received-notes', GoodsReceivedNoteController::class)

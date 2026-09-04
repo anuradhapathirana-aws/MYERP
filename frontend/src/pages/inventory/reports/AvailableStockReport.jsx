@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { PackageSearch } from 'lucide-react'
+import { Filter, PackageSearch } from 'lucide-react'
 import {
   downloadAvailableStockCsv,
   downloadAvailableStockPdf,
@@ -55,6 +55,12 @@ const NUM_TD = 'px-3 py-2 text-right tabular-nums'
 export default function AvailableStockReport() {
   const [exportBusy, setExportBusy] = useState(null) // 'print' | 'pdf' | 'csv'
 
+  // Nothing is fetched until the admin presses Apply Filter. Unfiltered, this report
+  // is the whole catalogue crossed with every colour — a heavy ledger aggregation
+  // nobody asked for yet. Clear returns the page to this state rather than silently
+  // re-running the unfiltered query it was just told to stop showing.
+  const [hasSearched, setHasSearched] = useState(false)
+
   const { open, toggle, draft, setDraft, applied, apply, clear, activeCount } =
     useTableFilter(INITIAL_FILTERS, { openByDefault: true })
 
@@ -86,6 +92,7 @@ export default function AvailableStockReport() {
     queryKey: ['report-available-stock', applied],
     queryFn: () => getAvailableStockReport(applied),
     placeholderData: (prev) => prev,
+    enabled: hasSearched,
   })
 
   const header = data?.header
@@ -119,7 +126,10 @@ export default function AvailableStockReport() {
     }
   }
 
-  const exportsDisabled = !data || Boolean(exportBusy)
+  // hasSearched, not just data: the cached result of the previous search outlives a
+  // Clear, and printing it would hand the admin a sheet whose filters no longer match
+  // what the panel shows.
+  const exportsDisabled = !hasSearched || !data || Boolean(exportBusy)
 
   return (
     <div className="w-full">
@@ -138,7 +148,13 @@ export default function AvailableStockReport() {
         </div>
       </div>
 
-      <TableFilter open={open} onToggle={toggle} onApply={() => apply()} onClear={() => clear()} activeCount={activeCount}>
+      <TableFilter
+        open={open}
+        onToggle={toggle}
+        onApply={() => apply(() => setHasSearched(true))}
+        onClear={() => clear(() => setHasSearched(false))}
+        activeCount={activeCount}
+      >
         <FilterField label="Product">
           <FilterSearchSelect
             value={draft.product_id}
@@ -190,7 +206,7 @@ export default function AvailableStockReport() {
       </TableFilter>
 
       {/* ── Report header (company + applied filters) — collapsed by default ── */}
-      {header && (
+      {hasSearched && header && (
         <CollapsibleCard title="Available Stock Report Details" className="mt-3">
           <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-2">
             <div>
@@ -218,10 +234,17 @@ export default function AvailableStockReport() {
 
       {/* ── Full details table ── */}
       <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        {isLoading && <div className="flex items-center justify-center py-14 text-sm text-slate-400">Loading…</div>}
-        {isError && <div className="flex items-center justify-center py-14 text-sm text-red-500">Failed to load the available stock report.</div>}
+        {!hasSearched && (
+          <div className="flex flex-col items-center justify-center gap-1 py-14 text-center">
+            <Filter size={20} className="text-slate-300" />
+            <div className="text-sm font-medium text-slate-500">Choose your filters, then press Apply Filter</div>
+            <div className="text-xs text-slate-400">Nothing is loaded until you do — leave the filters blank to list every product and colour.</div>
+          </div>
+        )}
+        {hasSearched && isLoading && <div className="flex items-center justify-center py-14 text-sm text-slate-400">Loading…</div>}
+        {hasSearched && isError && <div className="flex items-center justify-center py-14 text-sm text-red-500">Failed to load the available stock report.</div>}
 
-        {!isLoading && !isError && data && (
+        {hasSearched && !isLoading && !isError && data && (
           <div className="max-h-[calc(100vh-19rem)] overflow-auto">
             <table className="w-full text-xs">
               <thead className="sticky top-0 z-10">

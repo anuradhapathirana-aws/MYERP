@@ -89,6 +89,7 @@ const OutstandingSummaryReport = lazy(() => import('./pages/inventory/reports/Ou
 const SalesSummaryReport       = lazy(() => import('./pages/inventory/reports/SalesSummaryReport'))
 const SupplierWiseGrnDetailsReport = lazy(() => import('./pages/inventory/reports/SupplierWiseGrnDetailsReport'))
 const ItemSearchReport = lazy(() => import('./pages/inventory/reports/ItemSearchReport'))
+const AvailableStockReport = lazy(() => import('./pages/inventory/reports/AvailableStockReport'))
 
 const UserManagementPage    = lazy(() => import('./pages/admin/UserManagementPage'))
 const RolesPage             = lazy(() => import('./pages/admin/RolesPage'))
@@ -241,6 +242,7 @@ export default function App() {
         <Route path="/inventory/reports/sales-summary" element={<Lazy component={SalesSummaryReport} />} />
         <Route path="/inventory/reports/supplier-wise-grn-details" element={<Lazy component={SupplierWiseGrnDetailsReport} />} />
         <Route path="/inventory/reports/item-search" element={<Lazy component={ItemSearchReport} />} />
+        <Route path="/inventory/reports/available-stock" element={<Lazy component={AvailableStockReport} />} />
       </Route>
 
       {/* Fallback */}

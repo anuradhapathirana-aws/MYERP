@@ -34,6 +34,7 @@ use Modules\Inventory\Http\Controllers\GrnPieceLabelPdfController;
 use Modules\Inventory\Http\Controllers\PieceLabelController;
 use Modules\Inventory\Http\Controllers\StockController;
 use Modules\Inventory\Http\Controllers\StockReferenceTypeController;
+use Modules\Inventory\Http\Controllers\AvailableStockExportController;
 use Modules\Inventory\Http\Controllers\BinCardExportController;
 use Modules\Inventory\Http\Controllers\StockMovementSummaryExportController;
 use Modules\Inventory\Http\Controllers\SalesByItemSummaryExportController;
@@ -416,6 +417,9 @@ Route::middleware(['auth:sanctum', 'module:inventory'])->prefix('v1')->group(fun
         Route::get('sales-summary/csv', [SalesSummaryExportController::class, 'csv'])->name('sales-summary.csv');
         Route::get('outstanding-summary/pdf', [OutstandingSummaryExportController::class, 'pdf'])->name('outstanding-summary.pdf');
         Route::get('outstanding-summary/csv', [OutstandingSummaryExportController::class, 'csv'])->name('outstanding-summary.csv');
+        Route::get('available-stock',     [ReportController::class, 'availableStock'])->name('available-stock');
+        Route::get('available-stock/pdf', [AvailableStockExportController::class, 'pdf'])->name('available-stock.pdf');
+        Route::get('available-stock/csv', [AvailableStockExportController::class, 'csv'])->name('available-stock.csv');
     });
 
     // GRN Attachments

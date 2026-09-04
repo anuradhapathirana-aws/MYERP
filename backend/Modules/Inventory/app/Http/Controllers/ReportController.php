@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
+use Modules\Inventory\Services\AvailableStockReportService;
 use Modules\Inventory\Services\BinCardService;
 use Modules\Inventory\Services\ItemSearchReportService;
 use Modules\Inventory\Services\OutstandingSummaryReportService;
@@ -1082,5 +1083,29 @@ class ReportController extends Controller
         return response()->json($service->build(
             $request->only(['date_from', 'date_to'])
         ));
+    }
+
+    // ── 21. Available Stock (product > colour) ───────────────────────────────
+    // Live snapshot of sellable stock, one row per product+colour, sourced from the
+    // ledger — the balance cache has no colour column. Not date-bound: "available" is
+    // always as of now. No pagination — the PDF/CSV exports need the complete set
+    // anyway, and the row count is guarded by MAX_ROWS in the service.
+    public function availableStock(Request $request, AvailableStockReportService $service): JsonResponse
+    {
+        $request->validate([
+            'product_id'            => ['nullable', 'integer', 'exists:inv_products,id'],
+            'category_id'           => ['nullable', 'integer', 'exists:inv_categories,id'],
+            'attribute_id'          => ['nullable', 'integer', 'exists:inv_attributes,id'],
+            'location_id'           => ['nullable', 'integer', 'exists:inv_locations,id'],
+            'include_selling_price' => ['nullable', 'boolean'],
+        ]);
+
+        return response()->json($service->build([
+            'product_id'            => $request->integer('product_id') ?: null,
+            'category_id'           => $request->integer('category_id') ?: null,
+            'attribute_id'          => $request->integer('attribute_id') ?: null,
+            'location_id'           => $request->integer('location_id') ?: null,
+            'include_selling_price' => $request->boolean('include_selling_price'),
+        ]));
     }
 }

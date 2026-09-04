@@ -109,3 +109,12 @@ export const downloadSalesSummaryPdf = (filters = {}) =>
 
 export const downloadSalesSummaryCsv = (filters = {}) =>
   api.get(`${base}/sales-summary/csv`, { params: filters, responseType: 'blob' }).then((r) => r.data)
+
+export const getAvailableStockReport = (filters = {}) =>
+  api.get(`${base}/available-stock`, { params: filters }).then((r) => r.data)
+
+export const downloadAvailableStockPdf = (filters = {}) =>
+  api.get(`${base}/available-stock/pdf`, { params: filters, responseType: 'blob' }).then((r) => r.data)
+
+export const downloadAvailableStockCsv = (filters = {}) =>
+  api.get(`${base}/available-stock/csv`, { params: filters, responseType: 'blob' }).then((r) => r.data)

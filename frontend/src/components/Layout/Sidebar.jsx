@@ -27,6 +27,7 @@ import {
   MapPin,
   Package,
   PackageCheck,
+  PackageSearch,
   QrCode,
   Receipt,
   Ruler,
@@ -101,6 +102,7 @@ const NAV_ITEMS = [
             isSubgroup: true,
             children: [
               { label: 'Item Search Report', to: '/inventory/reports/item-search',        icon: Search,         permissionGuard: 'view_reports' },
+              { label: 'Available Stock',    to: '/inventory/reports/available-stock',    icon: PackageSearch,  permissionGuard: 'view_reports' },
               { label: 'Stock Levels',       to: '/inventory/reports/stock-levels',       icon: BarChart2,      permissionGuard: 'view_reports', disabled: true },
               { label: 'Stock Movements',    to: '/inventory/reports/stock-movements',    icon: ArrowLeftRight, permissionGuard: 'view_reports', disabled: true },
               { label: 'Bin Card',           to: '/inventory/reports/bin-card',           icon: BookOpen,       permissionGuard: 'view_reports' },

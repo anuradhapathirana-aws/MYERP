@@ -73,12 +73,19 @@ return [
     |--------------------------------------------------------------------------
     |
     | Here you may specify the default timezone for your application, which
-    | will be used by the PHP date and date-time functions. The timezone
-    | is set to "UTC" by default as it is suitable for most use cases.
+    | will be used by the PHP date and date-time functions.
+    |
+    | Single-tenant deployment: one server, one client, one country — so the app
+    | runs on the client's wall clock rather than UTC. Left on UTC, every printed
+    | "Generated Time", every created_at, and every "today" boundary sat 5h30m
+    | behind the clock on the wall: a sale keyed at 03:00 local landed in the
+    | PREVIOUS day's Sales Summary, and after 18:30 local even the printed DATE
+    | was a day behind. A deployment in another country changes APP_TIMEZONE in
+    | its .env and nothing else.
     |
     */
 
-    'timezone' => 'UTC',
+    'timezone' => env('APP_TIMEZONE', 'Asia/Colombo'),
 
     /*
     |--------------------------------------------------------------------------

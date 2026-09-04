@@ -33,6 +33,11 @@
   .muted { color: #94a3b8; }
   .ta-r  { text-align: right; }
   .bold  { font-weight: 700; }
+  /* Colour and Available Qty stay on their own single line. A wrapped "AVAILABLE
+     QTY" heading, or a quantity split from its unit, costs a whole extra row of
+     height per line and reads as two values instead of one. Only Product is left
+     free to wrap — it is the one column with genuinely long text. */
+  .nowrap { white-space: nowrap; }
 
   /* ── Footer ── */
   .footer { border-top: 1px solid #e2e8f0; margin-top: 16px; padding-top: 8px; font-size: 6.8pt; color: #94a3b8; text-align: center; }
@@ -99,10 +104,10 @@
       <tr>
         <th style="width:26px;">#</th>
         <th>Product</th>
-        <th style="width:90px;">Colour</th>
-        <th class="ta-r" style="width:95px;">Available Qty</th>
+        <th class="nowrap" style="width:105px;">Colour</th>
+        <th class="ta-r nowrap" style="width:110px;">Available Qty</th>
         @if($withPrice)
-        <th class="ta-r" style="width:95px;">Selling Price ({{ $cur }})</th>
+        <th class="ta-r nowrap" style="width:100px;">Selling Price ({{ $cur }})</th>
         @endif
       </tr>
     </thead>
@@ -111,11 +116,11 @@
       <tr>
         <td class="muted">{{ $i + 1 }}</td>
         <td>{{ $row['product_name'] }}</td>
-        <td>{{ $row['attribute_name'] ?? '—' }}</td>
-        <td class="ta-r bold">{{ $qty($row['available_qty']) }} <span class="muted">{{ $row['unit'] ?? '' }}</span></td>
+        <td class="nowrap">{{ $row['attribute_name'] ?? '—' }}</td>
+        <td class="ta-r bold nowrap">{{ $qty($row['available_qty']) }} <span class="muted">{{ $row['unit'] ?? '' }}</span></td>
         @if($withPrice)
         {{-- A dash, not 0.00 — this product+colour has neither a confirmed costing nor a price list. --}}
-        <td class="ta-r">{{ $row['selling_price'] === null ? '—' : $money($row['selling_price']) }}</td>
+        <td class="ta-r nowrap">{{ $row['selling_price'] === null ? '—' : $money($row['selling_price']) }}</td>
         @endif
       </tr>
       @empty

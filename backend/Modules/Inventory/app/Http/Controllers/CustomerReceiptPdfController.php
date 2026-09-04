@@ -36,7 +36,10 @@ class CustomerReceiptPdfController extends Controller
             'receipt' => $receipt,
             'company' => $company,
         ])
-            ->setPaper('a5', 'portrait')
+            // A4 like every other document here: browsers print a PDF onto the
+            // printer's paper, so an A5 sheet showed up boxed inside the A4
+            // print preview instead of filling it.
+            ->setPaper('a4', 'portrait')
             ->setOptions([
                 'defaultFont'          => 'DejaVu Sans',
                 'isHtml5ParserEnabled' => true,

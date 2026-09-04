@@ -82,12 +82,20 @@
       <td class="info-value">{{ $header['generated_by'] }}</td>
     </tr>
     <tr>
-      <td class="info-label">Cash Sale :</td>
-      <td class="info-value">{{ \Modules\Inventory\Support\Money::format((float) $header['cash_sale']) }}</td>
-      <td class="info-label">Non Cash Sale :</td>
-      <td class="info-value">{{ \Modules\Inventory\Support\Money::format((float) $header['non_cash_sale']) }}</td>
+      <td class="info-label">Cash Collected :</td>
+      <td class="info-value">{{ \Modules\Inventory\Support\Money::format((float) $header['cash_collected']) }}</td>
+      <td class="info-label">Non Cash Collected :</td>
+      <td class="info-value">{{ \Modules\Inventory\Support\Money::format((float) $header['non_cash_collected']) }}</td>
       <td class="info-label">Generated Time :</td>
       <td class="info-value">{{ $header['generated_at'] }}</td>
+    </tr>
+    <tr>
+      <td class="info-label">Uncollected :</td>
+      <td class="info-value">{{ \Modules\Inventory\Support\Money::format((float) $header['uncollected']) }}</td>
+      <td class="info-label"></td>
+      <td class="info-value"></td>
+      <td class="info-label"></td>
+      <td class="info-value"></td>
     </tr>
   </table>
 
@@ -97,11 +105,10 @@
       <tr>
         <th>Date</th>
         <th class="ta-r">Cash</th>
-        <th class="ta-r">Credit</th>
         <th class="ta-r">Cheque</th>
         <th class="ta-r">Bank Deposit</th>
         <th class="ta-r">Cards</th>
-        <th class="ta-r">Total Sales</th>
+        <th class="ta-r">Total Collected</th>
       </tr>
     </thead>
     <tbody>
@@ -109,15 +116,14 @@
       <tr>
         <td>{{ $row['date'] }}</td>
         <td class="ta-r">{{ $money($row['cash']) }}</td>
-        <td class="ta-r">{{ $money($row['credit']) }}</td>
         <td class="ta-r">{{ $money($row['cheque']) }}</td>
         <td class="ta-r">{{ $money($row['bank_deposit']) }}</td>
         <td class="ta-r">{{ $money($row['cards']) }}</td>
-        <td class="ta-r bold">{{ $money($row['total_sales']) }}</td>
+        <td class="ta-r bold">{{ $money($row['total_collected']) }}</td>
       </tr>
       @empty
       <tr>
-        <td colspan="7" class="muted" style="text-align:center; padding:14px;">No sales found for the selected period.</td>
+        <td colspan="6" class="muted" style="text-align:center; padding:14px;">No collections found for the selected period.</td>
       </tr>
       @endforelse
     </tbody>
@@ -126,11 +132,10 @@
       <tr>
         <td>Total ({{ $cur }})</td>
         <td class="ta-r">{{ $money($summary['cash']) }}</td>
-        <td class="ta-r">{{ $money($summary['credit']) }}</td>
         <td class="ta-r">{{ $money($summary['cheque']) }}</td>
         <td class="ta-r">{{ $money($summary['bank_deposit']) }}</td>
         <td class="ta-r">{{ $money($summary['cards']) }}</td>
-        <td class="ta-r">{{ $money($summary['total_sales']) }}</td>
+        <td class="ta-r">{{ $money($summary['total_collected']) }}</td>
       </tr>
     </tfoot>
     @endif

@@ -405,12 +405,16 @@
         <span class="val">{{ $words }}</span>
       </td>
     </tr>
+    {{-- Retired field: no longer captured on new invoices, but still printed for
+         historical ones so a reprint matches the original document. --}}
+    @if($invoice->mode_of_payment)
     <tr>
       <td>
         <span class="lbl">Mode of Payment:</span>
-        <span class="val">{{ $invoice->mode_of_payment?->label() }}</span>
+        <span class="val">{{ $invoice->mode_of_payment->label() }}</span>
       </td>
     </tr>
+    @endif
   </table>
 
   <div class="page-footer">

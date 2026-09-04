@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace Modules\Inventory\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
-use Modules\Inventory\Enums\PaymentMode;
 
 class StoreInvoiceRequest extends FormRequest
 {
@@ -30,7 +28,6 @@ class StoreInvoiceRequest extends FormRequest
             'transport_charge' => ['nullable', 'numeric', 'min:0'],
             'delivery_address' => ['nullable', 'string', 'max:2000'],
             'remarks'          => ['nullable', 'string', 'max:2000'],
-            'mode_of_payment'  => ['nullable', Rule::enum(PaymentMode::class)],
 
             // Draft-stage re-pricing only — quantities always come from the DO/SO
             'items'              => ['nullable', 'array'],
@@ -52,7 +49,6 @@ class StoreInvoiceRequest extends FormRequest
             'invoice_date'     => 'invoice date',
             'due_date'         => 'due date',
             'transport_charge' => 'transport charge',
-            'mode_of_payment'  => 'mode of payment',
         ];
     }
 }

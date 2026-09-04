@@ -197,7 +197,6 @@ class InvoiceService
                 'company_id'       => $data->companyId ?? $invoice->company_id,
                 'delivery_address' => $data->deliveryAddress,
                 'remarks'          => $data->remarks,
-                'mode_of_payment'  => $data->modeOfPayment,
             ]);
 
             // Draft re-pricing: quantities are fixed by the source document;
@@ -286,7 +285,6 @@ class InvoiceService
                     : $this->defaultTransportCharge($so),
                 'delivery_address' => $data->deliveryAddress ?? $do->delivery_address,
                 'remarks'          => $data->remarks,
-                'mode_of_payment'  => $data->modeOfPayment,
                 'created_by'       => Auth::id(),
                 'subtotal'         => 0,
                 'grand_total'      => 0,

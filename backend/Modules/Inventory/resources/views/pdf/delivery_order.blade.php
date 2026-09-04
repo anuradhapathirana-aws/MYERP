@@ -41,12 +41,22 @@
   .party-line { font-size: 8pt; color: #334155; line-height: 1.5; }
   .party-name { font-weight: 700; color: #111827; }
   .items-table { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
-  .items-table th { background: #e2e8f0; color: #111827; font-size: 7.3pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; padding: 5px 4px; border-bottom: 1px solid #cbd5e1; text-align: left; }
-  .items-table td { font-size: 8pt; padding: 4px; border-bottom: 1px solid #f1f5f9; vertical-align: top; color: #1e293b; }
-  .items-table tfoot td { border-top: 1px solid #cbd5e1; border-bottom: none; font-weight: 700; padding-top: 5px; }
-  .mono  { font-family: 'DejaVu Sans Mono', monospace; font-size: 7.5pt; color: #475569; }
-  .rolls-table { width: 100%; border-collapse: collapse; margin: 2px 0 4px 16px; }
-  .rolls-table td { font-size: 7.3pt; padding: 1.5px 4px; color: #475569; border-bottom: none; }
+  /*
+   * Every item MUST print as exactly one physical row — a wrapped Code or Colour
+   * cell used to push a single item onto two or three lines, which is what
+   * forced long DOs onto a second page. `white-space: nowrap` stops dompdf from
+   * breaking a cell, and the fixed widths below are sized to the character
+   * limits applied by $trim() in the body, so an over-long value is cut with an
+   * ellipsis instead of overflowing into the neighbouring column.
+   */
+  .items-table th, .items-table td { white-space: nowrap; overflow: hidden; }
+  .items-table th { background: #e2e8f0; color: #111827; font-size: 7.3pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; padding: 3px 4px; border-bottom: 1px solid #cbd5e1; text-align: left; }
+  .items-table td { font-size: 8pt; padding: 2.5px 4px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; color: #1e293b; }
+  .items-table tfoot td { border-top: 1px solid #cbd5e1; border-bottom: none; font-weight: 700; padding-top: 4px; }
+  .col-colour { font-size: 7.5pt; }
+  .mono  { font-family: 'DejaVu Sans Mono', monospace; font-size: 7.2pt; color: #475569; }
+  .rolls-table { width: 100%; border-collapse: collapse; margin: 1px 0 3px 16px; }
+  .rolls-table td { font-size: 7.3pt; padding: 1px 4px; color: #475569; border-bottom: none; white-space: nowrap; overflow: hidden; width: 33.33%; }
   /*
    * Pinned inside the reserved bottom margin with `position: fixed` — dompdf
    * renders a fixed-position element at the same spot on every page, so the
@@ -73,6 +83,16 @@
     $company  = $do->location?->company;
     $totalQty = $do->items->sum(fn ($it) => (float) $it->quantity);
     $totalRolls = $do->items->sum(fn ($it) => $it->pieces->count());
+
+    /*
+     * Cut a value down to what its column can physically show on ONE line. The
+     * limit passed at each call site is derived from that column's width in the
+     * <thead> below at its font size, so the result never wraps and never bleeds
+     * into the next column.
+     */
+    $trim = static fn (?string $value, int $limit): string => filled($value)
+        ? \Illuminate\Support\Str::limit($value, $limit, '…')
+        : '—';
   @endphp
 
   <div class="header">
@@ -136,23 +156,25 @@
   <table class="items-table">
     <thead>
       <tr>
-        <th style="width:24px;">#</th>
-        <th style="width:80px;">Code</th>
+        <th style="width:22px;">#</th>
+        <th style="width:104px;">Code</th>
         <th>Product</th>
-        <th style="width:70px;">Colour</th>
-        <th style="width:50px;">UOM</th>
-        <th style="width:55px;" class="ta-r">Rolls</th>
-        <th style="width:70px;" class="ta-r">Quantity</th>
+        <th style="width:136px;">Colour</th>
+        <th style="width:42px;">UOM</th>
+        <th style="width:44px;" class="ta-r">Rolls</th>
+        <th style="width:68px;" class="ta-r">Quantity</th>
       </tr>
     </thead>
     <tbody>
       @foreach($do->items as $i => $item)
         <tr>
           <td>{{ $i + 1 }}</td>
-          <td class="mono">{{ $item->product?->product_code }}</td>
-          <td>{{ $item->product?->name }}</td>
-          <td>{{ $item->attribute?->attribute_name ?? '—' }}</td>
-          <td>{{ $item->unit?->name ?? '—' }}</td>
+          <td class="mono">{{ $trim($item->product?->product_code, 15) }}</td>
+          <td>{{ $trim($item->product?->name, 48) }}</td>
+          <td class="col-colour">{{ $trim($item->attribute?->attribute_name, 17) }}</td>
+          {{-- UOM prints the unit's short symbol (Kg, g, m) and only falls back
+               to the full name when a unit has no symbol configured. --}}
+          <td>{{ $item->unit?->symbol ?: ($item->unit?->name ?? '—') }}</td>
           <td class="ta-r">{{ $item->pieces->count() ?: '—' }}</td>
           <td class="ta-r">{{ number_format((float) $item->quantity, 2) }}</td>
         </tr>

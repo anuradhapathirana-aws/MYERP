@@ -20,7 +20,6 @@ final class InvoiceData
         public readonly ?float  $transportCharge,
         public readonly ?string $deliveryAddress,
         public readonly ?string $remarks,
-        public readonly ?string $modeOfPayment,
         public readonly array   $items,
     ) {}
 
@@ -45,7 +44,6 @@ final class InvoiceData
                                  : null,
             deliveryAddress: $request->validated('delivery_address'),
             remarks:         $request->validated('remarks'),
-            modeOfPayment:   $request->validated('mode_of_payment'),
             items:           (array) ($request->validated('items') ?? []),
         );
     }

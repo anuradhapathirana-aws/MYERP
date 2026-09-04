@@ -215,7 +215,8 @@ export default function InvoiceViewPage() {
             <Field label="Invoice Date" value={inv.invoice_date} />
             <Field label="Due Date" value={inv.due_date} />
             <Field label="Issued / Paid" value={[inv.issued_at?.slice(0, 10), inv.paid_at?.slice(0, 10)].filter(Boolean).join(' / ')} />
-            <Field label="Mode of Payment" value={inv.mode_of_payment_label} />
+            {/* Retired field: not captured on new invoices, still shown on historical ones. */}
+            {inv.mode_of_payment_label && <Field label="Mode of Payment" value={inv.mode_of_payment_label} />}
             <div className="col-span-2">
               <Field label="Billing / Delivery Address" value={inv.delivery_address} />
             </div>

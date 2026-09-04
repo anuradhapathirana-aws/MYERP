@@ -9,7 +9,6 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Enums\CustomerReceiptStatus;
 use Modules\Inventory\Enums\InvoiceStatus;
-use Modules\Inventory\Enums\PaymentMode;
 
 class SalesSummaryReportService
 {
@@ -38,14 +37,21 @@ class SalesSummaryReportService
         SQL;
 
     /**
-     * Build the Sales Summary dataset: one row per calendar date with money actually
-     * collected that day broken down by payment method (Cash / Cheque / Bank Deposit /
-     * Cards — sourced from confirmed Customer Receipt settlements, keyed by
-     * receipt_date), plus new Credit sales issued that day (Invoice.mode_of_payment =
-     * Credit, keyed by invoice_date). "Total Sales" is the sum of those five columns —
-     * it is deliberately NOT the day's total invoiced revenue, since Credit sales and
-     * actual collections are two different things happening on two different dates;
-     * this mirrors a cashier's daily takings sheet, not a P&L.
+     * Build the Sales Summary dataset.
+     *
+     * The date-wise table is purely a record of money COLLECTED: one row per calendar
+     * date, broken down by payment method (Cash / Cheque / Bank Deposit / Cards), all
+     * sourced from confirmed Customer Receipt settlements and keyed by receipt_date.
+     * "Total Collected" is the sum of those four columns — a cashier's daily takings
+     * sheet, not a P&L. A date with invoices but no receipts produces no row.
+     *
+     * Uncollected money is deliberately NOT a table column: it belongs to the invoice's
+     * date, not to any collection date, so mixing the two in one row is what caused
+     * amounts to be counted twice. It is reported once, period-wide, in the header as
+     * "Uncollected" — invoices issued inside the period minus what had been received
+     * against them AS AT date_to. Anchoring to date_to (rather than "now") keeps a
+     * closed period reproducible: re-running last month next year returns the same
+     * figure instead of shrinking every time an old invoice is paid.
      *
      * Shared by the JSON, PDF and CSV endpoints so the aggregation logic exists once.
      *
@@ -68,6 +74,7 @@ class SalesSummaryReportService
             ->when($fromDate, fn ($q) => $q->where('r.receipt_date', '>=', $fromDate))
             ->when($toDate, fn ($q) => $q->where('r.receipt_date', '<=', $toDate))
             ->groupBy('r.receipt_date')
+            ->orderBy('r.receipt_date')
             ->selectRaw(
                 'r.receipt_date as sale_date,
                  SUM(CASE WHEN (' . self::BUCKET_CASE_SQL . ') = \'cash\' THEN s.amount ELSE 0 END) as cash,
@@ -75,67 +82,74 @@ class SalesSummaryReportService
                  SUM(CASE WHEN (' . self::BUCKET_CASE_SQL . ') = \'bank_deposit\' THEN s.amount ELSE 0 END) as bank_deposit,
                  SUM(CASE WHEN (' . self::BUCKET_CASE_SQL . ') = \'cards\' THEN s.amount ELSE 0 END) as cards'
             )
-            ->get()
-            ->keyBy('sale_date');
+            ->get();
 
-        $creditSales = DB::table('inv_invoices as i')
-            ->where('i.mode_of_payment', PaymentMode::Credit->value)
-            ->whereIn('i.status', [InvoiceStatus::Issued->value, InvoiceStatus::Paid->value])
-            ->whereNull('i.deleted_at')
-            ->when($fromDate, fn ($q) => $q->where('i.invoice_date', '>=', $fromDate))
-            ->when($toDate, fn ($q) => $q->where('i.invoice_date', '<=', $toDate))
-            ->groupBy('i.invoice_date')
-            ->selectRaw('i.invoice_date as sale_date, SUM(i.grand_total) as credit')
-            ->get()
-            ->keyBy('sale_date');
+        // Money received per invoice as at date_to — a discount is a permanent write-off
+        // so it settles the invoice exactly like received cash, mirroring
+        // CustomerReceiptService::computeOutstanding().
+        $receivedPerInvoice = DB::table('inv_customer_receipt_allocations as a')
+            ->join('inv_customer_receipts as r', 'r.id', '=', 'a.receipt_id')
+            ->where('a.reference_type', 'invoice')
+            ->where('r.status', CustomerReceiptStatus::Confirmed->value)
+            ->whereNull('r.deleted_at')
+            ->when($toDate, fn ($q) => $q->where('r.receipt_date', '<=', $toDate))
+            ->groupBy('a.reference_id')
+            ->selectRaw('a.reference_id as invoice_id, SUM(a.receipt_amount + a.discount) as received');
 
-        // Bill count + invoiced revenue for the period — independent of how/when it's
-        // collected, unlike the payment-method columns above. Powers the "Number of
-        // Bills" / "Net Sale" header stats.
+        // Bill count, invoiced revenue and still-uncollected money for the period — all
+        // three describe the same set of invoices, so one pass over it answers all of
+        // them. Independent of how or when the money is collected, unlike the
+        // payment-method columns above. GREATEST(..., 0) clamps per invoice so an
+        // overpaid one (which becomes a credit note here, not a negative receivable)
+        // can't mask another invoice's genuine shortfall.
         $billStats = DB::table('inv_invoices as i')
+            ->leftJoinSub($receivedPerInvoice, 'rc', 'rc.invoice_id', '=', 'i.id')
             ->whereIn('i.status', [InvoiceStatus::Issued->value, InvoiceStatus::Paid->value])
             ->whereNull('i.deleted_at')
             ->when($fromDate, fn ($q) => $q->where('i.invoice_date', '>=', $fromDate))
             ->when($toDate, fn ($q) => $q->where('i.invoice_date', '<=', $toDate))
-            ->selectRaw('COUNT(*) as bill_count, COALESCE(SUM(i.grand_total), 0) as net_sale')
+            ->selectRaw(
+                'COUNT(*) as bill_count,
+                 COALESCE(SUM(i.grand_total), 0) as net_sale,
+                 COALESCE(SUM(GREATEST(i.grand_total - COALESCE(rc.received, 0), 0)), 0) as uncollected'
+            )
             ->first();
 
-        // A date can appear in either side alone (e.g. only credit sales, no cash
-        // collected that day, or vice versa) — the report needs a row either way.
-        $dates = $collections->keys()->merge($creditSales->keys())->unique()->sort()->values();
-
         $rows = [];
-        $totals = ['cash' => 0.0, 'credit' => 0.0, 'cheque' => 0.0, 'bank_deposit' => 0.0, 'cards' => 0.0, 'total_sales' => 0.0];
+        $totals = ['cash' => 0.0, 'cheque' => 0.0, 'bank_deposit' => 0.0, 'cards' => 0.0, 'total_collected' => 0.0];
 
-        foreach ($dates as $date) {
-            $c = $collections->get($date);
-            $cash        = (float) ($c->cash ?? 0);
-            $cheque      = (float) ($c->cheque ?? 0);
-            $bankDeposit = (float) ($c->bank_deposit ?? 0);
-            $cards       = (float) ($c->cards ?? 0);
-            $credit      = (float) ($creditSales->get($date)->credit ?? 0);
-            $totalSales  = $cash + $credit + $cheque + $bankDeposit + $cards;
+        foreach ($collections as $c) {
+            $cash           = (float) $c->cash;
+            $cheque         = (float) $c->cheque;
+            $bankDeposit    = (float) $c->bank_deposit;
+            $cards          = (float) $c->cards;
+            $totalCollected = $cash + $cheque + $bankDeposit + $cards;
 
             $rows[] = [
-                'date'         => $date,
-                'cash'         => $cash,
-                'credit'       => $credit,
-                'cheque'       => $cheque,
-                'bank_deposit' => $bankDeposit,
-                'cards'        => $cards,
-                'total_sales'  => $totalSales,
+                'date'            => $c->sale_date,
+                'cash'            => $cash,
+                'cheque'          => $cheque,
+                'bank_deposit'    => $bankDeposit,
+                'cards'           => $cards,
+                'total_collected' => $totalCollected,
             ];
 
-            $totals['cash']         += $cash;
-            $totals['credit']       += $credit;
-            $totals['cheque']       += $cheque;
-            $totals['bank_deposit'] += $bankDeposit;
-            $totals['cards']        += $cards;
-            $totals['total_sales']  += $totalSales;
+            $totals['cash']            += $cash;
+            $totals['cheque']          += $cheque;
+            $totals['bank_deposit']    += $bankDeposit;
+            $totals['cards']           += $cards;
+            $totals['total_collected'] += $totalCollected;
         }
 
         return [
-            'header'  => $this->buildHeader($dateFrom, $dateTo, $totals, (int) $billStats->bill_count, (float) $billStats->net_sale),
+            'header'  => $this->buildHeader(
+                $dateFrom,
+                $dateTo,
+                $totals,
+                (int) $billStats->bill_count,
+                (float) $billStats->net_sale,
+                (float) $billStats->uncollected,
+            ),
             'rows'    => $rows,
             'summary' => $totals,
         ];
@@ -145,8 +159,14 @@ class SalesSummaryReportService
      * @param array<string, float> $summary
      * @return array<string, mixed>
      */
-    private function buildHeader(?string $dateFrom, ?string $dateTo, array $summary, int $billCount, float $netSale): array
-    {
+    private function buildHeader(
+        ?string $dateFrom,
+        ?string $dateTo,
+        array $summary,
+        int $billCount,
+        float $netSale,
+        float $uncollected,
+    ): array {
         // Single-tenant deployment: the report always belongs to the one primary company.
         $company = DB::table('inv_companies')->orderBy('id')->first();
 
@@ -158,15 +178,16 @@ class SalesSummaryReportService
             'company_email'   => $company->company_email ?? null,
             'date_from'       => $dateFrom,
             'date_to'         => $dateTo,
-            'total_sales'     => $summary['total_sales'],
+            'total_collected' => $summary['total_collected'],
             // Bill count + invoiced revenue for the period (independent of collection).
             'bill_count'      => $billCount,
             'net_sale'        => $netSale,
             // Money actually collected for the period, split cash vs. everything else —
-            // Non-Cash Sales rolls Cheque + Bank Deposit + Cards together.
-            'cash_sale'       => $summary['cash'],
-            'non_cash_sale'   => $summary['cheque'] + $summary['bank_deposit'] + $summary['cards'],
-            'credit_sale'     => $summary['credit'],
+            // Non-Cash Collected rolls Cheque + Bank Deposit + Cards together.
+            'cash_collected'     => $summary['cash'],
+            'non_cash_collected' => $summary['cheque'] + $summary['bank_deposit'] + $summary['cards'],
+            // Invoiced inside the period but still not received as at date_to.
+            'uncollected'        => $uncollected,
             'generated_by'    => Auth::user()?->name,
             'generated_at'    => now()->toDateTimeString(),
         ];

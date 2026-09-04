@@ -30,12 +30,6 @@ const SELECT_CLS =
 const LABEL_CLS   = 'block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-0.5'
 const ERR_CLS     = 'text-[10px] text-red-500 leading-tight'
 
-const PAYMENT_MODES = [
-  { value: 'cash',          label: 'Cash' },
-  { value: 'cheque',        label: 'Cheque' },
-  { value: 'bank_transfer', label: 'Bank Transfer' },
-  { value: 'credit',        label: 'Credit' },
-]
 const TABLE_INPUT =
   'block w-full rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-xs text-slate-800 outline-none transition-all focus:border-indigo-400 focus:bg-white'
 const TABLE_INPUT_RO =
@@ -71,7 +65,6 @@ export default function InvoiceFormPage() {
     transport_charge: '',
     delivery_address: '',
     remarks:          '',
-    mode_of_payment:  '',
     company_id:       '',
   })
   const [lines, setLines]   = useState([]) // {so_item_id, do_item_id, product, unit, attribute, quantity, unit_price, discount, tax, so_unit_price, so_tax, tax_unit_price, tax_vat_pct}
@@ -181,7 +174,6 @@ export default function InvoiceFormPage() {
       transport_charge: String(inv.transport_charge ?? 0),
       delivery_address: inv.delivery_address ?? '',
       remarks:          inv.remarks ?? '',
-      mode_of_payment:  inv.mode_of_payment ?? '',
       company_id:       inv.company_id ? String(inv.company_id) : '',
     })
     setLines((inv.items ?? []).map((it) => ({
@@ -264,7 +256,6 @@ export default function InvoiceFormPage() {
     transport_charge: parseFloat(form.transport_charge) || 0,
     delivery_address: form.delivery_address.trim() || null,
     remarks:          form.remarks.trim() || null,
-    mode_of_payment:  form.mode_of_payment || null,
     company_id:       form.company_id ? Number(form.company_id) : null,
     items: lines.map((row) => ({
       so_item_id: row.so_item_id,
@@ -509,15 +500,6 @@ export default function InvoiceFormPage() {
                   )}
                 </label>
                 <input type="number" min="0" step="0.01" className={INPUT_CLS} value={form.transport_charge} onChange={(e) => setForm((f) => ({ ...f, transport_charge: e.target.value }))} />
-              </div>
-              <div>
-                <label className={LABEL_CLS}>Mode of Payment</label>
-                <select className={SELECT_CLS} value={form.mode_of_payment} onChange={(e) => setForm((f) => ({ ...f, mode_of_payment: e.target.value }))}>
-                  <option value="">— Select —</option>
-                  {PAYMENT_MODES.map((m) => (
-                    <option key={m.value} value={m.value}>{m.label}</option>
-                  ))}
-                </select>
               </div>
               <div>
                 <label className={LABEL_CLS}>Remarks</label>

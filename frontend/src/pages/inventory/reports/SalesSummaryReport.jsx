@@ -122,22 +122,22 @@ export default function SalesSummaryReport() {
           <StatTile
             label="Net sale"
             value={<Money value={header.net_sale} />}
-            note="Total invoiced amount, any payment mode"
+            note="Total invoiced this period, collected or not"
           />
           <StatTile
-            label="Cash sale"
-            value={<Money value={header.cash_sale} />}
+            label="Cash collected"
+            value={<Money value={header.cash_collected} />}
             note="Cash collected via confirmed receipts"
           />
           <StatTile
-            label="Non-cash sale"
-            value={<Money value={header.non_cash_sale} />}
+            label="Non-cash collected"
+            value={<Money value={header.non_cash_collected} />}
             note="Cheque + Bank Deposit + Cards collected"
           />
           <StatTile
-            label="Credit sale"
-            value={<Money value={header.credit_sale} />}
-            note="New credit invoices issued this period"
+            label="Uncollected"
+            value={<Money value={header.uncollected} />}
+            note="Invoiced this period, not yet received"
           />
         </div>
       )}
@@ -154,28 +154,26 @@ export default function SalesSummaryReport() {
                 <tr className="border-b border-slate-200 bg-slate-50 text-left">
                   <th className="px-3 py-1.5 font-semibold uppercase tracking-wider text-slate-500">Date</th>
                   <th className="w-28 px-3 py-1.5 text-right font-semibold uppercase tracking-wider text-slate-500">Cash</th>
-                  <th className="w-28 px-3 py-1.5 text-right font-semibold uppercase tracking-wider text-slate-500">Credit</th>
                   <th className="w-28 px-3 py-1.5 text-right font-semibold uppercase tracking-wider text-slate-500">Cheque</th>
                   <th className="w-32 px-3 py-1.5 text-right font-semibold uppercase tracking-wider text-slate-500">Bank Deposit</th>
                   <th className="w-28 px-3 py-1.5 text-right font-semibold uppercase tracking-wider text-slate-500">Cards</th>
-                  <th className="w-32 px-3 py-1.5 text-right font-semibold uppercase tracking-wider text-slate-500">Total Sales</th>
+                  <th className="w-32 px-3 py-1.5 text-right font-semibold uppercase tracking-wider text-slate-500">Total Collected</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-12 text-center text-sm text-slate-400">No sales found for the selected period.</td>
+                    <td colSpan={6} className="px-4 py-12 text-center text-sm text-slate-400">No collections found for the selected period.</td>
                   </tr>
                 ) : (
                   rows.map((row) => (
                     <tr key={row.date} className="transition-colors hover:bg-slate-50">
                       <td className="px-3 py-2 font-medium text-slate-800">{row.date}</td>
                       <td className={`${NUM_TD} text-slate-600`}><Money value={row.cash} /></td>
-                      <td className={`${NUM_TD} text-slate-600`}><Money value={row.credit} /></td>
                       <td className={`${NUM_TD} text-slate-600`}><Money value={row.cheque} /></td>
                       <td className={`${NUM_TD} text-slate-600`}><Money value={row.bank_deposit} /></td>
                       <td className={`${NUM_TD} text-slate-600`}><Money value={row.cards} /></td>
-                      <td className={`${NUM_TD} font-semibold text-slate-800`}><Money value={row.total_sales} /></td>
+                      <td className={`${NUM_TD} font-semibold text-slate-800`}><Money value={row.total_collected} /></td>
                     </tr>
                   ))
                 )}
@@ -185,11 +183,10 @@ export default function SalesSummaryReport() {
                   <tr className="border-t border-slate-300 bg-slate-50 font-bold text-slate-800">
                     <td className="px-3 py-2 uppercase tracking-wider text-slate-500">Total ({CURRENCY_CODE})</td>
                     <td className={NUM_TD}><Money value={summary.cash} /></td>
-                    <td className={NUM_TD}><Money value={summary.credit} /></td>
                     <td className={NUM_TD}><Money value={summary.cheque} /></td>
                     <td className={NUM_TD}><Money value={summary.bank_deposit} /></td>
                     <td className={NUM_TD}><Money value={summary.cards} /></td>
-                    <td className={NUM_TD}><Money value={summary.total_sales} /></td>
+                    <td className={NUM_TD}><Money value={summary.total_collected} /></td>
                   </tr>
                 </tfoot>
               )}

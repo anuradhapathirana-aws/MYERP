@@ -136,6 +136,7 @@ class InvoiceService
             'sales_order' => $this->soSummary($so),
             'guards'      => $this->billingGuards($so, forDirect: true),
             'default_transport_charge' => $this->defaultTransportCharge($so),
+            'default_invoice_type'     => $this->defaultInvoiceType($so),
             'items'       => $so->items->map(fn (SalesOrderItem $item) => $this->itemPreview($item, (float) $item->quantity, null))->values()->all(),
         ];
     }
@@ -162,6 +163,7 @@ class InvoiceService
             'sales_order' => $this->soSummary($so),
             'guards'      => $this->billingGuards($so, forDirect: false, do: $do),
             'default_transport_charge' => $this->defaultTransportCharge($so),
+            'default_invoice_type'     => $this->defaultInvoiceType($so),
             'items'       => $do->items
                 ->map(fn ($doItem) => $this->itemPreview($doItem->soItem, (float) $doItem->quantity, $doItem->id))
                 ->values()
@@ -279,7 +281,7 @@ class InvoiceService
                 'invoice_date'     => $data->invoiceDate,
                 'due_date'         => $data->dueDate,
                 'status'           => InvoiceStatus::Draft,
-                'invoice_type'     => $data->invoiceType ?? 'tax',
+                'invoice_type'     => $data->invoiceType ?? $this->defaultInvoiceType($so),
                 'transport_charge' => $data->transportCharge !== null
                     ? $this->money($data->transportCharge)
                     : $this->defaultTransportCharge($so),
@@ -357,6 +359,15 @@ class InvoiceService
             ->exists();
 
         return $hasLiveInvoice ? 0.0 : $this->money((float) $so->transport_charge);
+    }
+
+    /**
+     * A customer registered for tax (Customer TIN entered) is billed a Tax invoice, anyone
+     * else a Non Tax one. Only a default — the caller may still send an explicit invoice_type.
+     */
+    private function defaultInvoiceType(SalesOrder $so): string
+    {
+        return trim((string) $so->customer?->customer_tin) !== '' ? 'tax' : 'non_tax';
     }
 
     /**

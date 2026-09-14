@@ -142,6 +142,9 @@ export default function InvoiceFormPage() {
 
   useEffect(() => {
     if (!source || isEdit) return
+    // Customer TIN entered → Tax, otherwise Non Tax (decided by the backend); the user can still switch
+    const type = source.default_invoice_type ?? 'tax'
+    setInvoiceType(type)
     setLines(source.items.map((it) => ({
       so_item_id: it.so_item_id,
       do_item_id: it.do_item_id,
@@ -149,8 +152,8 @@ export default function InvoiceFormPage() {
       unit:       it.unit,
       attribute:  it.attribute,
       quantity:   it.quantity,
-      // Price per the invoice-type toggle (new invoices start as Tax)
-      ...priceFor(it, invoiceType),
+      // Price per the customer's default invoice type
+      ...priceFor(it, type),
       discount:   it.discount ? String(it.discount) : '',
       so_unit_price:  it.unit_price,
       so_tax:         it.tax,
@@ -415,6 +418,14 @@ export default function InvoiceFormPage() {
               <span className="text-[9px] font-semibold uppercase tracking-wider text-indigo-400" title="Tax invoice bills the costing Before-Tax price and adds VAT per line. Non Tax bills the After-Tax price (VAT already inside) with 0 tax.">
                 Invoice Type
               </span>
+              {!isEdit && source?.default_invoice_type && (
+                <span
+                  className="text-[9px] text-indigo-400"
+                  title="Auto-selected from the customer's TIN — you can still switch it"
+                >
+                  (Auto: {source.default_invoice_type === 'tax' ? 'customer has TIN' : 'no customer TIN'})
+                </span>
+              )}
               <div className="flex overflow-hidden rounded-md border-2 border-indigo-200 text-[10px] font-bold">
                 <button
                   type="button"

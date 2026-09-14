@@ -240,9 +240,9 @@ class InvoiceTest extends TestCase
         $this->giveConfirmedCosting($pieces[0]->grn_item_id, beforeTax: 1000, afterTax: 1180, vatPct: 18);
         $doId = $this->makeConfirmedDo($so, $pieces);
 
-        // Tax (the default): Before-Tax price per line + the costing's VAT %
+        // Tax: Before-Tax price per line + the costing's VAT %
         $this->actingAs($this->user)
-            ->postJson('/api/v1/invoices', ['do_id' => $doId, 'invoice_date' => '2026-07-11'])
+            ->postJson('/api/v1/invoices', ['do_id' => $doId, 'invoice_date' => '2026-07-11', 'invoice_type' => 'tax'])
             ->assertCreated()
             ->assertJsonPath('data.invoice_type', 'tax')
             ->assertJsonPath('data.items.0.unit_price', 1000)
@@ -260,13 +260,69 @@ class InvoiceTest extends TestCase
         // No costing: strip the default 18% out of the SO price (1180 ÷ 1.18 = 1000),
         // then the 18% Tax puts it back — the customer total stays the SO's.
         $response = $this->actingAs($this->user)
-            ->postJson('/api/v1/invoices', ['do_id' => $doId, 'invoice_date' => '2026-07-11'])
+            ->postJson('/api/v1/invoices', ['do_id' => $doId, 'invoice_date' => '2026-07-11', 'invoice_type' => 'tax'])
             ->assertCreated()
             ->assertJsonPath('data.invoice_type', 'tax')
             ->assertJsonPath('data.items.0.tax', 18);
 
         $this->assertEqualsWithDelta(1000.0, (float) $response->json('data.items.0.unit_price'), 0.0001);
         $this->assertEqualsWithDelta(35400.0, (float) $response->json('data.grand_total'), 0.01);
+    }
+
+    public function test_invoice_type_defaults_from_customer_tin_when_not_sent(): void
+    {
+        // No TIN (null) → Non Tax
+        ['so' => $soA, 'pieces' => $piecesA] = $this->makeConfirmedSoWithRolls([10.0]);
+        $doA = $this->makeConfirmedDo($soA, $piecesA);
+
+        $this->actingAs($this->user)
+            ->getJson("/api/v1/invoices/billing-source/do/{$doA}")
+            ->assertOk()
+            ->assertJsonPath('data.default_invoice_type', 'non_tax');
+
+        $this->actingAs($this->user)
+            ->postJson('/api/v1/invoices', ['do_id' => $doA, 'invoice_date' => '2026-07-11'])
+            ->assertCreated()
+            ->assertJsonPath('data.invoice_type', 'non_tax')
+            ->assertJsonPath('data.items.0.tax', 0);
+
+        // Whitespace-only TIN still counts as no TIN
+        $this->customer->update(['customer_tin' => '   ']);
+        ['so' => $soB, 'pieces' => $piecesB] = $this->makeConfirmedSoWithRolls([10.0]);
+        $doB = $this->makeConfirmedDo($soB, $piecesB);
+
+        $this->actingAs($this->user)
+            ->getJson("/api/v1/invoices/billing-source/do/{$doB}")
+            ->assertOk()
+            ->assertJsonPath('data.default_invoice_type', 'non_tax');
+
+        // TIN entered → Tax
+        $this->customer->update(['customer_tin' => '114567890-7000']);
+        ['so' => $soC, 'pieces' => $piecesC] = $this->makeConfirmedSoWithRolls([10.0]);
+        $doC = $this->makeConfirmedDo($soC, $piecesC);
+
+        $this->actingAs($this->user)
+            ->getJson("/api/v1/invoices/billing-source/do/{$doC}")
+            ->assertOk()
+            ->assertJsonPath('data.default_invoice_type', 'tax');
+
+        $this->actingAs($this->user)
+            ->postJson('/api/v1/invoices', ['do_id' => $doC, 'invoice_date' => '2026-07-11'])
+            ->assertCreated()
+            ->assertJsonPath('data.invoice_type', 'tax');
+    }
+
+    public function test_explicit_invoice_type_overrides_customer_tin_default(): void
+    {
+        // Customer has a TIN (default Tax), but the user switched the toggle to Non Tax
+        $this->customer->update(['customer_tin' => '114567890-7000']);
+        ['so' => $so, 'pieces' => $pieces] = $this->makeConfirmedSoWithRolls([10.0]);
+        $doId = $this->makeConfirmedDo($so, $pieces);
+
+        $this->actingAs($this->user)
+            ->postJson('/api/v1/invoices', ['do_id' => $doId, 'invoice_date' => '2026-07-11', 'invoice_type' => 'non_tax'])
+            ->assertCreated()
+            ->assertJsonPath('data.invoice_type', 'non_tax');
     }
 
     public function test_non_tax_invoice_forces_line_tax_to_zero(): void

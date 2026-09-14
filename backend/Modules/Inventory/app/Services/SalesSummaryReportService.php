@@ -29,9 +29,10 @@ class SalesSummaryReportService
                 OR LOWER(s.payment_mode_name) LIKE '%check%' THEN 'cheque'
             WHEN LOWER(s.payment_mode_code) IN ('card', 'cards', 'credit_card', 'debit_card')
                 OR LOWER(s.payment_mode_name) LIKE '%card%' THEN 'cards'
-            WHEN LOWER(s.payment_mode_code) IN ('bank_deposit', 'bank_transfer', 'banktransfer', 'deposit', 'bank')
+            WHEN LOWER(s.payment_mode_code) IN ('bank_deposit', 'bank_transfer', 'banktransfer', 'deposit', 'bank', 'online_transfer')
                 OR LOWER(s.payment_mode_name) LIKE '%bank%'
-                OR LOWER(s.payment_mode_name) LIKE '%deposit%' THEN 'bank_deposit'
+                OR LOWER(s.payment_mode_name) LIKE '%deposit%'
+                OR LOWER(s.payment_mode_name) LIKE '%transfer%' THEN 'bank_deposit'
             ELSE NULL
         END
         SQL;

@@ -308,6 +308,10 @@ export default function SupplierPaymentFormPage() {
   const chequeNoInvalid   = isChequeMode && !/^\d{6}$/.test(settlementDraft.reference_no)
   const chequeDateInvalid = isChequeMode && !settlementDraft.instrument_date
 
+  // Online transfers must carry the bank's transaction reference number (backend re-validates on save)
+  const isOnlineTransferMode = selectedMode?.code === 'online_transfer'
+  const transferRefMissing   = isOnlineTransferMode && !settlementDraft.reference_no.trim()
+
   const addSettlement = () => {
     if (!settlementDraft.payment_mode_id || !(parseFloat(settlementDraft.amount) > 0)) {
       showError('Select a pay mode and enter an amount.')
@@ -319,6 +323,10 @@ export default function SupplierPaymentFormPage() {
     }
     if (chequeDateInvalid) {
       showError('Cheque date is required.')
+      return
+    }
+    if (transferRefMissing) {
+      showError('Transaction reference number is required.')
       return
     }
     setSettlements((prev) => [...prev, {
@@ -836,11 +844,14 @@ export default function SupplierPaymentFormPage() {
                 )}
                 {selectedMode?.requires_reference_no && (
                   <div>
-                    <label className={LABEL_CLS}>{isChequeMode ? 'Cheque Number' : 'Card Number'}</label>
+                    <label className={LABEL_CLS}>
+                      {isChequeMode ? 'Cheque Number' : isOnlineTransferMode ? 'Transaction Ref No' : 'Card Number'}
+                      {isOnlineTransferMode && <span className="text-red-500"> *</span>}
+                    </label>
                     <input
-                      className={isChequeMode && settlementDraft.reference_no && chequeNoInvalid ? INPUT_CLS.replace('border-slate-200', 'border-red-300') : INPUT_CLS}
+                      className={(isChequeMode && settlementDraft.reference_no && chequeNoInvalid) || transferRefMissing ? INPUT_CLS.replace('border-slate-200', 'border-red-300') : INPUT_CLS}
                       inputMode={isChequeMode ? 'numeric' : undefined}
-                      maxLength={isChequeMode ? 6 : undefined}
+                      maxLength={isChequeMode ? 6 : 50}
                       placeholder={isChequeMode ? '6 digits' : ''}
                       value={settlementDraft.reference_no}
                       onChange={(e) => {
@@ -855,7 +866,7 @@ export default function SupplierPaymentFormPage() {
                 )}
                 {selectedMode?.requires_date && (
                   <div>
-                    <label className={LABEL_CLS}>{selectedMode.code === 'cheque' ? 'Cheque Date' : 'Instrument Date'}{isChequeMode && <span className="text-red-500"> *</span>}</label>
+                    <label className={LABEL_CLS}>{isChequeMode ? 'Cheque Date' : isOnlineTransferMode ? 'Transfer Date' : 'Instrument Date'}{isChequeMode && <span className="text-red-500"> *</span>}</label>
                     <input
                       type="date"
                       className={chequeDateInvalid ? INPUT_CLS.replace('border-slate-200', 'border-red-300') : INPUT_CLS}

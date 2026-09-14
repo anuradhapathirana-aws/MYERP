@@ -360,6 +360,7 @@ class CustomerReceiptTest extends TestCase
                 'payment_mode_id' => $cheque->id,
                 'amount'          => 1000.0,
                 'reference_no'    => $chequeNo,
+                'instrument_date' => '2026-07-17',
             ]],
         ]);
 
@@ -375,6 +376,41 @@ class CustomerReceiptTest extends TestCase
         $this->actingAs($this->user)
             ->postJson('/api/v1/customer-receipts', $chequePayload('123456'))
             ->assertCreated();
+    }
+
+    public function test_online_transfer_settlement_requires_transaction_reference_no(): void
+    {
+        // Seeded by the add_online_transfer_to_inv_payment_modes_table data migration
+        $transfer = PaymentMode::where('code', 'online_transfer')->firstOrFail();
+        $this->assertTrue((bool) $transfer->requires_bank_details);
+        $this->assertTrue((bool) $transfer->requires_reference_no);
+        $this->assertTrue((bool) $transfer->requires_date);
+
+        $invoice = $this->makeIssuedInvoice(1000);
+
+        $transferPayload = fn (?string $referenceNo) => $this->receiptPayload($invoice, [
+            'settlements' => [[
+                'payment_mode_id' => $transfer->id,
+                'amount'          => 1000.0,
+                'bank_name'       => 'Commercial Bank',
+                'reference_no'    => $referenceNo,
+                'instrument_date' => '2026-07-17',
+            ]],
+        ]);
+
+        // Missing and whitespace-only reference numbers are rejected
+        foreach ([null, '', '   '] as $bad) {
+            $this->actingAs($this->user)
+                ->postJson('/api/v1/customer-receipts', $transferPayload($bad))
+                ->assertStatus(422)
+                ->assertJsonValidationErrors(['settlements.0.reference_no']);
+        }
+
+        $this->actingAs($this->user)
+            ->postJson('/api/v1/customer-receipts', $transferPayload('TRX-88451203'))
+            ->assertCreated()
+            ->assertJsonPath('data.settlements.0.payment_mode_code', 'online_transfer')
+            ->assertJsonPath('data.settlements.0.reference_no', 'TRX-88451203');
     }
 
     public function test_receipt_pdf_downloads_for_confirmed_receipts_only(): void

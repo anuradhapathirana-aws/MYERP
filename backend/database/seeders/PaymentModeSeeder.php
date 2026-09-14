@@ -16,6 +16,7 @@ class PaymentModeSeeder extends Seeder
             ['payment_mode_name' => 'Cheque', 'code' => 'cheque', 'requires_bank_details' => true,  'requires_reference_no' => true,  'requires_date' => true,  'sort_order' => 2],
             ['payment_mode_name' => 'Card',   'code' => 'card',   'requires_bank_details' => true,  'requires_reference_no' => true,  'requires_date' => false, 'sort_order' => 3],
             ['payment_mode_name' => 'Setoff', 'code' => 'setoff', 'requires_bank_details' => false, 'requires_reference_no' => false, 'requires_date' => false, 'sort_order' => 4],
+            ['payment_mode_name' => 'Online Transfer', 'code' => 'online_transfer', 'requires_bank_details' => true, 'requires_reference_no' => true, 'requires_date' => true, 'sort_order' => 5],
         ];
 
         foreach ($modes as $mode) {

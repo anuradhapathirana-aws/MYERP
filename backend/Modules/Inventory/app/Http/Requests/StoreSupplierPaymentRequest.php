@@ -81,6 +81,7 @@ class StoreSupplierPaymentRequest extends FormRequest
             $settlements = (array) $this->input('settlements', []);
 
             $this->validateChequeNumbers($validator, $settlements);
+            $this->validateOnlineTransferReferences($validator, $settlements);
 
             if ($isAdvance && count($allocations) > 0) {
                 $validator->errors()->add('allocations', 'A standalone advance payment cannot also include GRN allocations.');
@@ -129,6 +130,31 @@ class StoreSupplierPaymentRequest extends FormRequest
 
             if ($isCheque && empty($settlement['instrument_date'])) {
                 $validator->errors()->add("settlements.{$index}.instrument_date", 'Cheque date is required.');
+            }
+        }
+    }
+
+    /**
+     * A settlement line paid by online transfer must carry the bank's transaction reference
+     * number in reference_no.
+     * @param array<int, array<string, mixed>> $settlements
+     */
+    private function validateOnlineTransferReferences(Validator $validator, array $settlements): void
+    {
+        if (empty($settlements)) {
+            return;
+        }
+
+        $transferModeIds = \Modules\Inventory\Models\PaymentMode::where('code', 'online_transfer')
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        foreach ($settlements as $index => $settlement) {
+            $isTransfer = in_array((int) ($settlement['payment_mode_id'] ?? 0), $transferModeIds, true);
+
+            if ($isTransfer && trim((string) ($settlement['reference_no'] ?? '')) === '') {
+                $validator->errors()->add("settlements.{$index}.reference_no", 'Transaction reference number is required.');
             }
         }
     }

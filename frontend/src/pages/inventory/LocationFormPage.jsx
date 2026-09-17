@@ -131,6 +131,15 @@ const TABS = [
   { label: 'Contact Info',  icon: Phone },
 ]
 
+// Fields rendered on the "Basic Details" tab — everything else lives on "Contact Info"
+const TAB0_FIELDS = [
+  'company_id', 'industry_id', 'parent_location_id', 'location_type',
+  'location_code', 'location_name', 'country',
+  'loc_street_address', 'loc_city', 'loc_country', 'loc_state', 'loc_postal_zip_code',
+  'billing_same_as_location', 'bill_street_address', 'bill_city', 'bill_country',
+  'bill_state', 'bill_postal_zip_code',
+]
+
 export default function LocationFormPage() {
   const { id }      = useParams()
   const isEditing   = Boolean(id)
@@ -207,8 +216,8 @@ export default function LocationFormPage() {
         base_currency:             d.base_currency           ?? 'LKR',
         time_zone:                 d.time_zone               ?? 'Asia/Colombo',
         financial_year:            d.financial_year          ?? '',
-        open_hours_from:           d.open_hours_from         ?? '09:00',
-        open_hours_to:             d.open_hours_to           ?? '18:00',
+        open_hours_from:           d.open_hours_from ? d.open_hours_from.slice(0, 5) : '09:00',
+        open_hours_to:             d.open_hours_to   ? d.open_hours_to.slice(0, 5)   : '18:00',
         available_modules:         d.available_modules       ?? [],
         stock_releasing_method:    d.stock_releasing_method  ?? 'FIFO',
       })
@@ -263,11 +272,16 @@ export default function LocationFormPage() {
     },
     onError: (err) => {
       const apiErrors = err.response?.data?.errors ?? {}
-      if (Object.keys(apiErrors).length) {
+      const keys      = Object.keys(apiErrors)
+      if (keys.length) {
         setErrors(Object.fromEntries(Object.entries(apiErrors).map(([k, v]) => [k, v[0]])))
-        setTouched(Object.fromEntries(Object.keys(apiErrors).map((k) => [k, true])))
+        setTouched(Object.fromEntries(keys.map((k) => [k, true])))
+        // Jump to the tab that holds the first invalid field so the message is visible
+        setActiveTab(TAB0_FIELDS.includes(keys[0]) ? 0 : 1)
+        showError(apiErrors[keys[0]][0])
+        return
       }
-      showError('Failed to save. Please check the form and try again.')
+      showError(err.response?.data?.message ?? 'Failed to save. Please try again.')
     },
   })
 
@@ -277,7 +291,12 @@ export default function LocationFormPage() {
     const newErrors = Object.fromEntries(fields.map((f) => [f, validate(f, form[f], form)]))
     setErrors(newErrors)
     setTouched(Object.fromEntries(fields.map((f) => [f, true])))
-    if (Object.values(newErrors).some(Boolean)) return
+    const firstInvalid = fields.find((f) => newErrors[f])
+    if (firstInvalid) {
+      setActiveTab(TAB0_FIELDS.includes(firstInvalid) ? 0 : 1)
+      showError(newErrors[firstInvalid])
+      return
+    }
 
     mutation.mutate({
       company_id:                Number(form.company_id),
@@ -849,6 +868,8 @@ export default function LocationFormPage() {
                           onChange={handleChange}
                           className="block w-full rounded-md border-2 border-slate-200 bg-slate-50 px-2 py-1 text-xs outline-none focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/15" />
                       </div>
+                      <FieldError errors={errors} touched={touched} name="open_hours_from" />
+                      <FieldError errors={errors} touched={touched} name="open_hours_to" />
                     </div>
                   </div>
                 </div>

@@ -53,8 +53,8 @@ class LocationResource extends JsonResource
             'base_currency'            => $this->base_currency,
             'time_zone'                => $this->time_zone,
             'financial_year'           => $this->financial_year,
-            'open_hours_from'          => $this->open_hours_from,
-            'open_hours_to'            => $this->open_hours_to,
+            'open_hours_from'          => $this->open_hours_from ? substr((string) $this->open_hours_from, 0, 5) : null,
+            'open_hours_to'            => $this->open_hours_to ? substr((string) $this->open_hours_to, 0, 5) : null,
             // Module & Inventory
             'available_modules'        => $this->available_modules ?? [],
             'stock_releasing_method'   => $this->stock_releasing_method,

@@ -71,8 +71,9 @@ class LocationRequest extends FormRequest
             'base_currency'            => ['required', 'string', 'max:10'],
             'time_zone'                => ['nullable', 'string', 'max:100'],
             'financial_year'           => ['required', 'string', 'max:50'],
-            'open_hours_from'          => ['nullable', 'date_format:H:i'],
-            'open_hours_to'            => ['nullable', 'date_format:H:i', 'after:open_hours_from'],
+            // TIME columns return "H:i:s", so accept both formats
+            'open_hours_from'          => ['nullable', 'date_format:H:i,H:i:s'],
+            'open_hours_to'            => ['nullable', 'date_format:H:i,H:i:s', 'after:open_hours_from'],
 
             // Module & Inventory
             'available_modules'        => ['nullable', 'array'],

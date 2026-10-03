@@ -16,6 +16,20 @@ class PermissionController extends Controller
      * Keep in sync with Database\Seeders\RolesAndPermissionsSeeder.
      */
     private const GROUPS = [
+        'master_data' => [
+            'label'     => 'Master Data (Shared)',
+            'resources' => [
+                'industries'       => ['label' => 'Industries',      'actions' => ['view', 'create', 'edit', 'delete']],
+                'companies'        => ['label' => 'Companies',       'actions' => ['view', 'create', 'edit', 'delete']],
+                'locations'        => ['label' => 'Locations',       'actions' => ['view', 'create', 'edit', 'delete']],
+                'employees'        => ['label' => 'Employees',       'actions' => ['view', 'create', 'edit', 'delete']],
+                'supplier_masters' => ['label' => 'Suppliers',       'actions' => ['view', 'create', 'edit', 'delete']],
+                'supplier_groups'  => ['label' => 'Supplier Groups', 'actions' => ['view', 'create', 'edit', 'delete']],
+                'banks'            => ['label' => 'Banks',           'actions' => ['view', 'create', 'edit', 'delete']],
+                'bank_branches'    => ['label' => 'Bank Branches',   'actions' => ['view', 'create', 'edit', 'delete']],
+                'payment_modes'    => ['label' => 'Payment Modes',   'actions' => ['view', 'create', 'edit', 'delete']],
+            ],
+        ],
         'inventory_master' => [
             'label'     => 'Inventory · Master Data',
             'resources' => [
@@ -23,20 +37,15 @@ class PermissionController extends Controller
                 'categories'       => ['label' => 'Categories',       'actions' => ['view', 'create', 'edit', 'delete']],
                 'unit_categories'  => ['label' => 'Unit Categories',  'actions' => ['view', 'create', 'edit', 'delete']],
                 'unit_types'       => ['label' => 'Unit Types',       'actions' => ['view', 'create', 'edit', 'delete']],
-                'unit_conversions' => ['label' => 'Unit Conversions', 'actions' => ['view', 'edit']],
-                'supplier_masters' => ['label' => 'Suppliers',        'actions' => ['view', 'create', 'edit', 'delete']],
+                'unit_conversions' => ['label' => 'Unit Conversions', 'actions' => ['view', 'create', 'edit', 'delete']],
                 'customer_masters' => ['label' => 'Customers',        'actions' => ['view', 'create', 'edit', 'delete']],
                 'sales_channels'   => ['label' => 'Sales Channels',   'actions' => ['view', 'create', 'edit', 'delete']],
-                'industries'       => ['label' => 'Industries',       'actions' => ['view', 'create', 'edit', 'delete']],
-                'companies'        => ['label' => 'Companies',        'actions' => ['view', 'create', 'edit', 'delete']],
-                'locations'        => ['label' => 'Locations',        'actions' => ['view', 'create', 'edit', 'delete']],
                 'attribute_types'  => ['label' => 'Attribute Types',  'actions' => ['view', 'create', 'edit', 'delete']],
                 'attributes'       => ['label' => 'Attributes',       'actions' => ['view', 'create', 'edit', 'delete']],
                 'store_types'      => ['label' => 'Store Types',      'actions' => ['view', 'create', 'edit', 'delete']],
                 'stores'           => ['label' => 'Stores',           'actions' => ['view', 'create', 'edit', 'delete']],
                 'drivers'          => ['label' => 'Drivers',          'actions' => ['view', 'create', 'edit', 'delete']],
                 'vehicle_masters'  => ['label' => 'Vehicles',         'actions' => ['view', 'create', 'edit', 'delete']],
-                'payment_modes'    => ['label' => 'Payment Modes',    'actions' => ['view', 'create', 'edit', 'delete']],
             ],
         ],
         'inventory_txn' => [

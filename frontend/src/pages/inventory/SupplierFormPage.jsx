@@ -14,12 +14,12 @@ import {
 import Breadcrumb from '../../components/Breadcrumb'
 import { showError, showSuccess } from '../../utils/alerts'
 
-const SUPPLIER_TYPES = ['Trade', 'Service']
+import { getAllSupplierGroups } from '../../api/supplierGroups'
 
 const EMPTY_FORM = {
   supplier_code:    '',
   reference_no:     '',
-  supplier_type:    '',
+  supplier_group_id: '',
   supplier_name:    '',
   check_writer_name:'',
   mobile:           '',
@@ -54,7 +54,7 @@ const EMPTY_FORM = {
 }
 
 const REQUIRED_FIELDS = new Set([
-  'supplier_code', 'supplier_type', 'supplier_name',
+  'supplier_code', 'supplier_group_id', 'supplier_name',
   'mobile', 'land_line', 'email',
   'bil_address_line_1',
   'contact_person_name', 'contact_person_mobile',
@@ -65,7 +65,7 @@ function validate(field, value) {
   if (REQUIRED_FIELDS.has(field) && !v) {
     const labels = {
       supplier_code:          'Supplier code',
-      supplier_type:          'Supplier type',
+      supplier_group_id:      'Supplier group',
       supplier_name:          'Supplier name',
       mobile:                 'Mobile',
       land_line:              'Land line',
@@ -201,6 +201,13 @@ export default function SupplierFormPage() {
     enabled:  !isEditing,
   })
 
+  // Supplier groups replace the old hardcoded Trade/Service list: they carry
+  // the default posting accounts a bill uses, and admins can add their own.
+  const { data: supplierGroups = [] } = useQuery({
+    queryKey: ['supplier-groups-all'],
+    queryFn:  getAllSupplierGroups,
+  })
+
   /* ── Existing attachments query (edit mode) ──────────────────── */
   const {
     data: attachmentsData,
@@ -302,7 +309,7 @@ export default function SupplierFormPage() {
       supplier_name:    form.supplier_name.trim(),
       supplier_code:    str(form.supplier_code),
       reference_no:     str(form.reference_no),
-      supplier_type:    str(form.supplier_type),
+      supplier_group_id: form.supplier_group_id ? parseInt(form.supplier_group_id, 10) : null,
       check_writer_name: str(form.check_writer_name),
       mobile:           str(form.mobile),
       land_line:        str(form.land_line),
@@ -416,12 +423,12 @@ export default function SupplierFormPage() {
                   <FieldError errors={errors} touched={touched} name="reference_no" />
                 </div>
                 <div>
-                  <Label required>Type</Label>
-                  <select {...inp('supplier_type')}>
+                  <Label required>Supplier Group</Label>
+                  <select {...inp('supplier_group_id')}>
                     <option value="">— Select —</option>
-                    {SUPPLIER_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                    {supplierGroups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
                   </select>
-                  <FieldError errors={errors} touched={touched} name="supplier_type" />
+                  <FieldError errors={errors} touched={touched} name="supplier_group_id" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2">

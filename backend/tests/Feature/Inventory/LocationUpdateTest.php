@@ -7,9 +7,9 @@ namespace Tests\Feature\Inventory;
 use App\Models\User;
 use App\Services\SettingsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Modules\Inventory\Models\Company;
-use Modules\Inventory\Models\Industry;
-use Modules\Inventory\Models\Location;
+use App\Models\Company;
+use App\Models\Industry;
+use App\Models\Location;
 use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 

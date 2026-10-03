@@ -120,9 +120,9 @@ export default function SupplierViewPage() {
             {s?.supplier_code && (
               <span className="font-mono">{s.supplier_code}</span>
             )}
-            {s?.supplier_type && (
+            {s?.supplier_group_name && (
               <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
-                {s.supplier_type}
+                {s.supplier_group_name}
               </span>
             )}
           </div>
@@ -155,7 +155,7 @@ export default function SupplierViewPage() {
             <div className="divide-y divide-slate-50">
               <Row label="Supplier Code"     value={fmt(s?.supplier_code)} mono />
               <Row label="Reference No."     value={fmt(s?.reference_no)} mono />
-              <Row label="Supplier Type"     value={fmt(s?.supplier_type)} />
+              <Row label="Supplier Group"    value={fmt(s?.supplier_group_name)} />
             </div>
             <div className="divide-y divide-slate-50">
               <Row label="Supplier Name"     value={fmt(s?.supplier_name)} />

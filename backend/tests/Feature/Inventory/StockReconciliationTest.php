@@ -20,7 +20,7 @@ use Modules\Inventory\Models\Product;
 use Modules\Inventory\Models\ProductLocationStore;
 use Modules\Inventory\Models\PurchaseOrder;
 use Modules\Inventory\Models\PurchaseOrderItem;
-use Modules\Inventory\Models\SupplierMaster;
+use App\Models\SupplierMaster;
 use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 

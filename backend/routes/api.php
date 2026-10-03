@@ -11,6 +11,19 @@ use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [AuthController::class, 'login']);
 
+// ── Shared core master data ────────────────────────────────────────────────────
+// Suppliers, supplier groups, companies, locations, industries, employees, banks,
+// bank branches and payment modes live in core rather than in a module, because
+// more than one module needs them. The any-of module gate means a Finance-only
+// install reaches them without Inventory being enabled.
+//
+// The v1 prefix is explicit here: this file is otherwise un-prefixed (/api/users,
+// /api/settings) while these endpoints must stay on their existing /api/v1 URLs.
+Route::middleware(['auth:sanctum', 'module:inventory,finance,hr'])
+    ->prefix('v1')
+    ->name('master-data.')
+    ->group(base_path('routes/master_data.php'));
+
 // ── Super-admin only ───────────────────────────────────────────────────────────
 Route::middleware(['auth:sanctum', 'super_admin'])->group(function (): void {
     Route::get('/settings', [GlobalSettingController::class, 'index']);

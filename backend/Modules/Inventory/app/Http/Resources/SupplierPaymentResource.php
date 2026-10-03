@@ -18,7 +18,8 @@ class SupplierPaymentResource extends JsonResource
             'payment_date'     => $this->payment_date?->toDateString(),
             'transaction_date' => $this->transaction_date?->toDateString(),
             'reference_no'     => $this->reference_no,
-            'supplier_type'    => $this->supplier_type,
+            // The supplier's group is exposed inside `supplier` below, read live
+            // through supplier_id. It is not stored on the payment.
             'supplier_id'      => $this->supplier_id,
             'payment_remark'   => $this->payment_remark,
             'is_advance'       => (bool) $this->is_advance,

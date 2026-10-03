@@ -16,7 +16,7 @@ use Modules\Inventory\Models\Product;
 use Modules\Inventory\Models\ProductLocationStore;
 use Modules\Inventory\Models\SalesOrder;
 use Modules\Inventory\Models\StockTransaction;
-use Modules\Inventory\Models\SupplierMaster;
+use App\Models\SupplierMaster;
 use Modules\Inventory\Models\UnitCategory;
 use Modules\Inventory\Models\UnitConversion;
 use Modules\Inventory\Models\UnitType;

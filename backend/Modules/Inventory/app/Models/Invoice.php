@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Models;
 
+use App\Models\Company;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -58,6 +59,8 @@ class Invoice extends Model
         'company_id'       => 'integer',
         'created_by'       => 'integer',
         'status'           => InvoiceStatus::class,
+        // Modules\Inventory\Enums\PaymentMode (a backed enum cast), NOT the
+        // relocated App\Models\PaymentMode master. Do not "fix" this import.
         'mode_of_payment'  => PaymentMode::class,
     ];
 

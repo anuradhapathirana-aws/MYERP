@@ -752,12 +752,14 @@ class ReportController extends Controller
                 DB::raw('(SELECT supplier_id, COUNT(*) as grn_count, SUM(total_amount) as grn_value FROM inv_goods_received_notes WHERE deleted_at IS NULL AND status = \'confirmed\' GROUP BY supplier_id) as grn_agg'),
                 'grn_agg.supplier_id', '=', 'sm.id'
             )
-            ->whereNull('sm.deleted_at')
+            // NOTE: inv_supplier_masters has no deleted_at column, so the
+            // whereNull('sm.deleted_at') that used to sit here always threw.
+            ->leftJoin('core_supplier_groups as sg', 'sg.id', '=', 'sm.supplier_group_id')
             ->select([
                 'sm.id',
                 'sm.supplier_code',
                 'sm.supplier_name',
-                'sm.supplier_type',
+                'sg.name as supplier_group',
                 'sm.email',
                 'sm.mobile',
                 DB::raw('COALESCE(po_agg.po_count, 0) as po_count'),
@@ -807,12 +809,14 @@ class ReportController extends Controller
             $query = DB::table('inv_supplier_masters as sm')
                 ->leftJoinSub($poSubQuery, 'po_agg', fn ($j) => $j->on('po_agg.supplier_id', '=', 'sm.id'))
                 ->leftJoinSub($grnSubQuery, 'grn_agg', fn ($j) => $j->on('grn_agg.supplier_id', '=', 'sm.id'))
-                ->whereNull('sm.deleted_at')
+                // NOTE: inv_supplier_masters has no deleted_at column, so the
+                // whereNull('sm.deleted_at') that used to sit here always threw.
+                ->leftJoin('core_supplier_groups as sg', 'sg.id', '=', 'sm.supplier_group_id')
                 ->select([
                     'sm.id',
                     'sm.supplier_code',
                     'sm.supplier_name',
-                    'sm.supplier_type',
+                    'sg.name as supplier_group',
                     'sm.email',
                     'sm.mobile',
                     DB::raw('COALESCE(po_agg.po_count, 0) as po_count'),

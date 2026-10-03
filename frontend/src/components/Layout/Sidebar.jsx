@@ -9,6 +9,7 @@ import {
   Building2,
   Bus,
   Car,
+  Database,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -20,6 +21,7 @@ import {
   FlaskConical,
   FolderTree,
   LayoutDashboard,
+  Landmark,
   Layers,
   ListTree,
   Lock,
@@ -41,6 +43,7 @@ import {
   Tag,
   TrendingUp,
   Truck,
+  UserCircle,
   UserCog,
   Users,
   UsersRound,
@@ -126,13 +129,12 @@ const NAV_ITEMS = [
         icon: Settings2,
         isSubgroup: true,
         children: [
-          { label: 'Industries',       to: '/inventory/industries',       icon: Building2,         permissionGuard: 'view_industries' },
-          { label: 'Companies',        to: '/inventory/companies',        icon: Building2,         permissionGuard: 'view_companies' },
-          { label: 'Locations',        to: '/inventory/locations',        icon: MapPin,            permissionGuard: 'view_locations' },
+          // Industries, Companies, Locations, Suppliers and Payment Modes moved
+          // to the shared Master Data section in Step 1 — they are no longer
+          // owned by Inventory.
           { label: 'Stores',           to: '/inventory/stores',           icon: Store,             permissionGuard: 'view_stores' },
           { label: 'Store Types',      to: '/inventory/store-types',      icon: Warehouse,         permissionGuard: 'view_store_types' },
           { label: 'Customers',        to: '/inventory/customers',        icon: UsersRound,        permissionGuard: 'view_customer_masters' },
-          { label: 'Suppliers',        to: '/inventory/suppliers',        icon: Truck,             permissionGuard: 'view_supplier_masters' },
           { label: 'Unit Categories',  to: '/inventory/unit-categories',  icon: Tag,               permissionGuard: 'view_unit_categories' },
           { label: 'Unit Types',       to: '/inventory/unit-types',       icon: Ruler,             permissionGuard: 'view_unit_types' },
           { label: 'Unit Conversions', to: '/inventory/unit-conversions', icon: ArrowLeftRight,    permissionGuard: 'view_unit_conversions' },
@@ -143,9 +145,27 @@ const NAV_ITEMS = [
           { label: 'Categories',       to: '/inventory/categories',       icon: FolderTree,        permissionGuard: 'view_categories' },
           { label: 'Products',         to: '/inventory/products',         icon: Box,               permissionGuard: 'view_products' },
           { label: 'Sales Channels',   to: '/inventory/sales-channels',   icon: ShoppingCart,      permissionGuard: 'view_sales_channels' },
-          { label: 'Payment Modes',    to: '/inventory/payment-modes',    icon: CreditCard,        permissionGuard: 'view_payment_modes' },
         ],
       },
+    ],
+  },
+  {
+    // Shared master data — visible whenever ANY owning module is active, so a
+    // Finance-only client still reaches suppliers, banks and employees. Mirrors
+    // the server-side `module:inventory,finance,hr` gate on these routes.
+    label: 'Master Data',
+    icon: Database,
+    moduleKeys: ['inventory', 'finance', 'hr'],
+    children: [
+      { label: 'Industries',      to: '/inventory/industries',        icon: Building2,  permissionGuard: 'view_industries' },
+      { label: 'Companies',       to: '/inventory/companies',         icon: Building2,  permissionGuard: 'view_companies' },
+      { label: 'Locations',       to: '/inventory/locations',         icon: MapPin,     permissionGuard: 'view_locations' },
+      { label: 'Employees',       to: '/master-data/employees',       icon: UserCircle, permissionGuard: 'view_employees' },
+      { label: 'Suppliers',       to: '/inventory/suppliers',         icon: Truck,      permissionGuard: 'view_supplier_masters' },
+      { label: 'Supplier Groups', to: '/master-data/supplier-groups', icon: Layers,     permissionGuard: 'view_supplier_groups' },
+      { label: 'Banks',           to: '/master-data/banks',           icon: Landmark,   permissionGuard: 'view_banks' },
+      { label: 'Bank Branches',   to: '/master-data/bank-branches',   icon: Building2,  permissionGuard: 'view_bank_branches' },
+      { label: 'Payment Modes',   to: '/inventory/payment-modes',     icon: CreditCard, permissionGuard: 'view_payment_modes' },
     ],
   },
   {
@@ -363,7 +383,7 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
         {/* ── Navigation ── */}
         <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-1">
           {NAV_ITEMS.map((item) => {
-            const { label, to, icon: Icon, moduleKey, roleGuard, permGuard, children } = item
+            const { label, to, icon: Icon, moduleKey, moduleKeys, roleGuard, permGuard, children } = item
 
             // ── Permission-gated standalone link (e.g. Team Management, Roles) ──
             if (permGuard) {
@@ -417,8 +437,13 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
               )
             }
 
+            // moduleKeys (any-of) generalises moduleKey: a shared section such
+            // as Master Data unlocks as soon as ANY owning module is active,
+            // which mirrors the server-side `module:inventory,finance,hr` gate.
+            const gateKeys = moduleKeys ?? (moduleKey ? [moduleKey] : null)
+
             // ── Standard standalone link (no guard) ──
-            if (!moduleKey) {
+            if (!gateKeys) {
               return (
                 <NavLink
                   key={label}
@@ -440,7 +465,7 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
               )
             }
 
-            const isUnlocked = activeModules.includes(moduleKey)
+            const isUnlocked = gateKeys.some((k) => activeModules.includes(k))
 
             // ── Locked module ──
             if (!isUnlocked) {

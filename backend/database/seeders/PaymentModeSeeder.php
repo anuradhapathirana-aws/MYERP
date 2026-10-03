@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
-use Modules\Inventory\Models\PaymentMode;
+use App\Models\PaymentMode;
 
 class PaymentModeSeeder extends Seeder
 {

@@ -6,16 +6,12 @@ use Illuminate\Support\Facades\Route;
 use Modules\Inventory\Http\Controllers\AttributeController;
 use Modules\Inventory\Http\Controllers\AttributeTypeController;
 use Modules\Inventory\Http\Controllers\CategoryController;
-use Modules\Inventory\Http\Controllers\CompanyController;
 use Modules\Inventory\Http\Controllers\CustomerAttachmentController;
 use Modules\Inventory\Http\Controllers\CustomerController;
-use Modules\Inventory\Http\Controllers\IndustryController;
-use Modules\Inventory\Http\Controllers\LocationController;
 use Modules\Inventory\Http\Controllers\ProductController;
 use Modules\Inventory\Http\Controllers\SalesChannelController;
 use Modules\Inventory\Http\Controllers\StoreController;
 use Modules\Inventory\Http\Controllers\StoreTypeController;
-use Modules\Inventory\Http\Controllers\SupplierMasterController;
 use Modules\Inventory\Http\Controllers\DriverController;
 use Modules\Inventory\Http\Controllers\VehicleController;
 use Modules\Inventory\Http\Controllers\UnitCategoryController;
@@ -27,7 +23,6 @@ use Modules\Inventory\Http\Controllers\PurchaseOrderPdfController;
 use Modules\Inventory\Http\Controllers\BatchController;
 use Modules\Inventory\Http\Controllers\GoodsReceivedNoteController;
 use Modules\Inventory\Http\Controllers\GrnAttachmentController;
-use Modules\Inventory\Http\Controllers\SupplierAttachmentController;
 use Modules\Inventory\Http\Controllers\GrnPdfController;
 use Modules\Inventory\Http\Controllers\GrnItemPieceController;
 use Modules\Inventory\Http\Controllers\GrnPieceLabelPdfController;
@@ -51,7 +46,6 @@ use Modules\Inventory\Http\Controllers\SupplierCreditNoteController;
 use Modules\Inventory\Http\Controllers\CustomerReceiptController;
 use Modules\Inventory\Http\Controllers\CustomerReceiptPdfController;
 use Modules\Inventory\Http\Controllers\CustomerCreditNoteController;
-use Modules\Inventory\Http\Controllers\PaymentModeController;
 use Modules\Inventory\Http\Controllers\SalesOrderController;
 use Modules\Inventory\Http\Controllers\DeliveryOrderController;
 use Modules\Inventory\Http\Controllers\DeliveryOrderPdfController;
@@ -95,38 +89,14 @@ Route::middleware(['auth:sanctum', 'module:inventory'])->prefix('v1')->group(fun
     Route::apiResource('products', ProductController::class)
         ->names('inventory.products');
 
-    Route::get('supplier-masters/all', [SupplierMasterController::class, 'all'])
-        ->name('inventory.supplier-masters.all');
-
-    Route::get('supplier-masters/next-code', [SupplierMasterController::class, 'nextSupplierCode'])
-        ->name('inventory.supplier-masters.next-code');
-
-    Route::apiResource('supplier-masters', SupplierMasterController::class)
-        ->names('inventory.supplier-masters');
+    // Suppliers, Industries, Companies and Locations moved to core in Step 1 —
+    // see backend/routes/master_data.php. They stay on the same /api/v1 URLs.
 
     Route::get('sales-channels/all', [SalesChannelController::class, 'all'])
         ->name('inventory.sales-channels.all');
 
     Route::apiResource('sales-channels', SalesChannelController::class)
         ->names('inventory.sales-channels');
-
-    Route::get('industries/all', [IndustryController::class, 'all'])
-        ->name('inventory.industries.all');
-
-    Route::apiResource('industries', IndustryController::class)
-        ->names('inventory.industries');
-
-    Route::get('companies/all', [CompanyController::class, 'all'])
-        ->name('inventory.companies.all');
-
-    Route::apiResource('companies', CompanyController::class)
-        ->names('inventory.companies');
-
-    Route::get('locations/all', [LocationController::class, 'all'])
-        ->name('inventory.locations.all');
-
-    Route::apiResource('locations', LocationController::class)
-        ->names('inventory.locations');
 
     Route::get('categories/all', [CategoryController::class, 'all'])
         ->name('inventory.categories.all');
@@ -325,11 +295,7 @@ Route::middleware(['auth:sanctum', 'module:inventory'])->prefix('v1')->group(fun
         ->only(['index', 'show'])
         ->names('inventory.customer-credit-notes');
 
-    // ── Payment Modes (master) ───────────────────────────────────────────────
-    Route::get('payment-modes/all', [PaymentModeController::class, 'all'])
-        ->name('inventory.payment-modes.all');
-    Route::apiResource('payment-modes', PaymentModeController::class)
-        ->names('inventory.payment-modes');
+    // Payment Modes moved to core in Step 1 — see backend/routes/master_data.php.
 
     // ── Sales Orders ─────────────────────────────────────────────────────────
     Route::get('sales-orders/next-so-no', [SalesOrderController::class, 'nextSoNo'])
@@ -430,11 +396,6 @@ Route::middleware(['auth:sanctum', 'module:inventory'])->prefix('v1')->group(fun
     Route::delete('goods-received-notes/{goods_received_note}/attachments/{attachment}', [GrnAttachmentController::class, 'destroy'])
         ->name('inventory.grns.attachments.destroy');
 
-    // Supplier Attachments
-    Route::get('supplier-masters/{supplier_master}/attachments', [SupplierAttachmentController::class, 'index'])
-        ->name('inventory.supplier-masters.attachments.index');
-    Route::post('supplier-masters/{supplier_master}/attachments', [SupplierAttachmentController::class, 'store'])
-        ->name('inventory.supplier-masters.attachments.store');
-    Route::delete('supplier-masters/{supplier_master}/attachments/{attachment}', [SupplierAttachmentController::class, 'destroy'])
-        ->name('inventory.supplier-masters.attachments.destroy');
+    // Supplier Attachments moved to core in Step 1 —
+    // see backend/routes/master_data.php.
 });

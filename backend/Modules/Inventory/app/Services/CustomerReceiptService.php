@@ -18,7 +18,7 @@ use Modules\Inventory\Models\CustomerReceiptAllocation;
 use Modules\Inventory\Models\CustomerReceiptSetoff;
 use Modules\Inventory\Models\CustomerReceiptSettlement;
 use Modules\Inventory\Models\Invoice;
-use Modules\Inventory\Models\PaymentMode;
+use App\Models\PaymentMode;
 
 /**
  * Customer receipts — money received from customers against issued invoices.

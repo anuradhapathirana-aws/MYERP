@@ -56,6 +56,12 @@ const SupplierPaymentsPage      = lazy(() => import('./pages/inventory/SupplierP
 const SupplierPaymentFormPage   = lazy(() => import('./pages/inventory/SupplierPaymentFormPage'))
 const SupplierCreditNotesPage   = lazy(() => import('./pages/inventory/SupplierCreditNotesPage'))
 const PaymentModesPage          = lazy(() => import('./pages/inventory/PaymentModesPage'))
+
+// ── Shared master data (core, not owned by a module) ──
+const SupplierGroupsPage        = lazy(() => import('./pages/master-data/SupplierGroupsPage'))
+const BanksPage                 = lazy(() => import('./pages/master-data/BanksPage'))
+const BankBranchesPage          = lazy(() => import('./pages/master-data/BankBranchesPage'))
+const EmployeesPage             = lazy(() => import('./pages/master-data/EmployeesPage'))
 const SalesOrdersPage           = lazy(() => import('./pages/inventory/SalesOrdersPage'))
 const SalesOrderFormPage        = lazy(() => import('./pages/inventory/SalesOrderFormPage'))
 const SalesOrderViewPage        = lazy(() => import('./pages/inventory/SalesOrderViewPage'))
@@ -220,6 +226,12 @@ export default function App() {
         <Route path="/inventory/supplier-payments/:id/edit"    element={<Lazy component={SupplierPaymentFormPage} />} />
         <Route path="/inventory/supplier-credit-notes"         element={<Lazy component={SupplierCreditNotesPage} />} />
         <Route path="/inventory/payment-modes"                 element={<Lazy component={PaymentModesPage} />} />
+
+        {/* ── Shared Master Data ── */}
+        <Route path="/master-data/supplier-groups"             element={<Lazy component={SupplierGroupsPage} />} />
+        <Route path="/master-data/banks"                       element={<Lazy component={BanksPage} />} />
+        <Route path="/master-data/bank-branches"               element={<Lazy component={BankBranchesPage} />} />
+        <Route path="/master-data/employees"                   element={<Lazy component={EmployeesPage} />} />
 
         {/* ── Inventory Reports ── */}
         <Route path="/inventory/reports/stock-levels"      element={<Lazy component={StockLevelsReport} />} />

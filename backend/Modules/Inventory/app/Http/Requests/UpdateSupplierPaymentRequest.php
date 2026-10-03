@@ -21,7 +21,6 @@ class UpdateSupplierPaymentRequest extends FormRequest
             'payment_date'      => ['required', 'date'],
             'transaction_date'  => ['nullable', 'date'],
             'reference_no'      => ['nullable', 'string', 'max:100'],
-            'supplier_type'     => ['nullable', 'string', 'max:50'],
             'supplier_id'       => ['required', 'integer', 'exists:inv_supplier_masters,id'],
             'payment_remark'    => ['nullable', 'string'],
 
@@ -116,7 +115,7 @@ class UpdateSupplierPaymentRequest extends FormRequest
             return;
         }
 
-        $chequeModeIds = \Modules\Inventory\Models\PaymentMode::where('code', 'cheque')
+        $chequeModeIds = \App\Models\PaymentMode::where('code', 'cheque')
             ->pluck('id')
             ->map(fn ($id) => (int) $id)
             ->all();
@@ -145,7 +144,7 @@ class UpdateSupplierPaymentRequest extends FormRequest
             return;
         }
 
-        $transferModeIds = \Modules\Inventory\Models\PaymentMode::where('code', 'online_transfer')
+        $transferModeIds = \App\Models\PaymentMode::where('code', 'online_transfer')
             ->pluck('id')
             ->map(fn ($id) => (int) $id)
             ->all();

@@ -28,7 +28,7 @@ class SupplierPaymentController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $filters   = $request->only(['search', 'status', 'supplier_id', 'date_from', 'date_to']);
+        $filters   = $request->only(['search', 'status', 'supplier_id', 'supplier_group_id', 'date_from', 'date_to']);
         $paginator = $this->service->paginate(50, $filters);
 
         return response()->json([

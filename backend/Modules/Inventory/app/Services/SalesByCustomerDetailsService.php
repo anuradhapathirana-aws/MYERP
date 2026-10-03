@@ -8,7 +8,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Enums\InvoiceStatus;
-use Modules\Inventory\Models\Location;
+use App\Models\Location;
 use Modules\Inventory\Models\StockReferenceType;
 
 class SalesByCustomerDetailsService

@@ -13,7 +13,7 @@ use Modules\Inventory\Enums\CreditNoteType;
 use Modules\Inventory\Enums\GrnStatus;
 use Modules\Inventory\Enums\SetoffType;
 use Modules\Inventory\Enums\SupplierPaymentStatus;
-use Modules\Inventory\Models\PaymentMode;
+use App\Models\PaymentMode;
 use Modules\Inventory\Models\SupplierCreditNote;
 use Modules\Inventory\Models\SupplierPayment;
 use Modules\Inventory\Models\SupplierPaymentAllocation;
@@ -41,6 +41,18 @@ class SupplierPaymentService
 
         if (!empty($filters['supplier_id'])) {
             $query->where('supplier_id', (int) $filters['supplier_id']);
+        }
+
+        // Filter by the supplier's CURRENT group, resolved through supplier_id.
+        // Deliberately not a stored column on the payment: a stored group name
+        // would stop matching the moment a group is renamed.
+        if (!empty($filters['supplier_group_id'])) {
+            $groupId = (int) $filters['supplier_group_id'];
+            $query->whereIn('supplier_id', function ($q) use ($groupId): void {
+                $q->select('id')
+                  ->from('inv_supplier_masters')
+                  ->where('supplier_group_id', $groupId);
+            });
         }
 
         if (!empty($filters['date_from'])) {
@@ -149,7 +161,6 @@ class SupplierPaymentService
                 'payment_date'     => $data->paymentDate,
                 'transaction_date' => $data->transactionDate,
                 'reference_no'     => $data->referenceNo,
-                'supplier_type'    => $data->supplierType,
                 'supplier_id'      => $data->supplierId,
                 'payment_remark'   => $data->paymentRemark,
                 'is_advance'       => $data->isAdvance,
@@ -179,7 +190,6 @@ class SupplierPaymentService
                 'payment_date'     => $data->paymentDate,
                 'transaction_date' => $data->transactionDate,
                 'reference_no'     => $data->referenceNo,
-                'supplier_type'    => $data->supplierType,
                 'supplier_id'      => $data->supplierId,
                 'payment_remark'   => $data->paymentRemark,
                 'is_advance'       => $data->isAdvance,
@@ -668,9 +678,19 @@ class SupplierPaymentService
             return;
         }
 
-        $suppliers = DB::table('inv_supplier_masters')
-            ->whereIn('id', $supplierIds)
-            ->get(['id', 'supplier_name', 'supplier_code'])
+        // The supplier group is read LIVE through supplier_id rather than copied
+        // onto the payment: it is a descriptive attribute that drives no posting,
+        // so duplicating it would only let the two versions drift apart.
+        $suppliers = DB::table('inv_supplier_masters as sm')
+            ->leftJoin('core_supplier_groups as sg', 'sg.id', '=', 'sm.supplier_group_id')
+            ->whereIn('sm.id', $supplierIds)
+            ->get([
+                'sm.id',
+                'sm.supplier_name',
+                'sm.supplier_code',
+                'sm.supplier_group_id',
+                'sg.name as supplier_group_name',
+            ])
             ->keyBy('id');
 
         foreach ($payments as $payment) {
@@ -678,9 +698,11 @@ class SupplierPaymentService
             // setRelation (not setAttribute) — keeps this out of $attributes so a later
             // save()/update() on this same instance never tries to persist it as a column.
             $payment->setRelation('supplier', $s ? [
-                'id'            => $s->id,
-                'name'          => $s->supplier_name,
-                'supplier_code' => $s->supplier_code,
+                'id'                  => $s->id,
+                'name'                => $s->supplier_name,
+                'supplier_code'       => $s->supplier_code,
+                'supplier_group_id'   => $s->supplier_group_id,
+                'supplier_group_name' => $s->supplier_group_name,
             ] : null);
         }
     }

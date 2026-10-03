@@ -14,7 +14,7 @@ use Modules\Inventory\Models\GoodsReceivedNote;
 use Modules\Inventory\Models\GoodsReceivedNoteItem;
 use Modules\Inventory\Models\Product;
 use Modules\Inventory\Models\SalesChannel;
-use Modules\Inventory\Models\SupplierMaster;
+use App\Models\SupplierMaster;
 use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 

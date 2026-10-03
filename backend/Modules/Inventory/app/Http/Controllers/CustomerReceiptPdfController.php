@@ -8,7 +8,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Response;
 use Illuminate\Routing\Controller;
 use Modules\Inventory\Enums\CustomerReceiptStatus;
-use Modules\Inventory\Models\Company;
+use App\Models\Company;
 use Modules\Inventory\Models\CustomerReceipt;
 use Modules\Inventory\Services\CustomerReceiptService;
 

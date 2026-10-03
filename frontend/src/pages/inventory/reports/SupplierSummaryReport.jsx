@@ -71,7 +71,7 @@ export default function SupplierSummaryReport() {
                     <th className="w-8 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">#</th>
                     <th className="w-28 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Code</th>
                     <th className="px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Supplier</th>
-                    <th className="w-28 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Type</th>
+                    <th className="w-28 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Group</th>
                     <th className="w-32 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Email</th>
                     <th className="w-16 px-3 py-2 text-right font-semibold uppercase tracking-wider text-slate-500">PO Count</th>
                     <th className="w-32 px-3 py-2 text-right font-semibold uppercase tracking-wider text-slate-500">PO Value</th>
@@ -91,7 +91,7 @@ export default function SupplierSummaryReport() {
                         <td className="px-3 py-2 text-slate-400">{(page - 1) * (meta?.per_page ?? 50) + i + 1}</td>
                         <td className="px-3 py-2 font-mono text-slate-600">{row.supplier_code}</td>
                         <td className="px-3 py-2 font-medium text-slate-800">{row.supplier_name}</td>
-                        <td className="px-3 py-2 capitalize text-slate-500">{row.supplier_type?.replace('_', ' ') || <span className="italic text-slate-300">—</span>}</td>
+                        <td className="px-3 py-2 text-slate-500">{row.supplier_group || <span className="italic text-slate-300">—</span>}</td>
                         <td className="max-w-[120px] truncate px-3 py-2 text-slate-500" title={row.email}>{row.email || <span className="italic text-slate-300">—</span>}</td>
                         <td className="px-3 py-2 text-right font-medium text-slate-700">{row.po_count}</td>
                         <td className="px-3 py-2 text-right font-bold text-slate-800"><Money value={row.po_value} /></td>

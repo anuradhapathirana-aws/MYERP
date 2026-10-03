@@ -18,7 +18,6 @@ final class SupplierPaymentData
         public readonly string  $paymentDate,
         public readonly ?string $transactionDate,
         public readonly ?string $referenceNo,
-        public readonly ?string $supplierType,
         public readonly int     $supplierId,
         public readonly ?string $paymentRemark,
         public readonly bool    $isAdvance,
@@ -35,7 +34,8 @@ final class SupplierPaymentData
             paymentDate:      $request->validated('payment_date'),
             transactionDate:  $request->validated('transaction_date'),
             referenceNo:      $request->validated('reference_no'),
-            supplierType:     $request->validated('supplier_type'),
+            // The supplier group is neither accepted nor stored: it is read
+            // live from the supplier via supplier_id.
             supplierId:       (int) $request->validated('supplier_id'),
             paymentRemark:    $request->validated('payment_remark'),
             isAdvance:        (bool) $request->validated('is_advance'),

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus } from 'lucide-react'
 import { deleteSupplier, getSuppliers } from '../../api/suppliers'
+import { getAllSupplierGroups } from '../../api/supplierGroups'
 import Breadcrumb from '../../components/Breadcrumb'
 import TableFilter, { FilterField } from '../../components/TableFilter'
 import { ViewBtn, EditBtn, DeleteBtn } from '../../components/ui/ActionButtons'
@@ -17,9 +18,10 @@ const CRUMBS = [
   { label: 'Suppliers' },
 ]
 
-const INITIAL_FILTERS = { search: '', supplier_type: '', mobile: '', bil_city: '', bil_country: '' }
+const INITIAL_FILTERS = { search: '', supplier_group_id: '', mobile: '', bil_city: '', bil_country: '' }
 
-const SUPPLIER_TYPES = ['Local', 'Foreign', 'Service', 'Manufacturer', 'Distributor', 'Other']
+// (The old hardcoded SUPPLIER_TYPES list offered values the supplier form could
+// never save — groups now come from the core_supplier_groups master.)
 
 export default function SuppliersPage() {
   const [page, setPage] = useState(1)
@@ -35,6 +37,11 @@ export default function SuppliersPage() {
     queryKey: ['suppliers', page, applied],
     queryFn:  () => getSuppliers(page, applied),
     placeholderData: (prev) => prev,
+  })
+
+  const { data: supplierGroups = [] } = useQuery({
+    queryKey: ['supplier-groups-all'],
+    queryFn:  getAllSupplierGroups,
   })
 
   const deleteMutation = useMutation({
@@ -88,15 +95,15 @@ export default function SuppliersPage() {
           />
         </FilterField>
 
-        <FilterField label="Supplier Type">
+        <FilterField label="Supplier Group">
           <select
             className={FILTER_SELECT_CLS}
-            value={draft.supplier_type}
-            onChange={(e) => setDraft((d) => ({ ...d, supplier_type: e.target.value }))}
+            value={draft.supplier_group_id}
+            onChange={(e) => setDraft((d) => ({ ...d, supplier_group_id: e.target.value }))}
           >
-            <option value="">All types</option>
-            {SUPPLIER_TYPES.map((t) => (
-              <option key={t} value={t}>{t}</option>
+            <option value="">All groups</option>
+            {supplierGroups.map((g) => (
+              <option key={g.id} value={g.id}>{g.name}</option>
             ))}
           </select>
         </FilterField>
@@ -149,7 +156,7 @@ export default function SuppliersPage() {
                     <th className="w-8 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">#</th>
                     <th className="w-28 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Code</th>
                     <th className="px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Supplier Name</th>
-                    <th className="w-28 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Type</th>
+                    <th className="w-28 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Group</th>
                     <th className="w-32 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Mobile</th>
                     <th className="w-44 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Email</th>
                     <th className="w-24 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Created</th>
@@ -192,7 +199,7 @@ export default function SuppliersPage() {
                           </Link>
                         </td>
                         <td className="px-3 py-2 text-slate-500">
-                          {s.supplier_type ?? <span className="italic text-slate-300">—</span>}
+                          {s.supplier_group_name ?? <span className="italic text-slate-300">—</span>}
                         </td>
                         <td className="px-3 py-2 text-slate-500">
                           {s.mobile ?? <span className="italic text-slate-300">—</span>}

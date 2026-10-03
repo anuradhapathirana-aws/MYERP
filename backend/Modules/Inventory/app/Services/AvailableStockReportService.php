@@ -8,7 +8,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Enums\CostingStatus;
-use Modules\Inventory\Models\Location;
+use App\Models\Location;
 use Modules\Inventory\Support\Quantity;
 
 /**

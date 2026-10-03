@@ -11,7 +11,7 @@ use Modules\Inventory\DTOs\InvoiceData;
 use Modules\Inventory\Enums\DeliveryOrderStatus;
 use Modules\Inventory\Enums\InvoiceStatus;
 use Modules\Inventory\Enums\SalesOrderStatus;
-use Modules\Inventory\Models\Company;
+use App\Models\Company;
 use Modules\Inventory\Models\DeliveryOrder;
 use Modules\Inventory\Models\Invoice;
 use Modules\Inventory\Models\InvoiceItem;

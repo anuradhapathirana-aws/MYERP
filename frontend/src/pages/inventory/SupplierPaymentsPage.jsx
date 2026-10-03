@@ -8,6 +8,7 @@ import {
   getSupplierPayments,
 } from '../../api/supplierPayments'
 import { getAllSuppliers } from '../../api/suppliers'
+import { getAllSupplierGroups } from '../../api/supplierGroups'
 import Pagination from '../../components/ui/Pagination'
 import Money from '../../components/ui/Money'
 import Breadcrumb from '../../components/Breadcrumb'
@@ -24,7 +25,7 @@ const CRUMBS = [
   { label: 'Supplier Payments' },
 ]
 
-const INITIAL_FILTERS = { search: '', status: '', supplier_id: '', date_from: '', date_to: '' }
+const INITIAL_FILTERS = { search: '', status: '', supplier_id: '', supplier_group_id: '', date_from: '', date_to: '' }
 
 const STATUS_STYLES = {
   draft:     'bg-amber-100 text-amber-700',
@@ -45,6 +46,12 @@ export default function SupplierPaymentsPage() {
     staleTime: Infinity,
   })
   const supplierOptions = (suppliersData ?? []).map((s) => ({ value: s.id, label: s.name }))
+
+  const { data: supplierGroups = [] } = useQuery({
+    queryKey: ['supplier-groups-all'],
+    queryFn:  getAllSupplierGroups,
+    staleTime: Infinity,
+  })
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['supplier-payments', page, applied],
@@ -117,6 +124,18 @@ export default function SupplierPaymentsPage() {
             options={supplierOptions}
             placeholder="All suppliers"
           />
+        </FilterField>
+        <FilterField label="Supplier Group">
+          <select
+            className={FILTER_SELECT_CLS}
+            value={draft.supplier_group_id}
+            onChange={(e) => setDraft((d) => ({ ...d, supplier_group_id: e.target.value }))}
+          >
+            <option value="">All groups</option>
+            {supplierGroups.map((g) => (
+              <option key={g.id} value={g.id}>{g.name}</option>
+            ))}
+          </select>
         </FilterField>
         <FilterField label="Date From">
           <input type="date" className={FILTER_INPUT_CLS} value={draft.date_from} onChange={(e) => setDraft((d) => ({ ...d, date_from: e.target.value }))} />

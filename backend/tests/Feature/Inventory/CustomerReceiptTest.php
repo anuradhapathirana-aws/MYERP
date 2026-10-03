@@ -11,7 +11,7 @@ use Modules\Inventory\Models\CustomerCreditNote;
 use Modules\Inventory\Models\CustomerMaster;
 use Modules\Inventory\Models\CustomerReceipt;
 use Modules\Inventory\Models\Invoice;
-use Modules\Inventory\Models\PaymentMode;
+use App\Models\PaymentMode;
 use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 

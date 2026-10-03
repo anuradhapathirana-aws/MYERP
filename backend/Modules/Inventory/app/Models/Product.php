@@ -11,12 +11,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Modules\Inventory\Database\Factories\ProductFactory;
 use Modules\Inventory\Models\Category;
-use Modules\Inventory\Models\Location;
+use App\Models\Location;
 use Modules\Inventory\Models\ProductAttribute;
 use Modules\Inventory\Models\ProductLocationStore;
 use Modules\Inventory\Models\SalesChannel;
 use Modules\Inventory\Models\StockTransaction;
-use Modules\Inventory\Models\SupplierMaster;
+use App\Models\SupplierMaster;
 use Modules\Inventory\Models\UnitType;
 
 class Product extends Model

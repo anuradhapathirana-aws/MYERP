@@ -7,7 +7,7 @@ namespace Modules\Inventory\Services;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Modules\Inventory\Models\Location;
+use App\Models\Location;
 use Modules\Inventory\Models\ProductLocationStore;
 use Modules\Inventory\Models\StockReferenceType;
 use Modules\Inventory\Support\Money;

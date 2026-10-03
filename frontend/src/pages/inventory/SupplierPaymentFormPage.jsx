@@ -19,7 +19,6 @@ import { confirmAction, showError, showSuccess } from '../../utils/alerts'
 import { fmtMoneyWithSymbol } from '../../utils/currency'
 import { INPUT_CLS, INPUT_DISABLED_CLS, LABEL_CLS, SELECT_CLS } from '../../utils/fieldStyles'
 
-const SUPPLIER_TYPES = ['Trade', 'Service']
 const BANK_NAMES = [
   'Bank of Ceylon', 'Commercial Bank', 'Sampath Bank', 'Hatton National Bank',
   "People's Bank", 'Nations Trust Bank', 'Seylan Bank', 'DFCC Bank', 'NDB Bank', 'Union Bank',
@@ -68,7 +67,6 @@ export default function SupplierPaymentFormPage() {
     transaction_date: today,
     payment_no:       '',
     reference_no:     '',
-    supplier_type:    '',
     supplier_id:      '',
     payment_remark:   '',
   })
@@ -130,7 +128,6 @@ export default function SupplierPaymentFormPage() {
       transaction_date: p.transaction_date ?? today,
       payment_no:       p.payment_no       ?? '',
       reference_no:     p.reference_no     ?? '',
-      supplier_type:    p.supplier_type    ?? '',
       supplier_id:      p.supplier_id      ?? '',
       payment_remark:   p.payment_remark   ?? '',
     })
@@ -391,7 +388,7 @@ export default function SupplierPaymentFormPage() {
       payment_date:     form.payment_date,
       transaction_date: form.transaction_date || null,
       reference_no:     form.reference_no || null,
-      supplier_type:    form.supplier_type || null,
+      // The supplier group is not sent or stored — it is read from the supplier.
       supplier_id:      parseInt(form.supplier_id),
       payment_remark:   form.payment_remark || null,
       is_advance:       isAdvance,
@@ -484,11 +481,21 @@ export default function SupplierPaymentFormPage() {
               <input className={INPUT_CLS} value={form.reference_no} onChange={setField('reference_no')} disabled={!isDraft} />
             </div>
             <div>
-              <label className={LABEL_CLS}>Supplier Type <span className="text-red-500">*</span></label>
-              <select className={SELECT_CLS} value={form.supplier_type} onChange={setField('supplier_type')} disabled={!isDraft}>
-                <option value="">— Select —</option>
-                {SUPPLIER_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
+              <label className={LABEL_CLS}>
+                Supplier Group
+                <span className="ml-1 rounded bg-slate-100 px-1 text-[9px] font-semibold text-slate-500">auto</span>
+              </label>
+              {/*
+                Read-only and always derived from the selected supplier — the
+                group is a property of the supplier, not a choice made on the
+                payment, so it can never contradict the supplier master.
+              */}
+              <input
+                readOnly
+                className={INPUT_DISABLED_CLS}
+                value={suppliers.find((s) => String(s.id) === String(form.supplier_id))?.supplier_group_name ?? ''}
+                placeholder="Select a supplier"
+              />
             </div>
             <div>
               <label className={LABEL_CLS}>Supplier <span className="text-red-500">*</span></label>

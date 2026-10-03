@@ -116,7 +116,7 @@ class StoreCustomerReceiptRequest extends FormRequest
             return;
         }
 
-        $chequeModeIds = \Modules\Inventory\Models\PaymentMode::where('code', 'cheque')
+        $chequeModeIds = \App\Models\PaymentMode::where('code', 'cheque')
             ->pluck('id')
             ->map(fn ($id) => (int) $id)
             ->all();
@@ -145,7 +145,7 @@ class StoreCustomerReceiptRequest extends FormRequest
             return;
         }
 
-        $transferModeIds = \Modules\Inventory\Models\PaymentMode::where('code', 'online_transfer')
+        $transferModeIds = \App\Models\PaymentMode::where('code', 'online_transfer')
             ->pluck('id')
             ->map(fn ($id) => (int) $id)
             ->all();

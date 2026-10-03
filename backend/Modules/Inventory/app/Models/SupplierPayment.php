@@ -20,7 +20,6 @@ class SupplierPayment extends Model
         'payment_date',
         'transaction_date',
         'reference_no',
-        'supplier_type',
         'supplier_id',
         'payment_remark',
         'is_advance',

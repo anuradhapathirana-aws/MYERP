@@ -380,9 +380,10 @@ export default function CustomerReturnFormPage() {
       </div>
 
       <div className="space-y-2">
-        {/* ── Header ── */}
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-          <SectionHeader icon={FileText} title="Return Details" colorClass="text-indigo-700 bg-indigo-50 border-indigo-100" />
+        {/* ── Header ── no overflow-hidden, and stacked above the items card: the
+             customer/invoice dropdown pads must be free to open over the cards below. */}
+        <div className="relative z-20 rounded-lg border border-slate-200 bg-white shadow-sm">
+          <SectionHeader icon={FileText} title="Return Details" colorClass="rounded-t-lg text-indigo-700 bg-indigo-50 border-indigo-100" />
           <div className="grid grid-cols-1 gap-2 p-2.5 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             <div>
               <label className={LABEL_CLS}>Return No <span className="ml-1 normal-case font-medium text-indigo-400 text-[10px]">auto</span></label>

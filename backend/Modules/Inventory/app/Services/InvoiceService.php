@@ -8,10 +8,12 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\DTOs\InvoiceData;
+use Modules\Inventory\Enums\CustomerReturnStatus;
 use Modules\Inventory\Enums\DeliveryOrderStatus;
 use Modules\Inventory\Enums\InvoiceStatus;
 use Modules\Inventory\Enums\SalesOrderStatus;
 use Modules\Inventory\Models\Company;
+use Modules\Inventory\Models\CustomerReturn;
 use Modules\Inventory\Models\DeliveryOrder;
 use Modules\Inventory\Models\Invoice;
 use Modules\Inventory\Models\InvoiceItem;
@@ -223,6 +225,16 @@ class InvoiceService
         $allowed = $allowedTransitions[$invoice->status->value] ?? [];
         if (!in_array($newStatus, $allowed)) {
             abort(422, "Cannot transition invoice from {$invoice->status->label()} to {$newStatus->label()}.");
+        }
+
+        // Cancelling would orphan the returned stock and the credit it raised.
+        if (
+            $newStatus === InvoiceStatus::Cancelled
+            && CustomerReturn::where('invoice_id', $invoice->id)
+                ->where('status', CustomerReturnStatus::Confirmed->value)
+                ->exists()
+        ) {
+            abort(422, 'This invoice has confirmed customer returns and cannot be cancelled.');
         }
 
         $invoice->update([

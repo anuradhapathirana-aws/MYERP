@@ -22,6 +22,7 @@ class CustomerCreditNote extends Model
         'remark',
         'status',
         'source_receipt_id',
+        'source_return_id',
         'created_by',
     ];
 
@@ -30,6 +31,7 @@ class CustomerCreditNote extends Model
         'amount'             => 'decimal:4',
         'remaining_balance'  => 'decimal:4',
         'source_receipt_id'  => 'integer',
+        'source_return_id'   => 'integer',
         'created_by'         => 'integer',
         'credit_type'        => CustomerCreditNoteType::class,
         'status'             => CreditNoteStatus::class,

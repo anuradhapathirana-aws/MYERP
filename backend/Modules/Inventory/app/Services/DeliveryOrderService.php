@@ -135,10 +135,15 @@ class DeliveryOrderService
             abort(422, 'Delivery orders can only be created from confirmed sales orders.');
         }
 
-        // Rolls already sitting on any active (draft or confirmed) DO are not available
-        $takenPieceIds = DeliveryOrderPiece::pluck('piece_id')->all();
+        // Rolls already sitting on an active (draft or confirmed) DO in their current sale
+        // cycle are not available. A DO row from an earlier cycle is the roll's previous
+        // sale, before a customer returned it whole — it no longer holds the roll.
+        $takenPieceKeys = DeliveryOrderPiece::whereIn('piece_id', $so->pieces()->pluck('piece_id'))
+            ->get(['piece_id', 'sale_cycle'])
+            ->map(fn (DeliveryOrderPiece $dp) => "{$dp->piece_id}|{$dp->sale_cycle}")
+            ->all();
 
-        $items = $so->items->map(function (SalesOrderItem $item) use ($so, $takenPieceIds): array {
+        $items = $so->items->map(function (SalesOrderItem $item) use ($so, $takenPieceKeys): array {
             $remaining = max(0.0, (float) $item->quantity - (float) $item->quantity_delivered);
 
             // The line is sold in one UOM (Yard) but the rolls are weighed in the product's
@@ -155,7 +160,7 @@ class DeliveryOrderService
                     ->get()
                     ->filter(fn (SalesOrderPiece $sp) =>
                         $sp->piece?->status === GrnItemPiece::STATUS_ALLOCATED
-                        && !in_array($sp->piece_id, $takenPieceIds, true))
+                        && !in_array("{$sp->piece_id}|{$sp->sale_cycle}", $takenPieceKeys, true))
                     ->map(fn (SalesOrderPiece $sp) => [
                         'so_piece_id' => $sp->id,
                         'piece_id'    => $sp->piece_id,
@@ -463,6 +468,7 @@ class DeliveryOrderService
                 'do_item_id'  => $doItem->id,
                 'so_piece_id' => $soPiece->id,
                 'piece_id'    => $pieceId,
+                'sale_cycle'  => (int) $soPiece->sale_cycle,
                 'piece_code'  => $soPiece->piece_code,
                 // The roll's own weight, and the slice of it this sale takes — they
                 // differ whenever the customer buys less than a full roll.

@@ -1,6 +1,6 @@
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Ban, Download, Pencil, Printer, RefreshCw, Send, Trash2, Wallet } from 'lucide-react'
+import { Ban, Download, Pencil, Printer, RefreshCw, Send, Trash2, Undo2, Wallet } from 'lucide-react'
 import { useState } from 'react'
 import { deleteInvoice, downloadInvoicePdf, getInvoice, updateInvoiceStatus } from '../../api/invoices'
 import Breadcrumb from '../../components/Breadcrumb'
@@ -164,6 +164,16 @@ export default function InvoiceViewPage() {
               className="flex items-center gap-1 rounded bg-green-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition-all hover:bg-green-700 active:scale-95"
             >
               <Wallet size={12} /> Make a Payment
+            </button>
+          )}
+          {(inv.status === 'issued' || inv.status === 'paid') && inv.do_id && (
+            // Opens a new Customer Return with this invoice (and its customer) pre-selected.
+            <button
+              type="button"
+              onClick={() => navigate(`/inventory/customer-returns/create?invoice=${inv.id}`)}
+              className="flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700 transition-all hover:bg-amber-100 active:scale-95"
+            >
+              <Undo2 size={12} /> Create Return
             </button>
           )}
           {(inv.status === 'draft' || inv.status === 'issued') && (

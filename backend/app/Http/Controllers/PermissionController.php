@@ -51,6 +51,7 @@ class PermissionController extends Controller
                 'sales_orders'          => ['label' => 'Sales Orders',          'actions' => ['view', 'create', 'edit', 'delete']],
                 'delivery_orders'       => ['label' => 'Delivery Orders',       'actions' => ['view', 'create', 'edit', 'delete']],
                 'invoices'              => ['label' => 'Invoices',              'actions' => ['view', 'create', 'edit', 'delete']],
+                'customer_returns'      => ['label' => 'Customer Returns',      'actions' => ['view', 'create', 'edit', 'delete', 'confirm']],
                 'supplier_payments'     => ['label' => 'Supplier Payments',     'actions' => ['view', 'create', 'edit', 'delete', 'confirm']],
                 'supplier_credit_notes' => ['label' => 'Supplier Credit Notes', 'actions' => ['view']],
                 'reports'               => ['label' => 'Reports',               'actions' => ['view']],

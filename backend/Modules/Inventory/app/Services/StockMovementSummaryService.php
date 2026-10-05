@@ -37,7 +37,8 @@ class StockMovementSummaryService
      *    never retroactively "the latest" one.
      *  - Sales Value: SUM(qty_out * unit_price) on invoice/sales_delivery rows —
      *    unit_price there is the SO's selling price (DeliveryOrderService), so this
-     *    is real revenue, not cost repeated under a different label.
+     *    is real revenue, not cost repeated under a different label. Customer
+     *    returns are netted off both Sales Qty and Sales Value.
      *  - Opening/Closing Value: these price a *balance*, not a movement, so neither
      *    of the above applies directly — priced at the product's weighted-average
      *    GRN cost as of that point in time (all GRN receipts before the boundary
@@ -84,15 +85,22 @@ class StockMovementSummaryService
                  {$openingSql} as opening_qty,
                  SUM(CASE WHEN {$periodSql} AND st.reference_type = ? THEN st.qty_in ELSE 0 END) as purchase_qty,
                  SUM(CASE WHEN {$periodSql} AND st.reference_type = ? THEN st.qty_in * st.unit_price ELSE 0 END) as purchase_value,
-                 SUM(CASE WHEN {$periodSql} AND st.reference_type IN (?, ?) THEN st.qty_out ELSE 0 END) as sales_qty,
-                 SUM(CASE WHEN {$periodSql} AND st.reference_type IN (?, ?) THEN st.qty_out * st.unit_price ELSE 0 END) as sales_value,
+                 SUM(CASE WHEN {$periodSql} AND st.reference_type IN (?, ?) THEN st.qty_out
+                          WHEN {$periodSql} AND st.reference_type = ? THEN -st.qty_in ELSE 0 END) as sales_qty,
+                 SUM(CASE WHEN {$periodSql} AND st.reference_type IN (?, ?) THEN st.qty_out * st.unit_price
+                          WHEN {$periodSql} AND st.reference_type = ? THEN -st.qty_in * st.unit_price ELSE 0 END) as sales_value,
                  SUM(CASE WHEN {$periodSql} THEN st.qty_in - st.qty_out ELSE 0 END) as period_net",
                 [
                     ...$openingBindings,
                     ...$periodBindings, StockReferenceType::CODE_GRN,
                     ...$periodBindings, StockReferenceType::CODE_GRN,
+                    // Sales are NET of customer returns: a return row carries the same selling
+                    // price its delivery went out at (CustomerReturnService), so it reverses
+                    // both the quantity and the revenue of the sale it undoes.
                     ...$periodBindings, StockReferenceType::CODE_INVOICE, StockReferenceType::CODE_SALES_DELIVERY,
+                    ...$periodBindings, StockReferenceType::CODE_CUSTOMER_RETURN,
                     ...$periodBindings, StockReferenceType::CODE_INVOICE, StockReferenceType::CODE_SALES_DELIVERY,
+                    ...$periodBindings, StockReferenceType::CODE_CUSTOMER_RETURN,
                     ...$periodBindings,
                 ]
             )

@@ -10,7 +10,7 @@
    * and type scale as the customer receipt. The bottom margin reserves room for the
    * fixed signature strip so return lines can never run underneath it.
    */
-  @page { margin: 12mm 12mm 46mm 12mm; }
+  @page { margin: 12mm 12mm 56mm 12mm; }
 
   * { box-sizing: border-box; }
   body { margin: 0; padding: 0; font-family: 'DejaVu Sans', Arial, sans-serif; font-size: 10pt; color: #111827; }
@@ -42,8 +42,9 @@
 
   .words { border: 0.8pt solid #1f2937; padding: 6px 9px; margin-bottom: 9px; font-size: 9.5pt; }
 
-  .page-footer { position: fixed; bottom: -40mm; left: 0; right: 0; width: 100%; }
-  .sig-space { height: 20mm; }
+  .page-footer { position: fixed; bottom: -50mm; left: 0; right: 0; width: 100%; }
+  .declaration { font-size: 9.5pt; color: #374151; line-height: 1.4; }
+  .sig-space { height: 18mm; }
 
   .sig { width: 100%; border-collapse: collapse; }
   .sig td { width: 50%; padding: 0 18px; text-align: center; vertical-align: bottom; }
@@ -159,6 +160,7 @@
 
   {{-- ══ SIGNATURES ══ --}}
   <div class="page-footer">
+    <div class="declaration">Goods listed above were received back from the customer. The return value will be credited to the customer account against the invoice shown.</div>
     <div class="sig-space"></div>
     <table class="sig">
       <tr>

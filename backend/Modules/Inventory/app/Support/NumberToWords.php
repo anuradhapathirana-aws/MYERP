@@ -6,9 +6,8 @@ namespace Modules\Inventory\Support;
 
 /**
  * Converts a monetary amount into words for printed documents
- * (e.g. GRN/invoice "amount in words" lines). Whole-currency only —
- * fractional cents are dropped, matching how these lines are used on
- * printed business documents in this system.
+ * (e.g. GRN/invoice "amount in words" lines), cents included:
+ * 1250.75 → "LKR : ONE THOUSAND TWO HUNDRED AND FIFTY AND SEVENTY FIVE CENTS ONLY".
  */
 final class NumberToWords
 {
@@ -26,8 +25,18 @@ final class NumberToWords
 
     public static function convert(float $amount, string $currency = ''): string
     {
-        $whole = (int) floor(abs($amount));
+        // Rounded to the cent first — the same 2 decimals the printed figure beside it
+        // shows — so the words always agree with that figure (1249.996 prints as
+        // 1,250.00 and reads as one thousand two hundred and fifty).
+        $totalCents = (int) round(abs($amount) * 100);
+        $whole      = intdiv($totalCents, 100);
+        $cents      = $totalCents % 100;
+
         $words = $whole === 0 ? 'ZERO' : self::convertWhole($whole);
+        if ($cents > 0) {
+            $words .= ' AND ' . self::convertTens($cents) . ' CENTS';
+        }
+
         $prefix = $currency !== '' ? strtoupper($currency) . ' : ' : '';
 
         return trim($prefix . $words . ' ONLY');

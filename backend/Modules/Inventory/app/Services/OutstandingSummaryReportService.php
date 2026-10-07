@@ -7,11 +7,14 @@ namespace Modules\Inventory\Services;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Modules\Inventory\Enums\CustomerReceiptStatus;
 use Modules\Inventory\Enums\InvoiceStatus;
 
 class OutstandingSummaryReportService
 {
+    public function __construct(private readonly InvoiceBalanceService $balances)
+    {
+    }
+
     /**
      * Hard ceiling on outstanding-invoice rows — this is a live snapshot (not a
      * date-bound ledger), but protects the JSON/PDF payload if the catalogue of
@@ -31,6 +34,9 @@ class OutstandingSummaryReportService
      * generalised across every customer instead of one:
      *
      *   outstanding = grand_total - SUM(confirmed receipt allocations' receipt_amount + discount)
+     *                             - SUM(confirmed customer returns' applied_to_invoice)
+     *
+     * (defined once in InvoiceBalanceService).
      *
      * A discount on an allocation is a permanent write-off, so it reduces outstanding
      * exactly like received cash does. Only Issued invoices can have a balance —
@@ -67,17 +73,9 @@ class OutstandingSummaryReportService
             abort(422, 'Too many outstanding invoices to display — narrow the filters.');
         }
 
-        $receivedByInvoice = $invoices->isEmpty()
-            ? collect()
-            : DB::table('inv_customer_receipt_allocations as a')
-                ->join('inv_customer_receipts as r', 'r.id', '=', 'a.receipt_id')
-                ->whereIn('a.reference_id', $invoices->pluck('id')->all())
-                ->where('a.reference_type', 'invoice')
-                ->where('r.status', CustomerReceiptStatus::Confirmed->value)
-                ->groupBy('a.reference_id')
-                ->select('a.reference_id', DB::raw('SUM(a.receipt_amount + a.discount) as received'))
-                ->get()
-                ->pluck('received', 'reference_id');
+        $invoiceIds        = $invoices->pluck('id')->all();
+        $receivedByInvoice = $this->balances->receivedFor($invoiceIds);
+        $returnedByInvoice = $this->balances->returnedFor($invoiceIds);
 
         $customers      = [];
         $totalOutstanding = 0.0;
@@ -89,8 +87,9 @@ class OutstandingSummaryReportService
 
             foreach ($custInvoices as $inv) {
                 $amount      = (float) $inv->grand_total;
-                $received    = (float) ($receivedByInvoice[$inv->id] ?? 0);
-                $outstanding = $amount - $received;
+                $received    = $receivedByInvoice[$inv->id] ?? 0.0;
+                $returned    = $returnedByInvoice[$inv->id] ?? 0.0;
+                $outstanding = $amount - $received - $returned;
 
                 if ($outstanding <= 0.01) {
                     continue;
@@ -110,6 +109,7 @@ class OutstandingSummaryReportService
                     'do_no'         => $inv->do_no,
                     'amount'        => $amount,
                     'received'      => $received,
+                    'returned'      => $returned,
                     'outstanding'   => $outstanding,
                 ];
 

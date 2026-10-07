@@ -45,6 +45,8 @@ use Modules\Inventory\Http\Controllers\SupplierPaymentController;
 use Modules\Inventory\Http\Controllers\SupplierCreditNoteController;
 use Modules\Inventory\Http\Controllers\CustomerReceiptController;
 use Modules\Inventory\Http\Controllers\CustomerReceiptPdfController;
+use Modules\Inventory\Http\Controllers\CustomerReturnController;
+use Modules\Inventory\Http\Controllers\CustomerReturnPdfController;
 use Modules\Inventory\Http\Controllers\CustomerCreditNoteController;
 use Modules\Inventory\Http\Controllers\SalesOrderController;
 use Modules\Inventory\Http\Controllers\DeliveryOrderController;
@@ -294,6 +296,20 @@ Route::middleware(['auth:sanctum', 'module:inventory'])->prefix('v1')->group(fun
     Route::apiResource('customer-credit-notes', CustomerCreditNoteController::class)
         ->only(['index', 'show'])
         ->names('inventory.customer-credit-notes');
+
+    // ── Customer Returns ─────────────────────────────────────────────────────
+    Route::get('customer-returns/next-return-no', [CustomerReturnController::class, 'nextReturnNo'])
+        ->name('inventory.customer-returns.next-return-no');
+    Route::get('customer-returns/returnable-invoices/{customerId}', [CustomerReturnController::class, 'returnableInvoices'])
+        ->name('inventory.customer-returns.returnable-invoices');
+    Route::get('customer-returns/returnable-items/{invoiceId}', [CustomerReturnController::class, 'returnableItems'])
+        ->name('inventory.customer-returns.returnable-items');
+    Route::post('customer-returns/{customer_return}/confirm', [CustomerReturnController::class, 'confirm'])
+        ->name('inventory.customer-returns.confirm');
+    Route::get('customer-returns/{customer_return}/pdf', [CustomerReturnPdfController::class, 'download'])
+        ->name('inventory.customer-returns.pdf');
+    Route::apiResource('customer-returns', CustomerReturnController::class)
+        ->names('inventory.customer-returns');
 
     // Payment Modes moved to core in Step 1 — see backend/routes/master_data.php.
 

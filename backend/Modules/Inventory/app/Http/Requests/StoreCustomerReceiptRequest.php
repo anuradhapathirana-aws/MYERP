@@ -91,6 +91,8 @@ class StoreCustomerReceiptRequest extends FormRequest
                 $validator->errors()->add('allocations', 'Select at least one invoice to receive against, or mark this receipt as a standalone advance.');
             }
 
+            $this->validateCreditNoteOwnership($validator, $setoffs);
+
             foreach ($setoffs as $index => $setoff) {
                 $type = $setoff['setoff_type'] ?? null;
 
@@ -98,11 +100,49 @@ class StoreCustomerReceiptRequest extends FormRequest
                     $validator->errors()->add("setoffs.{$index}.credit_note_id", 'A credit note must be selected for this setoff type.');
                 }
 
-                if ($type === 'sales_return' && empty($setoff['remark'])) {
+                // A sales return setoff either spends an open sales_return credit note (raised
+                // by a Customer Return) or, without one, records a free-text return that must
+                // say what was returned.
+                if ($type === 'sales_return' && empty($setoff['credit_note_id']) && empty($setoff['remark'])) {
                     $validator->errors()->add("setoffs.{$index}.remark", 'A remark is required for sales return setoffs.');
                 }
             }
         });
+    }
+
+    /**
+     * A setoff may only spend an open credit note of THIS receipt's customer, of the same
+     * type as the setoff line. Balance is checked again under lock at confirm.
+     * @param array<int, array<string, mixed>> $setoffs
+     */
+    private function validateCreditNoteOwnership(Validator $validator, array $setoffs): void
+    {
+        $ids = collect($setoffs)->pluck('credit_note_id')->filter()->map(fn ($id) => (int) $id)->unique()->all();
+        if (empty($ids)) {
+            return;
+        }
+
+        $notes      = \Modules\Inventory\Models\CustomerCreditNote::whereIn('id', $ids)->get()->keyBy('id');
+        $customerId = (int) $this->input('customer_id');
+
+        foreach ($setoffs as $index => $setoff) {
+            if (empty($setoff['credit_note_id'])) {
+                continue;
+            }
+
+            $note = $notes->get((int) $setoff['credit_note_id']);
+            if (!$note) {
+                continue; // the exists rule reports it
+            }
+
+            if ((int) $note->customer_id !== $customerId) {
+                $validator->errors()->add("setoffs.{$index}.credit_note_id", "Credit note {$note->credit_note_no} belongs to another customer.");
+            } elseif ($note->credit_type->value !== ($setoff['setoff_type'] ?? null)) {
+                $validator->errors()->add("setoffs.{$index}.setoff_type", "Credit note {$note->credit_note_no} is a {$note->credit_type->label()} credit note.");
+            } elseif ($note->status !== \Modules\Inventory\Enums\CreditNoteStatus::Open) {
+                $validator->errors()->add("setoffs.{$index}.credit_note_id", "Credit note {$note->credit_note_no} has no balance left.");
+            }
+        }
     }
 
     /**

@@ -31,6 +31,7 @@ class GrnItemPiece extends Model
         'roll_no',
         'piece_code',
         'status',
+        'sale_cycle',
         'printed_at',
         'created_by',
     ];
@@ -46,6 +47,7 @@ class GrnItemPiece extends Model
         'piece_no'              => 'integer',
         'parent_piece_id'       => 'integer',
         'weight'                => 'decimal:6',
+        'sale_cycle'            => 'integer',
         'printed_at'            => 'datetime',
         'created_by'            => 'integer',
     ];

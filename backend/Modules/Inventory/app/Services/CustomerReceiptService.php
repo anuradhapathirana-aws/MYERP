@@ -28,6 +28,10 @@ use App\Models\PaymentMode;
  */
 class CustomerReceiptService
 {
+    public function __construct(private readonly InvoiceBalanceService $balances)
+    {
+    }
+
     /** @param array<string, mixed> $filters */
     public function paginate(int $perPage = 50, array $filters = []): LengthAwarePaginator
     {
@@ -93,23 +97,16 @@ class CustomerReceiptService
             return [];
         }
 
-        $receivedByInvoice = DB::table('inv_customer_receipt_allocations as a')
-            ->join('inv_customer_receipts as r', 'r.id', '=', 'a.receipt_id')
-            ->whereIn('a.reference_id', $invoices->pluck('id')->all())
-            ->where('a.reference_type', 'invoice')
-            ->where('r.status', CustomerReceiptStatus::Confirmed->value)
-            ->groupBy('a.reference_id')
-            // receipt_amount + discount: a discount is a permanent write-off, so it must
-            // reduce outstanding exactly like received cash does.
-            ->select('a.reference_id', DB::raw('SUM(a.receipt_amount + a.discount) as received'))
-            ->get()
-            ->pluck('received', 'reference_id');
+        $invoiceIds        = $invoices->pluck('id')->all();
+        $receivedByInvoice = $this->balances->receivedFor($invoiceIds);
+        $returnedByInvoice = $this->balances->returnedFor($invoiceIds);
 
         $result = [];
 
         foreach ($invoices as $invoice) {
-            $received    = (float) ($receivedByInvoice[$invoice->id] ?? 0);
-            $outstanding = (float) $invoice->grand_total - $received;
+            $outstanding = (float) $invoice->grand_total
+                - ($receivedByInvoice[$invoice->id] ?? 0.0)
+                - ($returnedByInvoice[$invoice->id] ?? 0.0);
 
             if ($outstanding <= 0) {
                 continue;
@@ -264,7 +261,7 @@ class CustomerReceiptService
                     continue;
                 }
 
-                $outstanding   = $this->computeOutstanding((int) $allocation->reference_id);
+                $outstanding   = $this->balances->outstanding((int) $allocation->reference_id);
                 $discount      = (float) $allocation->discount;
                 $maxReceivable = max(0.0, $outstanding - $discount);
                 $receiptAmount = (float) $allocation->receipt_amount;
@@ -286,9 +283,11 @@ class CustomerReceiptService
                 $amount = (float) $setoff->amount;
                 $setoffAmountTotal += $amount;
 
-                if ($setoff->setoff_type === CustomerSetoffType::SalesReturn) {
+                // A free-text sales return (no credit note picked) is recorded as an already
+                // spent credit note. One raised by a Customer Return is spent below like any other.
+                if ($setoff->setoff_type === CustomerSetoffType::SalesReturn && !$setoff->credit_note_id) {
                     $creditNote = CustomerCreditNote::create([
-                        'credit_note_no'    => $this->generateCreditNoteNo(),
+                        'credit_note_no'    => $this->balances->generateCreditNoteNo(),
                         'customer_id'       => $receipt->customer_id,
                         'credit_type'       => CustomerCreditNoteType::SalesReturn,
                         'amount'            => $amount,
@@ -303,13 +302,18 @@ class CustomerReceiptService
                     continue;
                 }
 
-                // over_payment / advance setoffs consume an existing credit note's balance
+                // over_payment / advance / return-raised sales_return setoffs consume an
+                // existing credit note's balance
                 $creditNote = CustomerCreditNote::whereKey($setoff->credit_note_id)
                     ->lockForUpdate()
                     ->first();
 
                 if (!$creditNote) {
                     abort(422, 'Referenced credit note no longer exists.');
+                }
+
+                if ((int) $creditNote->customer_id !== (int) $receipt->customer_id) {
+                    abort(422, "Credit note {$creditNote->credit_note_no} belongs to another customer.");
                 }
 
                 if ((float) $creditNote->remaining_balance < $amount) {
@@ -325,7 +329,7 @@ class CustomerReceiptService
 
             if ($receipt->is_advance) {
                 CustomerCreditNote::create([
-                    'credit_note_no'    => $this->generateCreditNoteNo(),
+                    'credit_note_no'    => $this->balances->generateCreditNoteNo(),
                     'customer_id'       => $receipt->customer_id,
                     'credit_type'       => CustomerCreditNoteType::Advance,
                     'amount'            => (float) $receipt->advance_amount,
@@ -351,7 +355,7 @@ class CustomerReceiptService
 
             if ($overpaymentExcess > 0.01) {
                 CustomerCreditNote::create([
-                    'credit_note_no'    => $this->generateCreditNoteNo(),
+                    'credit_note_no'    => $this->balances->generateCreditNoteNo(),
                     'customer_id'       => $receipt->customer_id,
                     'credit_type'       => CustomerCreditNoteType::OverPayment,
                     'amount'            => $overpaymentExcess,
@@ -372,7 +376,7 @@ class CustomerReceiptService
                 'confirmed_at'    => now(),
             ]);
 
-            $this->markSettledInvoicesPaid($invoiceIds);
+            $this->balances->markPaidIfSettled($invoiceIds);
 
             $fresh = $receipt->fresh(['allocations', 'setoffs.creditNote', 'settlements']);
             $this->attachCustomerSnapshots([$fresh]);
@@ -389,28 +393,6 @@ class CustomerReceiptService
         }
 
         $receipt->delete();
-    }
-
-    /**
-     * Flip fully-received issued invoices to Paid. Runs after the receipt turns
-     * Confirmed, so computeOutstanding now includes this receipt's allocations.
-     * Rows were already locked at the top of confirm().
-     * @param array<int> $invoiceIds
-     */
-    private function markSettledInvoicesPaid(array $invoiceIds): void
-    {
-        foreach ($invoiceIds as $invoiceId) {
-            if ($this->computeOutstanding($invoiceId) > 0.01) {
-                continue;
-            }
-
-            Invoice::whereKey($invoiceId)
-                ->where('status', InvoiceStatus::Issued->value)
-                ->update([
-                    'status'  => InvoiceStatus::Paid->value,
-                    'paid_at' => now(),
-                ]);
-        }
     }
 
     /** Preview the next receipt number (non-locking, for display only) */
@@ -448,45 +430,6 @@ class CustomerReceiptService
         return $prefix . str_pad((string) $next, 4, '0', STR_PAD_LEFT);
     }
 
-    /** Atomically generate the next credit note number (must be called inside a DB transaction) */
-    private function generateCreditNoteNo(): string
-    {
-        $prefix = 'CCN-';
-
-        $last = CustomerCreditNote::where('credit_note_no', 'like', $prefix . '%')
-            ->orderByDesc('id')
-            ->lockForUpdate()
-            ->value('credit_note_no');
-
-        $next = $last
-            ? (int) substr($last, strlen($prefix)) + 1
-            : 1;
-
-        return $prefix . str_pad((string) $next, 4, '0', STR_PAD_LEFT);
-    }
-
-    /** Outstanding for a single invoice, based only on confirmed receipts — reused by the list endpoint and confirm(). */
-    private function computeOutstanding(int $invoiceId): float
-    {
-        $invoice = DB::table('inv_invoices')->where('id', $invoiceId)->first(['grand_total']);
-
-        if (!$invoice) {
-            return 0.0;
-        }
-
-        // receipt_amount + discount: a discount is a permanent write-off, so it must
-        // reduce outstanding exactly like received cash does.
-        $received = DB::table('inv_customer_receipt_allocations as a')
-            ->join('inv_customer_receipts as r', 'r.id', '=', 'a.receipt_id')
-            ->where('a.reference_type', 'invoice')
-            ->where('a.reference_id', $invoiceId)
-            ->where('r.status', CustomerReceiptStatus::Confirmed->value)
-            ->selectRaw('COALESCE(SUM(a.receipt_amount + a.discount), 0) as total')
-            ->value('total');
-
-        return (float) $invoice->grand_total - (float) $received;
-    }
-
     /**
      * Validates discount against live outstanding server-side (never trusts a client-sent
      * discount blindly) and persists the allocation rows. receipt_amount defaults to
@@ -521,7 +464,7 @@ class CustomerReceiptService
                 continue;
             }
 
-            $outstanding = $this->computeOutstanding($invoiceId);
+            $outstanding = $this->balances->outstanding($invoiceId);
             $discount    = (float) ($row['discount'] ?? 0);
 
             if ($discount > $outstanding) {

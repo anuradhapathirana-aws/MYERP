@@ -43,6 +43,7 @@ import {
   Tag,
   TrendingUp,
   Truck,
+  Undo2,
   UserCircle,
   UserCog,
   Users,
@@ -81,6 +82,7 @@ const NAV_ITEMS = [
       { label: 'Delivery Orders',   to: '/inventory/delivery-orders',      icon: Truck,         permissionGuard: 'view_delivery_orders' },
       { label: 'Invoices',          to: '/inventory/invoices',             icon: FileText,      permissionGuard: 'view_invoices' },
       { label: 'Customer Receipts', to: '/inventory/customer-receipts',    icon: DollarSign,    permissionGuard: 'view_customer_receipts' },
+      { label: 'Customer Returns',  to: '/inventory/customer-returns',     icon: Undo2,         permissionGuard: 'view_customer_returns' },
       { label: 'Customer Credit Notes', to: '/inventory/customer-credit-notes', icon: CreditCard, permissionGuard: 'view_customer_credit_notes' },
       {
         label: 'Reports',

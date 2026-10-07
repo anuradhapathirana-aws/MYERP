@@ -265,6 +265,131 @@ class CustomerReceiptTest extends TestCase
         $this->assertEquals(0.0, (float) $creditNote->fresh()->remaining_balance);
     }
 
+    /** An open sales_return credit note, as a confirmed Customer Return raises it. */
+    private function makeSalesReturnCreditNote(float $amount, ?int $customerId = null): CustomerCreditNote
+    {
+        static $seq = 0;
+        $seq++;
+
+        return CustomerCreditNote::create([
+            'credit_note_no'    => sprintf('CCN-SR%02d', $seq),
+            'customer_id'       => $customerId ?? $this->customer->id,
+            'credit_type'       => 'sales_return',
+            'amount'            => $amount,
+            'remaining_balance' => $amount,
+            'status'            => 'open',
+        ]);
+    }
+
+    /**
+     * A receipt paid entirely by setoffs — no cash line (receiptPayload's default settlement
+     * survives array_replace_recursive, so it is removed explicitly).
+     * @param array<int, array<string, mixed>> $setoffs
+     */
+    private function setoffOnlyPayload(Invoice $invoice, array $setoffs): array
+    {
+        return [...$this->receiptPayload($invoice), 'settlements' => [], 'setoffs' => $setoffs];
+    }
+
+    public function test_sales_return_credit_note_can_be_set_off_and_is_consumed(): void
+    {
+        $creditNote = $this->makeSalesReturnCreditNote(150);
+        $invoice    = $this->makeIssuedInvoice(400);
+
+        // Exactly what the receipt form sends: the note's own type and id, no remark.
+        $receiptId = $this->actingAs($this->user)
+            ->postJson('/api/v1/customer-receipts', $this->receiptPayload($invoice, [
+                'settlements' => [['amount' => 250.0]],
+                'setoffs'     => [[
+                    'setoff_type'    => 'sales_return',
+                    'credit_note_id' => $creditNote->id,
+                    'amount'         => 150.0,
+                    'remark'         => null,
+                ]],
+            ]))
+            ->assertCreated()
+            ->json('data.id');
+
+        $this->actingAs($this->user)
+            ->postJson("/api/v1/customer-receipts/{$receiptId}/confirm")
+            ->assertOk();
+
+        $creditNote->refresh();
+        $this->assertEquals(0.0, (float) $creditNote->remaining_balance);
+        $this->assertSame('exhausted', $creditNote->status->value);
+        $this->assertSame(1, CustomerCreditNote::count(), 'Consuming a note must not spawn another one.');
+        $this->assertSame('paid', $invoice->fresh()->status->value);
+    }
+
+    public function test_partly_set_off_sales_return_credit_note_stays_open_with_the_rest(): void
+    {
+        $creditNote = $this->makeSalesReturnCreditNote(150);
+        $invoice    = $this->makeIssuedInvoice(100);
+
+        $receiptId = $this->actingAs($this->user)
+            ->postJson('/api/v1/customer-receipts', $this->setoffOnlyPayload($invoice, [
+                ['setoff_type' => 'sales_return', 'credit_note_id' => $creditNote->id, 'amount' => 100.0],
+            ]))
+            ->assertCreated()
+            ->json('data.id');
+
+        $this->actingAs($this->user)->postJson("/api/v1/customer-receipts/{$receiptId}/confirm")->assertOk();
+
+        $creditNote->refresh();
+        $this->assertSame(1, CustomerCreditNote::count());
+        $this->assertSame('paid', $invoice->fresh()->status->value);
+        $this->assertEquals(50.0, (float) $creditNote->remaining_balance);
+        $this->assertSame('open', $creditNote->status->value);
+    }
+
+    public function test_the_same_credit_note_cannot_be_spent_twice(): void
+    {
+        $creditNote = $this->makeSalesReturnCreditNote(100);
+        $setoffs    = [['setoff_type' => 'sales_return', 'credit_note_id' => $creditNote->id, 'amount' => 100.0]];
+
+        $first  = $this->actingAs($this->user)->postJson('/api/v1/customer-receipts', $this->setoffOnlyPayload($this->makeIssuedInvoice(100), $setoffs))->assertCreated()->json('data.id');
+        $second = $this->actingAs($this->user)->postJson('/api/v1/customer-receipts', $this->setoffOnlyPayload($this->makeIssuedInvoice(100), $setoffs))->assertCreated()->json('data.id');
+
+        $this->actingAs($this->user)->postJson("/api/v1/customer-receipts/{$first}/confirm")->assertOk();
+        $this->actingAs($this->user)->postJson("/api/v1/customer-receipts/{$second}/confirm")->assertStatus(422);
+
+        $this->assertSame(1, CustomerCreditNote::count());
+    }
+
+    public function test_another_customers_credit_note_cannot_be_set_off(): void
+    {
+        $other      = CustomerMaster::create(['customer_code' => 'CUS-0099', 'customer_name' => 'Other', 'customer_type' => 'Retail']);
+        $creditNote = $this->makeSalesReturnCreditNote(100, $other->id);
+
+        $this->actingAs($this->user)
+            ->postJson('/api/v1/customer-receipts', $this->setoffOnlyPayload($this->makeIssuedInvoice(100), [
+                ['setoff_type' => 'sales_return', 'credit_note_id' => $creditNote->id, 'amount' => 100.0],
+            ]))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('setoffs.0.credit_note_id');
+
+        $this->assertEquals(100.0, (float) $creditNote->fresh()->remaining_balance);
+    }
+
+    public function test_free_text_sales_return_setoff_still_needs_a_remark(): void
+    {
+        $invoice = $this->makeIssuedInvoice(100);
+        $payload = fn (?string $remark) => $this->setoffOnlyPayload($invoice, [
+            ['setoff_type' => 'sales_return', 'amount' => 100.0, 'remark' => $remark],
+        ]);
+
+        $this->actingAs($this->user)->postJson('/api/v1/customer-receipts', $payload(null))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('setoffs.0.remark');
+
+        $receiptId = $this->actingAs($this->user)->postJson('/api/v1/customer-receipts', $payload('Returned 2 m, agreed by phone'))->assertCreated()->json('data.id');
+        $this->actingAs($this->user)->postJson("/api/v1/customer-receipts/{$receiptId}/confirm")->assertOk();
+
+        $note = CustomerCreditNote::sole();
+        $this->assertSame('exhausted', $note->status->value);
+        $this->assertEquals(100.0, (float) $note->amount);
+    }
+
     public function test_setoff_exceeding_credit_note_balance_is_rejected(): void
     {
         $creditNote = CustomerCreditNote::create([

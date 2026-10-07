@@ -29,6 +29,7 @@ class BinCardService
     private const DOC_NO_SOURCES = [
         StockReferenceType::CODE_GRN            => ['table' => 'inv_goods_received_notes', 'column' => 'grn_no'],
         StockReferenceType::CODE_SALES_DELIVERY => ['table' => 'inv_delivery_orders',      'column' => 'do_no'],
+        StockReferenceType::CODE_CUSTOMER_RETURN => ['table' => 'inv_customer_returns',    'column' => 'return_no'],
     ];
 
     /**

@@ -8,6 +8,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Enums\CustomerReceiptStatus;
+use Modules\Inventory\Enums\CustomerReturnStatus;
 use Modules\Inventory\Enums\InvoiceStatus;
 
 class SalesSummaryReportService
@@ -97,6 +98,16 @@ class SalesSummaryReportService
             ->groupBy('a.reference_id')
             ->selectRaw('a.reference_id as invoice_id, SUM(a.receipt_amount + a.discount) as received');
 
+        // Customer returns against those invoices as at date_to: total_amount is the sale
+        // value that came back (it comes off Net Sale), applied_to_invoice the part that
+        // credited the unpaid balance (it comes off Uncollected) — see InvoiceBalanceService.
+        $returnedPerInvoice = DB::table('inv_customer_returns as cr')
+            ->where('cr.status', CustomerReturnStatus::Confirmed->value)
+            ->whereNull('cr.deleted_at')
+            ->when($toDate, fn ($q) => $q->where('cr.return_date', '<=', $toDate))
+            ->groupBy('cr.invoice_id')
+            ->selectRaw('cr.invoice_id, SUM(cr.total_amount) as returned_total, SUM(cr.applied_to_invoice) as returned_applied');
+
         // Bill count, invoiced revenue and still-uncollected money for the period — all
         // three describe the same set of invoices, so one pass over it answers all of
         // them. Independent of how or when the money is collected, unlike the
@@ -105,14 +116,15 @@ class SalesSummaryReportService
         // can't mask another invoice's genuine shortfall.
         $billStats = DB::table('inv_invoices as i')
             ->leftJoinSub($receivedPerInvoice, 'rc', 'rc.invoice_id', '=', 'i.id')
+            ->leftJoinSub($returnedPerInvoice, 'rt', 'rt.invoice_id', '=', 'i.id')
             ->whereIn('i.status', [InvoiceStatus::Issued->value, InvoiceStatus::Paid->value])
             ->whereNull('i.deleted_at')
             ->when($fromDate, fn ($q) => $q->where('i.invoice_date', '>=', $fromDate))
             ->when($toDate, fn ($q) => $q->where('i.invoice_date', '<=', $toDate))
             ->selectRaw(
                 'COUNT(*) as bill_count,
-                 COALESCE(SUM(i.grand_total), 0) as net_sale,
-                 COALESCE(SUM(GREATEST(i.grand_total - COALESCE(rc.received, 0), 0)), 0) as uncollected'
+                 COALESCE(SUM(i.grand_total - COALESCE(rt.returned_total, 0)), 0) as net_sale,
+                 COALESCE(SUM(GREATEST(i.grand_total - COALESCE(rc.received, 0) - COALESCE(rt.returned_applied, 0), 0)), 0) as uncollected'
             )
             ->first();
 

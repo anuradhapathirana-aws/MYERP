@@ -26,6 +26,9 @@ class RollService
     /** Appended to a roll's code when it is cut: "…-P003" becomes "…-P003-C1". */
     private const CUT_SUFFIX = 'C';
 
+    /** Appended to a roll's code when only part of it comes back on a customer return: "…-P003-R1". */
+    private const RETURN_SUFFIX = 'R';
+
     /**
      * Spread a sale across its rolls, filling the oldest first so that at most one roll
      * — the last one reached — is left partly used.
@@ -187,6 +190,75 @@ class RollService
         return $remnant;
     }
 
+    /**
+     * Bring a delivered roll's goods back into stock after a customer return.
+     *
+     * A roll that left whole and came back whole is simply the same physical roll again:
+     * it goes back in stock under its own code, so the sticker on it stays valid, and starts
+     * a new sale cycle so it can be sold again (SO/DO roll rows are unique per piece AND
+     * cycle — the rows of its earlier sale stay behind as history). Anything
+     * else — part of the roll returned, or the roll had been cut before it shipped (its
+     * remnant is still in stock under a "-C" code) — becomes a new roll holding exactly
+     * what came back, coded "…-R1", "…-R2", tied to the delivered roll via parent_piece_id
+     * and left unprinted so it surfaces on the label queue.
+     *
+     * Unlike shipOrCut() this DOES accompany an inbound ledger row: the returned quantity
+     * left current_stock on the delivery, so it has to be received back. The caller posts it.
+     *
+     * @param  float $returned          quantity coming back, in the stocking UOM
+     * @param  float $taken             quantity the delivery took off this roll, in the stocking UOM
+     * @param  int   $deliveredInCycle  the sale cycle of the delivery being returned
+     * @return GrnItemPiece             the roll that now holds the returned goods
+     */
+    public function restoreReturned(
+        GrnItemPiece $delivered,
+        float $returned,
+        float $taken,
+        int $deliveredInCycle,
+        int $storeId,
+        int $locationId,
+    ): GrnItemPiece {
+        $shippedWhole  = ! Quantity::isSellable($this->weightOf($delivered) - $taken);
+        $returnedWhole = ! Quantity::isSellable($taken - $returned);
+
+        if ($shippedWhole && $returnedWhole) {
+            // The roll must still be out with the customer from THAT delivery — not back in
+            // stock, or already resold in a later cycle.
+            abort_if(
+                $delivered->status !== GrnItemPiece::STATUS_DELIVERED || (int) $delivered->sale_cycle !== $deliveredInCycle,
+                422,
+                "Roll {$delivered->piece_code} is no longer out on this delivery (status: {$delivered->status}) — it cannot be returned against it.",
+            );
+
+            $delivered->update([
+                'status'      => GrnItemPiece::STATUS_IN_STOCK,
+                'store_id'    => $storeId,
+                'location_id' => $locationId,
+                'sale_cycle'  => $deliveredInCycle + 1,
+            ]);
+
+            return $delivered;
+        }
+
+        return GrnItemPiece::create([
+            'grn_item_id'          => $delivered->grn_item_id,
+            'grn_id'               => $delivered->grn_id,
+            'product_id'           => $delivered->product_id,
+            'parent_piece_id'      => $delivered->id,
+            'batch_id'             => $delivered->batch_id,
+            'stock_transaction_id' => $delivered->stock_transaction_id,
+            'store_id'             => $storeId,
+            'location_id'          => $locationId,
+            'piece_no'             => $delivered->piece_no,
+            'weight'               => Quantity::round($returned),
+            'roll_no'              => $delivered->roll_no,
+            'piece_code'           => $this->nextSuffixCode($delivered, self::RETURN_SUFFIX),
+            'status'               => GrnItemPiece::STATUS_IN_STOCK,
+            'printed_at'           => null,
+            'created_by'           => Auth::id(),
+        ]);
+    }
+
     /** Total the given rolls hold, in the stocking UOM. */
     public function capacityOf(Collection $rolls): float
     {
@@ -200,16 +272,23 @@ class RollService
         return (float) ($roll->weight ?? 0);
     }
 
-    /**
-     * "…-P003" cut once becomes "…-P003-C1", cut again "…-P003-C2".
-     *
-     * The suffix is stripped before counting so that cutting a remnant does not produce
-     * "…-P003-C1-C1"; every offcut of the same original roll shares one series.
-     */
     private function nextCutCode(GrnItemPiece $roll): string
     {
-        $root    = preg_replace('/-' . self::CUT_SUFFIX . '\d+$/', '', (string) $roll->piece_code);
-        $pattern = $root . '-' . self::CUT_SUFFIX;
+        return $this->nextSuffixCode($roll, self::CUT_SUFFIX);
+    }
+
+    /**
+     * "…-P003" cut once becomes "…-P003-C1", cut again "…-P003-C2"; returned in part,
+     * "…-P003-R1".
+     *
+     * Any cut/return suffix is stripped before counting so that cutting a remnant does not
+     * produce "…-P003-C1-C1"; every offcut (or return) of the same original roll shares
+     * one series.
+     */
+    private function nextSuffixCode(GrnItemPiece $roll, string $suffix): string
+    {
+        $root    = preg_replace('/-[' . self::CUT_SUFFIX . self::RETURN_SUFFIX . ']\d+$/', '', (string) $roll->piece_code);
+        $pattern = $root . '-' . $suffix;
 
         $existing = GrnItemPiece::where('piece_code', 'like', $pattern . '%')->count();
 

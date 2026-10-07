@@ -604,6 +604,9 @@ class SalesOrderService
             'so_id'          => $so->id,
             'so_item_id'     => $item->id,
             'piece_id'       => $piece->id,
+            // A roll returned whole is sold again under the same code — the cycle keeps
+            // this sale apart from the earlier ones (UNIQUE piece_id + sale_cycle).
+            'sale_cycle'     => (int) $piece->sale_cycle,
             'piece_code'     => $piece->piece_code,
             'weight'         => (float) $piece->weight,
             'taken_quantity' => $takenByRollId[$piece->id],

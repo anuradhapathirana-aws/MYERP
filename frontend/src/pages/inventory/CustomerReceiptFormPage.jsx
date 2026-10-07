@@ -294,7 +294,6 @@ export default function CustomerReceiptFormPage() {
   const totalReceivable = checkedRows.reduce((sum, r) => sum + (parseFloat(r.payAmount) || 0), 0)
   const target = isAdvance ? (parseFloat(advanceAmount) || 0) : totalReceivable
 
-  const toggleCreditNote = (cnId) => setCreditNoteRows((prev) => prev.map((c) => c.id === cnId ? { ...c, checked: !c.checked, setoff_amount: !c.checked ? c.setoff_amount : '' } : c))
   const setCreditNoteAmount = (cnId, value) => setCreditNoteRows((prev) => prev.map((c) => c.id === cnId ? { ...c, setoff_amount: value } : c))
 
   const applySetoffPct = () => {
@@ -312,6 +311,16 @@ export default function CustomerReceiptFormPage() {
   // excess becomes an over_payment credit note, available for setoff later, once confirmed.
   const isUnderfunded = remaining > 0.01
   const isOverfunded  = remaining < -0.01
+
+  // Ticking a credit note proposes spending as much of it as is still owed — never more
+  // than its balance — so a return credit settles the receipt in one click; the user can
+  // still lower it. Unticking clears the amount.
+  const toggleCreditNote = (cnId) => setCreditNoteRows((prev) => prev.map((c) => {
+    if (c.id !== cnId) return c
+    if (c.checked) return { ...c, checked: false, setoff_amount: '' }
+    const proposed = Math.min(c.remaining_balance, Math.max(0, remaining))
+    return { ...c, checked: true, setoff_amount: proposed > 0 ? proposed.toFixed(2) : '' }
+  }))
 
   // Prefill the next settlement's amount with the outstanding remaining balance — recomputed
   // whenever it changes (invoice selection, setoffs, prior settlements). Only applies to a fresh

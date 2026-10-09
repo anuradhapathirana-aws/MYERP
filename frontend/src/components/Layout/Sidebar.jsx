@@ -174,7 +174,18 @@ const NAV_ITEMS = [
     label: 'Finance',
     icon: DollarSign,
     moduleKey: 'finance',
-    children: [],
+    children: [
+      {
+        label: 'Chart of Accounts',
+        icon: ListTree,
+        isSubgroup: true,
+        children: [
+          { label: 'Account Categories', to: '/finance/account-categories', icon: FolderTree, permissionGuard: 'view_account_categories' },
+          { label: 'Control Accounts',   to: '/finance/control-accounts',   icon: ListTree,   permissionGuard: 'view_control_accounts' },
+          { label: 'Ledger Accounts',    to: '/finance/ledger-accounts',    icon: BookOpen,   permissionGuard: 'view_ledger_accounts' },
+        ],
+      },
+    ],
   },
   {
     label: 'HR',

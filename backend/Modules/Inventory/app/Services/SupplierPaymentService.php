@@ -13,6 +13,7 @@ use Modules\Inventory\Enums\CreditNoteType;
 use Modules\Inventory\Enums\GrnStatus;
 use Modules\Inventory\Enums\SetoffType;
 use Modules\Inventory\Enums\SupplierPaymentStatus;
+use App\Models\Bank;
 use App\Models\PaymentMode;
 use Modules\Inventory\Models\SupplierCreditNote;
 use Modules\Inventory\Models\SupplierPayment;
@@ -594,7 +595,7 @@ class SupplierPaymentService
     }
 
     /**
-     * @param array<array{payment_mode_id:int, amount:float, bank_name:?string, bank_account_no:?string, reference_no:?string, instrument_date:?string, is_thirdparty:?bool, remark:?string}> $settlements
+     * @param array<array{payment_mode_id:int, amount:float, bank_id:?int, bank_name:?string, bank_account_no:?string, reference_no:?string, instrument_date:?string, is_thirdparty:?bool, remark:?string}> $settlements
      * @return float total settlement amount
      */
     private function syncSettlements(SupplierPayment $payment, array $settlements): float
@@ -603,6 +604,9 @@ class SupplierPaymentService
 
         $modeIds = collect($settlements)->pluck('payment_mode_id')->filter()->unique()->values()->all();
         $modes   = empty($modeIds) ? collect() : PaymentMode::whereIn('id', $modeIds)->get()->keyBy('id');
+
+        $bankIds = collect($settlements)->pluck('bank_id')->filter()->unique()->values()->all();
+        $banks   = empty($bankIds) ? collect() : Bank::whereIn('id', $bankIds)->get()->keyBy('id');
 
         $rows  = [];
         $total = 0.0;
@@ -616,13 +620,24 @@ class SupplierPaymentService
 
             $mode = $modes[$modeId] ?? null;
 
+            // Bank follows the same link+snapshot rule as the payment mode
+            // above: store the id for reporting, and snapshot the name from the
+            // master so the printed document never changes if the bank is
+            // later renamed. Falls back to the submitted text when no bank_id
+            // is given, so older clients keep working.
+            $bankId   = isset($row['bank_id']) && $row['bank_id'] !== '' ? (int) $row['bank_id'] : null;
+            $bankName = $bankId !== null
+                ? ($banks[$bankId]->bank_name ?? ($row['bank_name'] ?? null))
+                : ($row['bank_name'] ?? null);
+
             $rows[] = [
                 'payment_id'        => $payment->id,
                 'payment_mode_id'   => $modeId,
                 'payment_mode_code' => $mode->code               ?? '',
                 'payment_mode_name' => $mode->payment_mode_name  ?? '',
                 'amount'            => $amount,
-                'bank_name'         => $row['bank_name']         ?? null,
+                'bank_id'           => $bankId,
+                'bank_name'         => $bankName,
                 'bank_account_no'   => $row['bank_account_no']   ?? null,
                 'reference_no'      => $row['reference_no']      ?? null,
                 'instrument_date'   => $row['instrument_date']   ?? null,

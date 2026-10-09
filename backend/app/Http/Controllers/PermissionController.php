@@ -66,6 +66,14 @@ class PermissionController extends Controller
                 'reports'               => ['label' => 'Reports',               'actions' => ['view']],
             ],
         ],
+        'finance_master' => [
+            'label'     => 'Finance · Chart of Accounts',
+            'resources' => [
+                'account_categories' => ['label' => 'Account Categories', 'actions' => ['view', 'create', 'edit', 'delete']],
+                'control_accounts'   => ['label' => 'Control Accounts',   'actions' => ['view', 'create', 'edit', 'delete']],
+                'ledger_accounts'    => ['label' => 'Ledger Accounts',    'actions' => ['view', 'create', 'edit', 'delete']],
+            ],
+        ],
         'administration' => [
             'label'     => 'Administration',
             'resources' => [

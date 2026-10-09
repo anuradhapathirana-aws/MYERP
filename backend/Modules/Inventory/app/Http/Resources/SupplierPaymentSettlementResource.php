@@ -18,6 +18,7 @@ class SupplierPaymentSettlementResource extends JsonResource
             'payment_mode_code'  => $this->payment_mode_code,
             'payment_mode_name'  => $this->payment_mode_name,
             'amount'             => (float) $this->amount,
+            'bank_id'            => $this->bank_id,
             'bank_name'          => $this->bank_name,
             'bank_account_no'    => $this->bank_account_no,
             'reference_no'       => $this->reference_no,

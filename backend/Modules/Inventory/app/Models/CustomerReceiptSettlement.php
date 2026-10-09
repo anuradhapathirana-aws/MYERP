@@ -17,6 +17,7 @@ class CustomerReceiptSettlement extends Model
         'payment_mode_code',
         'payment_mode_name',
         'amount',
+        'bank_id',
         'bank_name',
         'bank_account_no',
         'reference_no',

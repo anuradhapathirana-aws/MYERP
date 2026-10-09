@@ -46,6 +46,7 @@ class UpdateSupplierPaymentRequest extends FormRequest
             'settlements'                          => ['nullable', 'array'],
             'settlements.*.payment_mode_id'        => ['required_with:settlements', 'integer', 'exists:inv_payment_modes,id'],
             'settlements.*.amount'                 => ['required_with:settlements', 'numeric', 'min:0.01'],
+            'settlements.*.bank_id'                => ['nullable', 'integer', 'exists:core_banks,id'],
             'settlements.*.bank_name'              => ['nullable', 'string', 'max:100'],
             'settlements.*.bank_account_no'        => ['nullable', 'string', 'max:50'],
             'settlements.*.reference_no'           => ['nullable', 'string', 'max:50'],

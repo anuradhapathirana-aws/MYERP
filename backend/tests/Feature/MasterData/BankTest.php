@@ -73,8 +73,38 @@ class BankTest extends TestCase
         // Reference data ships as a migration, not a seeder, so it reaches every
         // environment through `php artisan migrate` alone.
         $this->assertDatabaseHas('core_banks', ['bank_code' => '7010', 'bank_name' => 'Bank of Ceylon']);
-        $this->assertDatabaseHas('core_banks', ['bank_code' => '7056', 'bank_name' => 'Commercial Bank of Ceylon PLC']);
         $this->assertGreaterThanOrEqual(17, Bank::count());
+    }
+
+    /**
+     * Pins the master's display names to the spellings already stored in
+     * production settlements. If a name here drifts, the payment forms' bank
+     * dropdown stops matching historical receipts, which blanks the field and
+     * lets a save silently rewrite the bank on a posted document.
+     *
+     * Names verified against live data: Hatton National Bank (x17),
+     * Bank of Ceylon (x5), Commercial Bank (x3).
+     */
+    public function test_bank_names_match_the_spellings_used_in_existing_settlements(): void
+    {
+        foreach (['Hatton National Bank', 'Bank of Ceylon', 'Commercial Bank'] as $name) {
+            $this->assertTrue(
+                Bank::where('bank_name', $name)->exists(),
+                "The bank master must offer '{$name}' exactly — existing receipts store it.",
+            );
+        }
+    }
+
+    public function test_all_endpoint_returns_banks_for_the_payment_forms(): void
+    {
+        // The supplier payment and customer receipt forms both read this.
+        $response = $this->actingAs($this->user)->getJson('/api/v1/banks/all')->assertOk();
+
+        $names = array_column($response->json('data'), 'bank_name');
+
+        $this->assertContains('Hatton National Bank', $names);
+        $this->assertContains('Bank of Ceylon', $names);
+        $this->assertContains('Commercial Bank', $names);
     }
 
     public function test_store_rejects_a_duplicate_bank_code(): void

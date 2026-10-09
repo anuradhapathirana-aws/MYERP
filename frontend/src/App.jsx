@@ -62,6 +62,11 @@ const SupplierGroupsPage        = lazy(() => import('./pages/master-data/Supplie
 const BanksPage                 = lazy(() => import('./pages/master-data/BanksPage'))
 const BankBranchesPage          = lazy(() => import('./pages/master-data/BankBranchesPage'))
 const EmployeesPage             = lazy(() => import('./pages/master-data/EmployeesPage'))
+
+// ── Finance · Chart of Accounts ──
+const AccountCategoriesPage     = lazy(() => import('./pages/finance/AccountCategoriesPage'))
+const ControlAccountsPage       = lazy(() => import('./pages/finance/ControlAccountsPage'))
+const LedgerAccountsPage        = lazy(() => import('./pages/finance/LedgerAccountsPage'))
 const SalesOrdersPage           = lazy(() => import('./pages/inventory/SalesOrdersPage'))
 const SalesOrderFormPage        = lazy(() => import('./pages/inventory/SalesOrderFormPage'))
 const SalesOrderViewPage        = lazy(() => import('./pages/inventory/SalesOrderViewPage'))
@@ -237,6 +242,11 @@ export default function App() {
         <Route path="/master-data/banks"                       element={<Lazy component={BanksPage} />} />
         <Route path="/master-data/bank-branches"               element={<Lazy component={BankBranchesPage} />} />
         <Route path="/master-data/employees"                   element={<Lazy component={EmployeesPage} />} />
+
+        {/* ── Finance · Chart of Accounts ── */}
+        <Route path="/finance/account-categories"              element={<Lazy component={AccountCategoriesPage} />} />
+        <Route path="/finance/control-accounts"                element={<Lazy component={ControlAccountsPage} />} />
+        <Route path="/finance/ledger-accounts"                 element={<Lazy component={LedgerAccountsPage} />} />
 
         {/* ── Inventory Reports ── */}
         <Route path="/inventory/reports/stock-levels"      element={<Lazy component={StockLevelsReport} />} />

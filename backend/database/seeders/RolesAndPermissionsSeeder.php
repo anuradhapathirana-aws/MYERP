@@ -80,6 +80,23 @@ class RolesAndPermissionsSeeder extends Seeder
     ];
 
     /**
+     * Finance module resources.
+     *
+     * Registered unconditionally, exactly like the Inventory ones: permissions
+     * are a catalogue of what the software CAN do, while entitlement is decided
+     * by the module.finance toggle in global_settings. A client who has not
+     * bought Finance simply never reaches a route that checks these, so having
+     * the rows costs nothing and avoids a seeder that behaves differently per
+     * installation.
+     */
+    private const FINANCE_RESOURCES = [
+        // Chart of accounts (Step 2)
+        'account_categories' => ['view', 'create', 'edit', 'delete'],
+        'control_accounts'   => ['view', 'create', 'edit', 'delete'],
+        'ledger_accounts'    => ['view', 'create', 'edit', 'delete'],
+    ];
+
+    /**
      * Administration resources (user & role management).
      * Deliberately excluded from the staff read-only default set.
      */
@@ -95,8 +112,8 @@ class RolesAndPermissionsSeeder extends Seeder
         $allPermissions = [];
         $staffViewPerms = [];
 
-        // ── Shared master data + Inventory permissions ───────────────────
-        foreach ([self::MASTER_DATA_RESOURCES, self::INVENTORY_RESOURCES] as $resources) {
+        // ── Shared master data + Inventory + Finance permissions ─────────
+        foreach ([self::MASTER_DATA_RESOURCES, self::INVENTORY_RESOURCES, self::FINANCE_RESOURCES] as $resources) {
             foreach ($resources as $resource => $actions) {
                 foreach ($actions as $action) {
                     $perm = "{$action}_{$resource}";

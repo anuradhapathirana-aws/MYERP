@@ -14,6 +14,7 @@ import {
 } from '../../api/customerReceipts'
 import { getAllCustomers } from '../../api/customers'
 import { getAllPaymentModes } from '../../api/paymentModes'
+import { getAllBanks } from '../../api/banks'
 import { getInvoice } from '../../api/invoices'
 import Breadcrumb from '../../components/Breadcrumb'
 import Money from '../../components/ui/Money'
@@ -22,10 +23,6 @@ import { fmtMoneyWithSymbol } from '../../utils/currency'
 import { printPdfBlob } from '../../utils/pdf'
 import { INPUT_CLS, INPUT_DISABLED_CLS, LABEL_CLS, SELECT_CLS } from '../../utils/fieldStyles'
 
-const BANK_NAMES = [
-  'Bank of Ceylon', 'Commercial Bank', 'Sampath Bank', 'Hatton National Bank',
-  "People's Bank", 'Nations Trust Bank', 'Seylan Bank', 'DFCC Bank', 'NDB Bank', 'Union Bank',
-]
 const EMPTY_ARRAY = []
 
 function SectionHeader({ icon: Icon, title, colorClass, right }) {
@@ -95,6 +92,10 @@ export default function CustomerReceiptFormPage() {
 
   const { data: customers = EMPTY_ARRAY } = useQuery({ queryKey: ['customers-all'], queryFn: getAllCustomers })
   const { data: paymentModes = EMPTY_ARRAY } = useQuery({ queryKey: ['payment-modes-all'], queryFn: getAllPaymentModes })
+
+  // Banks come from the shared master, not a hardcoded list, so there is one
+  // spelling of each bank across the whole system.
+  const { data: banks = EMPTY_ARRAY } = useQuery({ queryKey: ['banks-all'], queryFn: getAllBanks })
   const settleableModes = paymentModes.filter((m) => m.code !== 'setoff')
 
   const { data: nextReceiptNo } = useQuery({
@@ -162,7 +163,7 @@ export default function CustomerReceiptFormPage() {
     setContinued(true)
     setSettlements((r.settlements ?? []).map((s) => ({
       _key: s.id, payment_mode_id: s.payment_mode_id, payment_mode_name: s.payment_mode_name,
-      amount: String(s.amount), bank_name: s.bank_name ?? '', bank_account_no: s.bank_account_no ?? '',
+      amount: String(s.amount), bank_id: s.bank_id ?? null, bank_name: s.bank_name ?? '', bank_account_no: s.bank_account_no ?? '',
       reference_no: s.reference_no ?? '', instrument_date: s.instrument_date ?? '',
     })))
   }, [existing])
@@ -365,6 +366,9 @@ export default function CustomerReceiptFormPage() {
       payment_mode_id:   settlementDraft.payment_mode_id,
       payment_mode_name: selectedMode?.payment_mode_name ?? '',
       amount:             settlementDraft.amount,
+      // Resolve the master id from the chosen name. A legacy name that is
+      // not in the master yields null, and the backend keeps the text.
+      bank_id:            banks.find((b) => b.bank_name === settlementDraft.bank_name)?.id ?? null,
       bank_name:          settlementDraft.bank_name,
       bank_account_no:    settlementDraft.bank_account_no,
       reference_no:       settlementDraft.reference_no,
@@ -444,6 +448,7 @@ export default function CustomerReceiptFormPage() {
       settlements: settlements.map((s) => ({
         payment_mode_id:  parseInt(s.payment_mode_id),
         amount:           parseFloat(s.amount),
+        bank_id:          s.bank_id || null,
         bank_name:        s.bank_name || null,
         bank_account_no:  s.bank_account_no || null,
         reference_no:     s.reference_no || null,
@@ -903,7 +908,16 @@ export default function CustomerReceiptFormPage() {
                       <label className={LABEL_CLS}>Bank Name</label>
                       <select className={SELECT_CLS} value={settlementDraft.bank_name} onChange={(e) => setSettlementDraft((d) => ({ ...d, bank_name: e.target.value }))}>
                         <option value="">— Select —</option>
-                        {BANK_NAMES.map((b) => <option key={b} value={b}>{b}</option>)}
+                        {banks.map((b) => <option key={b.id} value={b.bank_name}>{b.bank_name}</option>)}
+                        {/*
+                          A stored bank that is no longer in the master (renamed
+                          or deactivated) would otherwise render as a blank
+                          dropdown, and saving would silently rewrite the bank on
+                          a posted document. Keep it selectable instead.
+                        */}
+                        {settlementDraft.bank_name && !banks.some((b) => b.bank_name === settlementDraft.bank_name) && (
+                          <option value={settlementDraft.bank_name}>{settlementDraft.bank_name} (not in master)</option>
+                        )}
                       </select>
                     </div>
                     <div>

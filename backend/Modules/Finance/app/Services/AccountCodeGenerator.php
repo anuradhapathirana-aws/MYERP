@@ -22,6 +22,10 @@ use Modules\Finance\Models\ControlAccount;
  * correctly ordered chart of accounts with no joins. That is why the code is
  * generated rather than typed, and why it is immutable once assigned.
  *
+ * Every level is mandatory, so every ledger code is exactly 8 characters. That
+ * fixed width is what keeps MAX() on a varchar numerically correct and ORDER BY
+ * code meaningful.
+ *
  * ── Concurrency ──────────────────────────────────────────────────────────────
  * Follows the same contract as inv_purchase_requests.reference_no (see the
  * Business Rules section of CLAUDE.md): callers pass $lock = true from inside

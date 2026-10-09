@@ -10,6 +10,7 @@ import { getAllControlAccounts } from '../../api/controlAccounts'
 import { getAllBanks } from '../../api/banks'
 import { getAllBankBranches } from '../../api/bankBranches'
 import { getAllCompanies } from '../../api/companies'
+import FilterSearchSelect from '../../components/ui/FilterSearchSelect'
 import Pagination from '../../components/ui/Pagination'
 import Breadcrumb from '../../components/Breadcrumb'
 import { confirmDelete, showError, showSuccess } from '../../utils/alerts'
@@ -120,6 +121,33 @@ function LedgerAccountForm({ editId, accountTypes, cashBookTypes, categories, co
     return list
   }, [controls, form.account_type, form.account_category_id])
 
+  // ── Option lists for the searchable pads ─────────────────────────────────
+  const categoryOptions = useMemo(
+    () => visibleCategories.map((c) => ({ value: String(c.id), label: `${c.code} · ${c.category_name}` })),
+    [visibleCategories],
+  )
+
+  // `group` makes the pad render each category as a header with its control
+  // accounts nested beneath — the chart of accounts as a shallow tree.
+  const controlOptions = useMemo(
+    () => visibleControls.map((c) => ({
+      value: String(c.id),
+      label: `${c.code} · ${c.control_account_name}`,
+      group: c.account_category_name ?? undefined,
+    })),
+    [visibleControls],
+  )
+
+  const bankOptions = useMemo(
+    () => banks.map((b) => ({ value: String(b.id), label: b.bank_name })),
+    [banks],
+  )
+
+  const branchOptions = useMemo(
+    () => branches.map((b) => ({ value: String(b.id), label: `${b.branch_code} · ${b.branch_name}` })),
+    [branches],
+  )
+
   const selectedBranch = useMemo(
     () => branches.find((b) => String(b.id) === String(form.bank_branch_id)) ?? null,
     [branches, form.bank_branch_id],
@@ -188,6 +216,18 @@ function LedgerAccountForm({ editId, accountTypes, cashBookTypes, categories, co
     const { name, value } = e.target
     setTouched((prev) => ({ ...prev, [name]: true }))
     setErrors((prev) => ({ ...prev, [name]: validate(name, value, form) }))
+  }
+
+  /**
+   * FilterSearchSelect reports a bare value rather than an event, so this
+   * routes it through handleChange to reuse the cascade that clears downstream
+   * selections, then marks the field touched and validates it — the pad has no
+   * blur of its own, and picking an option IS the interaction.
+   */
+  const handleSelect = (name, value) => {
+    handleChange({ target: { name, value, type: 'select-one' } })
+    setTouched((prev) => ({ ...prev, [name]: true }))
+    setErrors((prev) => ({ ...prev, [name]: validate(name, value, { ...form, [name]: value }) }))
   }
 
   const mutation = useMutation({
@@ -272,6 +312,8 @@ function LedgerAccountForm({ editId, accountTypes, cashBookTypes, categories, co
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <div>
           <label className={LABEL_CLS}>Account Type</label>
+          {/* Five fixed enum values — a plain select is faster to use than a
+              search pad, so this one stays as it is. */}
           <select ref={typeRef} name="account_type" value={form.account_type} onChange={handleChange} disabled={isEditing} className={SELECT_CLS}>
             <option value="">All types</option>
             {accountTypes.map((t) => <option key={t.value} value={t.value}>{t.digit} · {t.label}</option>)}
@@ -279,10 +321,14 @@ function LedgerAccountForm({ editId, accountTypes, cashBookTypes, categories, co
         </div>
         <div>
           <label className={LABEL_CLS}>Account Category</label>
-          <select name="account_category_id" value={form.account_category_id} onChange={handleChange} disabled={isEditing} className={SELECT_CLS}>
-            <option value="">All categories</option>
-            {visibleCategories.map((c) => <option key={c.id} value={c.id}>{c.code} · {c.category_name}</option>)}
-          </select>
+          <FilterSearchSelect
+            size="form"
+            value={form.account_category_id}
+            onChange={(v) => handleSelect('account_category_id', v)}
+            options={categoryOptions}
+            placeholder="All categories"
+            disabled={isEditing}
+          />
         </div>
       </div>
       <p className="-mt-1 text-[10px] text-slate-400">
@@ -292,18 +338,20 @@ function LedgerAccountForm({ editId, accountTypes, cashBookTypes, categories, co
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <div>
           <label className={LABEL_CLS}>Control Account <span className="text-red-500">*</span></label>
-          <select
-            name="control_account_id"
+          {/* Searchable: a real chart runs to hundreds of control accounts, and
+              the pad groups them under their category. */}
+          <FilterSearchSelect
+            size="form"
             value={form.control_account_id}
-            onChange={handleChange}
-            onBlur={handleBlur}
+            onChange={(v) => handleSelect('control_account_id', v)}
+            options={controlOptions}
+            placeholder="— Select —"
             // Locked after creation: its code is the first five digits of this one.
             disabled={isEditing}
-            className={errors.control_account_id && touched.control_account_id ? SELECT_ERR_CLS : SELECT_CLS}
-          >
-            <option value="">— Select —</option>
-            {visibleControls.map((c) => <option key={c.id} value={c.id}>{c.code} · {c.control_account_name}</option>)}
-          </select>
+            invalid={Boolean(errors.control_account_id && touched.control_account_id)}
+            clearable={false}
+            wide
+          />
           {errors.control_account_id && touched.control_account_id && <p className={ERR_CLS}>{errors.control_account_id}</p>}
           {!isEditing && visibleControls.length === 0 && (
             <p className="mt-0.5 text-[10px] text-amber-600">No control accounts match this filter.</p>
@@ -394,25 +442,29 @@ function LedgerAccountForm({ editId, accountTypes, cashBookTypes, categories, co
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <div>
                 <label className={LABEL_CLS}>Bank <span className="text-red-500">*</span></label>
-                <select
-                  name="bank_id" value={form.bank_id} onChange={handleChange} onBlur={handleBlur}
-                  className={errors.bank_id && touched.bank_id ? SELECT_ERR_CLS : SELECT_CLS}
-                >
-                  <option value="">— Select —</option>
-                  {banks.map((b) => <option key={b.id} value={b.id}>{b.bank_name}</option>)}
-                </select>
+                <FilterSearchSelect
+                  size="form"
+                  value={form.bank_id}
+                  onChange={(v) => handleSelect('bank_id', v)}
+                  options={bankOptions}
+                  placeholder="— Select —"
+                  invalid={Boolean(errors.bank_id && touched.bank_id)}
+                  clearable={false}
+                />
                 {errors.bank_id && touched.bank_id && <p className={ERR_CLS}>{errors.bank_id}</p>}
               </div>
               <div>
                 <label className={LABEL_CLS}>Branch <span className="text-red-500">*</span></label>
-                <select
-                  name="bank_branch_id" value={form.bank_branch_id} onChange={handleChange} onBlur={handleBlur}
+                <FilterSearchSelect
+                  size="form"
+                  value={form.bank_branch_id}
+                  onChange={(v) => handleSelect('bank_branch_id', v)}
+                  options={branchOptions}
+                  placeholder={form.bank_id ? '— Select —' : 'Select a bank first'}
                   disabled={!form.bank_id}
-                  className={errors.bank_branch_id && touched.bank_branch_id ? SELECT_ERR_CLS : SELECT_CLS}
-                >
-                  <option value="">{form.bank_id ? '— Select —' : 'Select a bank first'}</option>
-                  {branches.map((b) => <option key={b.id} value={b.id}>{b.branch_code} · {b.branch_name}</option>)}
-                </select>
+                  invalid={Boolean(errors.bank_branch_id && touched.bank_branch_id)}
+                  clearable={false}
+                />
                 {errors.bank_branch_id && touched.bank_branch_id && <p className={ERR_CLS}>{errors.bank_branch_id}</p>}
                 {form.bank_id && branches.length === 0 && (
                   <p className="mt-0.5 text-[10px] text-amber-600">This bank has no branches yet.</p>
@@ -602,7 +654,7 @@ export default function LedgerAccountsPage() {
                             </span>
                           </td>
                           <td className="max-w-[9rem] truncate px-3 py-2 text-slate-500" title={row.account_category_name ?? ''}>{row.account_category_name}</td>
-                          <td className="max-w-[9rem] truncate px-3 py-2 text-slate-500" title={row.control_account_name ?? ''}>{row.control_account_name}</td>
+                          <td className="max-w-36 truncate px-3 py-2 text-slate-500" title={row.control_account_name ?? ''}>{row.control_account_name}</td>
                           <td className="px-3 py-2 font-medium text-slate-800">{row.ledger_account_name}</td>
                           <td className="px-3 py-2">
                             {row.cash_book_type ? (

@@ -130,6 +130,7 @@ class LedgerAccountRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'control_account_id.required' => 'Select the control account this ledger account belongs under.',
             'control_account_id.exists'   => 'The selected control account no longer exists.',
             'ledger_account_name.unique'  => 'A ledger account with this name already exists under the selected control account.',
             'company_id.required_with'    => 'Select the company that owns this cash or bank account.',

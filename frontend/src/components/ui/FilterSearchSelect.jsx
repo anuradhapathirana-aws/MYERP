@@ -6,6 +6,16 @@ import { ChevronDown, Search, X } from 'lucide-react'
  * options: [{ value, label, group? }] — when any option carries a `group`,
  *          the pad renders category headers (a simple tree).
  * wide: opens a wider option pad for long labels (e.g. product names).
+ *
+ * The last three props exist so the same control can serve a FORM field, where
+ * a long list (a chart of accounts) needs searching just as much as a filter
+ * does. All three default to the original filter-panel behaviour, so every
+ * existing caller is untouched.
+ *
+ * size:      'filter' (default) matches FILTER_SELECT_CLS; 'form' matches SELECT_CLS.
+ * disabled:  greys the control out and blocks opening the pad.
+ * invalid:   red border, for a failed required-field check.
+ * clearable: false hides the X, which a required field should not offer.
  */
 export default function FilterSearchSelect({
   value,
@@ -13,6 +23,10 @@ export default function FilterSearchSelect({
   options = [],
   placeholder = 'All',
   wide = false,
+  size = 'filter',
+  disabled = false,
+  invalid = false,
+  clearable = true,
 }) {
   const [open, setOpen]   = useState(false)
   const [query, setQuery] = useState('')
@@ -72,18 +86,31 @@ export default function FilterSearchSelect({
 
   const clear = (e) => { e.stopPropagation(); onChange('') }
 
+  // Mirrors FILTER_SELECT_CLS / SELECT_CLS from utils/fieldStyles so the
+  // control sits flush with the plain inputs beside it.
+  const sizeCls = size === 'form'
+    ? 'rounded-lg px-3 py-1.5 text-sm'
+    : 'rounded-md px-2 py-1 text-xs'
+
+  const stateCls = disabled
+    ? 'border-slate-100 bg-slate-100 cursor-not-allowed'
+    : invalid
+      ? 'border-red-300 bg-red-50/40 focus:border-red-500 focus:ring-2 focus:ring-red-500/15'
+      : 'border-slate-200 bg-slate-50 focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-500/15'
+
   return (
     <div className="relative" ref={containerRef}>
       <button
         type="button"
+        disabled={disabled}
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between gap-1 rounded-md border-2 border-slate-200 bg-slate-50 px-2 py-1 text-left text-xs outline-none transition-all focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-500/15"
+        className={`flex w-full items-center justify-between gap-1 border-2 text-left outline-none transition-all ${sizeCls} ${stateCls}`}
       >
-        <span className={`truncate ${selected ? 'text-slate-800' : 'text-slate-400'}`}>
+        <span className={`truncate ${disabled ? 'text-slate-400' : selected ? 'text-slate-800' : 'text-slate-400'}`}>
           {selected?.label ?? placeholder}
         </span>
         <div className="flex shrink-0 items-center gap-0.5">
-          {value && (
+          {value && clearable && !disabled && (
             <span onClick={clear} className="cursor-pointer text-slate-400 hover:text-slate-600">
               <X size={10} />
             </span>

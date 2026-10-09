@@ -85,6 +85,10 @@ class LedgerAccountService
                 fn ($q) => $q->where('control_account_id', (int) $filters['control_account_id']),
             )
             ->when(
+                ! empty($filters['account_category_id']),
+                fn ($q) => $q->whereHas('controlAccount', fn ($c) => $c->where('account_category_id', (int) $filters['account_category_id'])),
+            )
+            ->when(
                 ! empty($filters['account_type']),
                 fn ($q) => $q->whereHas('controlAccount.category', fn ($c) => $c->where('account_type', $filters['account_type'])),
             )

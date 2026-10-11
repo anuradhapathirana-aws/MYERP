@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Models\GlobalSetting;
+use App\Services\SettingsService;
 use Illuminate\Database\Seeder;
 
 /**
@@ -32,11 +33,24 @@ class GlobalSettingSeeder extends Seeder
             'module.crm'       => false,
         ];
 
+        $settings = app(SettingsService::class);
+
         foreach ($defaults as $key => $value) {
             GlobalSetting::firstOrCreate(
                 ['key'   => $key],
                 ['value' => json_encode($value)],
             );
+
+            // Writing the row directly bypasses SettingsService::set(), which
+            // is the only thing that invalidates the cache -- and settings are
+            // cached with rememberForever.
+            //
+            // Without this the cache can outlive the truth indefinitely, and
+            // the symptom is brutal to diagnose: the database says the Finance
+            // module is enabled, every Finance request 403s with "The
+            // [finance] module is not enabled on this installation", and
+            // nothing in the logs or the settings screen disagrees.
+            $settings->forget($key);
         }
     }
 }

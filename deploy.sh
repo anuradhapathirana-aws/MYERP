@@ -52,6 +52,18 @@ php artisan db:seed --class="Modules\\Finance\\Database\\Seeders\\FinanceChartOf
 echo "==> Mapping Finance posting roles to accounts..."
 php artisan db:seed --class="Modules\\Finance\\Database\\Seeders\\FinanceGlAccountsSeeder" --force
 
+# Settings are read through SettingsService, which caches with
+# rememberForever. Only SettingsService::set() invalidates a key, so anything
+# that writes global_settings another way -- a seeder, a migration, a manual
+# SQL fix -- leaves a stale value cached indefinitely.
+#
+# The failure this prevents is genuinely hard to diagnose: the database says
+# the Finance module is enabled, the Settings screen agrees, and every Finance
+# request still returns "The [finance] module is not enabled on this
+# installation" with nothing in the logs.
+echo "==> Clearing the application cache (stale settings)..."
+php artisan cache:clear
+
 echo "==> Restarting queue workers..."
 php artisan queue:restart
 

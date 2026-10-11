@@ -33,13 +33,20 @@ class DatabaseSeeder extends Seeder
         // administrator granted through the UI.
         $this->call(RolesAndPermissionsSeeder::class);
 
-        // The bootstrap super-admin. updateOrCreate keyed on email, so an
-        // existing live account is never duplicated.
+        // The bootstrap super-admin, created ONLY when absent.
         //
-        // NOTE: this resets the password of admin@erp.local on every run. On a
-        // live server, change that account's password after first setup, or
-        // remove this block from the deployment sequence.
-        $admin = User::updateOrCreate(
+        // firstOrCreate, not updateOrCreate. The previous version rewrote this
+        // row on every deployment, which did two things nobody wanted on a
+        // live server:
+        //
+        //   - reset the password back to the default, so a server was one
+        //     unrelated deploy away from a publicly guessable super-admin
+        //   - reset active_modules to ['inventory'], silently removing Finance
+        //     from the very account used to administer it
+        //
+        // A bootstrap exists to make a fresh install reachable. Once someone
+        // is using the system, it has no business touching their account.
+        $admin = User::firstOrCreate(
             ['email' => 'admin@erp.local'],
             [
                 'name'           => 'Admin User',
@@ -49,8 +56,12 @@ class DatabaseSeeder extends Seeder
             ],
         );
 
-        // Ensure the Spatie role is always in sync even on re-runs
-        $admin->syncRoles(['super_admin']);
+        // assignRole, not syncRoles: syncRoles REPLACES every role, so it would
+        // strip any additional role an administrator had granted. This only
+        // adds what is missing.
+        if (! $admin->hasRole('super_admin')) {
+            $admin->assignRole('super_admin');
+        }
 
         // Global settings (module toggles) — idempotent.
         $this->call(GlobalSettingSeeder::class);

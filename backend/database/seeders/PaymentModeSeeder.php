@@ -20,7 +20,28 @@ class PaymentModeSeeder extends Seeder
         ];
 
         foreach ($modes as $mode) {
-            PaymentMode::withTrashed()->updateOrCreate(['code' => $mode['code']], $mode);
+            // Existence is checked INCLUDING soft-deleted rows, but a found row
+            // is never written to. Three separate reasons, all of which the
+            // previous updateOrCreate got wrong:
+            //
+            //   - a client who deleted "Card" because they do not accept cards
+            //     had it resurrected on every deployment
+            //   - a renamed mode had its name reset
+            //   - code AND payment_mode_name are both UNIQUE, so inserting
+            //     over a soft-deleted row fails the index and aborts the
+            //     deploy outright
+            //
+            // These five are starting defaults, not fixed product data: the
+            // Payment Modes screen exists precisely so a client can change
+            // them, and a deploy must not undo that.
+            $exists = PaymentMode::withTrashed()
+                ->where('code', $mode['code'])
+                ->orWhere('payment_mode_name', $mode['payment_mode_name'])
+                ->exists();
+
+            if (! $exists) {
+                PaymentMode::create($mode);
+            }
         }
     }
 }

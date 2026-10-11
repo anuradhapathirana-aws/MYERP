@@ -1,0 +1,7 @@
+
+# Database dumps. These carry real customer names, addresses and payment
+# records, so a single `git add .` would publish them. Ignored by pattern
+# rather than by filename, because the next one will be called something else.
+*.sql
+*.sql.gz
+*.dump

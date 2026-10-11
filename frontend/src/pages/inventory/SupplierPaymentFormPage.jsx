@@ -14,6 +14,8 @@ import {
 import { getAllSuppliers } from '../../api/suppliers'
 import { getAllPaymentModes } from '../../api/paymentModes'
 import { getAllBanks } from '../../api/banks'
+import { getAllLedgerAccounts } from '../../api/ledgerAccounts'
+import FilterSearchSelect from '../../components/ui/FilterSearchSelect'
 import Breadcrumb from '../../components/Breadcrumb'
 import Money from '../../components/ui/Money'
 import { confirmAction, showError, showSuccess } from '../../utils/alerts'
@@ -36,7 +38,7 @@ function SectionHeader({ icon: Icon, title, colorClass, right }) {
 
 function emptySettlementDraft() {
   return {
-    payment_mode_id: '', amount: '', bank_name: '', bank_account_no: '',
+    payment_mode_id: '', amount: '', ledger_account_id: '', bank_name: '', bank_account_no: '',
     reference_no: '', instrument_date: '',
   }
 }
@@ -86,6 +88,14 @@ export default function SupplierPaymentFormPage() {
   // Banks come from the shared master, not a hardcoded list, so there is one
   // spelling of each bank across the whole system.
   const { data: banks = EMPTY_ARRAY } = useQuery({ queryKey: ['banks-all'], queryFn: getAllBanks })
+
+  // The cash and bank accounts money can actually leave. Comes back empty on an
+  // installation without Finance, which is what hides the Pay From field there.
+  const { data: fundSources = EMPTY_ARRAY } = useQuery({
+    queryKey: ['ledger-accounts-fund-sources'],
+    queryFn:  () => getAllLedgerAccounts({ fund_sources_only: 1 }),
+    staleTime: 5 * 60 * 1000,
+  })
 
   const { data: nextPaymentNo } = useQuery({
     queryKey:  ['supplier-payments-next-no'],
@@ -139,6 +149,7 @@ export default function SupplierPaymentFormPage() {
     setSettlements((p.settlements ?? []).map((s) => ({
       _key: s.id, payment_mode_id: s.payment_mode_id, payment_mode_name: s.payment_mode_name,
       amount: String(s.amount), bank_id: s.bank_id ?? null, bank_name: s.bank_name ?? '', bank_account_no: s.bank_account_no ?? '',
+      ledger_account_id: s.ledger_account_id ? String(s.ledger_account_id) : '',
       reference_no: s.reference_no ?? '', instrument_date: s.instrument_date ?? '',
     })))
   }, [existing])
@@ -300,6 +311,40 @@ export default function SupplierPaymentFormPage() {
 
   const selectedMode = settleableModes.find((m) => String(m.id) === String(settlementDraft.payment_mode_id))
 
+  /*
+   * Pay From options, narrowed by how the money is leaving.
+   *
+   * Cash goes out of a cash box, a cheque or transfer out of a bank. Filtering
+   * client-side rather than per-request: the list is small, cached once, and
+   * re-fetching on every mode change would be slower for no gain.
+   *
+   * Grouped by company so a multi-company installation reads clearly -- a
+   * payment may only draw on one company's accounts, which the backend
+   * enforces when it derives the company for the journal.
+   *
+   * Not wrapped in useMemo on purpose: it is a small map over a cached list,
+   * and a manual memo here actually BLOCKS the React Compiler from optimizing
+   * the component (it cannot prove the query result is stable). Letting the
+   * compiler do it is both cheaper and what the lint rule asks for.
+   */
+  const payFromOptions = (() => {
+    const cashModes = ['cash', 'petty_cash']
+    const wantsCash = cashModes.includes(selectedMode?.code ?? '')
+
+    return fundSources
+      .filter((a) => (wantsCash
+        ? a.cash_book_type !== 'bank'
+        : a.cash_book_type === 'bank'))
+      .map((a) => ({
+        value: String(a.id),
+        label: `${a.code} · ${a.ledger_account_name}`,
+        group: a.company_name ?? undefined,
+      }))
+    // Depends on the mode CODE rather than the mode object: selectedMode is a
+    // fresh .find() result each render, which the React compiler cannot treat
+    // as stable.
+  })()
+
   // Cheque numbers must be exactly 6 digits — validated live while typing and again on Add
   // (the backend re-validates on save as well).
   const isChequeMode      = selectedMode?.code === 'cheque'
@@ -327,6 +372,10 @@ export default function SupplierPaymentFormPage() {
       showError('Transaction reference number is required.')
       return
     }
+    if (fundSources.length > 0 && !settlementDraft.ledger_account_id) {
+      showError('Choose the Pay From account — the exact cash or bank account the money leaves.')
+      return
+    }
     setSettlements((prev) => [...prev, {
       _key: Date.now() + Math.random(),
       payment_mode_id:   settlementDraft.payment_mode_id,
@@ -335,6 +384,9 @@ export default function SupplierPaymentFormPage() {
       // Resolve the master id from the chosen name. A legacy name that is
       // not in the master yields null, and the backend keeps the text.
       bank_id:            banks.find((b) => b.bank_name === settlementDraft.bank_name)?.id ?? null,
+      // Which ACCOUNT the money leaves. bank_id names only the bank, which is
+      // ambiguous when a company holds two accounts at one of them.
+      ledger_account_id:  settlementDraft.ledger_account_id,
       bank_name:          settlementDraft.bank_name,
       bank_account_no:    settlementDraft.bank_account_no,
       reference_no:       settlementDraft.reference_no,
@@ -415,6 +467,7 @@ export default function SupplierPaymentFormPage() {
         payment_mode_id:  parseInt(s.payment_mode_id),
         amount:           parseFloat(s.amount),
         bank_id:          s.bank_id || null,
+        ledger_account_id: s.ledger_account_id ? parseInt(s.ledger_account_id) : null,
         bank_name:        s.bank_name || null,
         bank_account_no:  s.bank_account_no || null,
         reference_no:     s.reference_no || null,
@@ -427,7 +480,7 @@ export default function SupplierPaymentFormPage() {
   const handleConfirm = async () => {
     const ok = await confirmAction({
       title: 'Confirm this payment?',
-      message: 'This will deduct against GRN outstanding balances and post any setoffs. This action cannot be easily undone.',
+      message: 'This will deduct against GRN outstanding balances and post any setoffs. Once confirmed it can only be reversed by a Void, never deleted.',
       confirmText: 'Yes, Confirm Payment',
     })
     if (ok) confirmMutation.mutate()
@@ -826,6 +879,29 @@ export default function SupplierPaymentFormPage() {
                     onChange={(e) => setSettlementDraft((d) => ({ ...d, amount: e.target.value }))}
                   />
                 </div>
+                {/*
+                  Only rendered when a chart of accounts exists. An
+                  Inventory-only client has nothing to choose from, and their
+                  payment still confirms exactly as it did before Finance.
+                */}
+                {fundSources.length > 0 && (
+                  <div>
+                    <label className={LABEL_CLS}>Pay From *</label>
+                    <FilterSearchSelect
+                      size="form"
+                      wide
+                      clearable={false}
+                      placeholder="Select account…"
+                      value={settlementDraft.ledger_account_id}
+                      onChange={(v) => setSettlementDraft((d) => ({ ...d, ledger_account_id: v }))}
+                      options={payFromOptions}
+                    />
+                    <p className="mt-0.5 text-[10px] text-slate-400">
+                      The exact cash or bank account the money leaves
+                    </p>
+                  </div>
+                )}
+
                 {selectedMode?.requires_bank_details && (
                   <>
                     {/* Feature disabled — shown for layout continuity but never interactive or submitted */}

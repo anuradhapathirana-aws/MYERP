@@ -655,7 +655,20 @@ export default function LedgerAccountsPage() {
                           </td>
                           <td className="max-w-[9rem] truncate px-3 py-2 text-slate-500" title={row.account_category_name ?? ''}>{row.account_category_name}</td>
                           <td className="max-w-36 truncate px-3 py-2 text-slate-500" title={row.control_account_name ?? ''}>{row.control_account_name}</td>
-                          <td className="px-3 py-2 font-medium text-slate-800">{row.ledger_account_name}</td>
+                          <td className="px-3 py-2 font-medium text-slate-800">
+                            {row.ledger_account_name}
+                            {/* Auto-created by a posting, not by hand. Without
+                                this there is nothing on screen to tell a
+                                party account apart from an ordinary one. */}
+                            {row.party_type && (
+                              <span
+                                className="ml-1.5 inline-flex items-center rounded bg-indigo-100 px-1 py-0.5 text-[9px] font-bold uppercase text-indigo-700"
+                                title={`Created automatically for this ${row.party_type}. Its name can be edited; the link cannot.`}
+                              >
+                                {row.party_type}
+                              </span>
+                            )}
+                          </td>
                           <td className="px-3 py-2">
                             {row.cash_book_type ? (
                               <div className="flex flex-col gap-0.5">

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\Inventory\Services;
 
 use Illuminate\Pagination\LengthAwarePaginator;
+use App\Contracts\JournalPoster;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\DTOs\GoodsReceivedNoteData;
 use Modules\Inventory\Enums\BatchStatus;
@@ -477,6 +478,19 @@ class GoodsReceivedNoteService
             // Recompute status for all affected POs
             foreach ($affectedPoIds as $poId) {
                 $this->syncPoStatusAfterGrn($poId);
+            }
+
+            // Credit Accounts Payable -- the other half of the bridge a supplier
+            // payment debits. Posting payments alone would leave Payables
+            // holding debits with no matching credit, reading as a negative
+            // liability. Inside the transaction above, so the GRN and its
+            // journal save together or not at all.
+            //
+            // Finance not installed -> the core contract hands back a no-op.
+            $poster = app(JournalPoster::class);
+
+            if ($poster->acceptsPostings()) {
+                $poster->post(\Modules\Inventory\Posting\GoodsReceivedNoteJournal::build($grn->fresh('items')));
             }
 
             return $grn->fresh(['items.product.baseUnit', 'items.unit', 'items.attribute', 'purchaseOrder', 'supplier', 'store', 'location']);

@@ -46,9 +46,11 @@ class RolesAndPermissionsSeeder extends Seeder
         'sales_orders'          => ['view', 'create', 'edit', 'delete'],
         'delivery_orders'       => ['view', 'create', 'edit', 'delete'],
         'invoices'              => ['view', 'create', 'edit', 'delete'],
-        'supplier_payments'     => ['view', 'create', 'edit', 'delete', 'confirm'],
+        // void is separate from confirm: undoing something already in the books
+        // and already in the general ledger is a different level of trust.
+        'supplier_payments'     => ['view', 'create', 'edit', 'delete', 'confirm', 'void'],
         'supplier_credit_notes' => ['view'],
-        'customer_receipts'     => ['view', 'create', 'edit', 'delete', 'confirm'],
+        'customer_receipts'     => ['view', 'create', 'edit', 'delete', 'confirm', 'void'],
         'customer_credit_notes' => ['view'],
         'customer_returns'      => ['view', 'create', 'edit', 'delete', 'confirm'],
         'reports'               => ['view'],
@@ -94,6 +96,40 @@ class RolesAndPermissionsSeeder extends Seeder
         'account_categories' => ['view', 'create', 'edit', 'delete'],
         'control_accounts'   => ['view', 'create', 'edit', 'delete'],
         'ledger_accounts'    => ['view', 'create', 'edit', 'delete'],
+
+        // General ledger (Step 3). post and reverse are separate from create
+        // on purpose: entering a voucher and committing it to the books are
+        // different levels of trust, and reversing something already posted is
+        // a third. There is no 'edit' because a posted journal is immutable.
+        'journal_entries' => ['view', 'create', 'post', 'reverse', 'delete'],
+
+    ];
+
+    /**
+     * Finance permissions kept OUT of the staff read-only default.
+     *
+     * Every other `view_*` is handed to staff automatically, which is right for
+     * documents and masters — staff already see invoices and payments. These
+     * two are different in kind:
+     *
+     *   finance_reports  — the Trial Balance is the whole company position:
+     *                      total payables, cash, revenue and profit in one
+     *                      screen. Granting it to every staff member by
+     *                      default would disclose far more than any single
+     *                      document does.
+     *   finance_settings — configuration, not data. Repointing
+     *                      accounts_payable changes every future GRN and
+     *                      payment, so it is gated apart from the
+     *                      chart-of-accounts permissions. That also lets
+     *                      mapping rights go to a senior accountant without
+     *                      making them an administrator.
+     *
+     * Same treatment as ADMIN_RESOURCES below, and for the same reason: an
+     * administrator grants these deliberately, per person.
+     */
+    private const FINANCE_RESTRICTED_RESOURCES = [
+        'finance_reports'  => ['view'],
+        'finance_settings' => ['view', 'manage'],
     ];
 
     /**
@@ -127,12 +163,17 @@ class RolesAndPermissionsSeeder extends Seeder
             }
         }
 
-        // ── Administration permissions ───────────────────────────────────
-        foreach (self::ADMIN_RESOURCES as $resource => $actions) {
-            foreach ($actions as $action) {
-                $perm = "{$action}_{$resource}";
-                Permission::firstOrCreate(['name' => $perm, 'guard_name' => 'web']);
-                $allPermissions[] = $perm;
+        // ── Permissions an administrator grants deliberately ─────────────
+        //
+        // Created and given to admin, but never added to $staffViewPerms, so a
+        // staff member gets them only when somebody ticks the box.
+        foreach ([self::ADMIN_RESOURCES, self::FINANCE_RESTRICTED_RESOURCES] as $resources) {
+            foreach ($resources as $resource => $actions) {
+                foreach ($actions as $action) {
+                    $perm = "{$action}_{$resource}";
+                    Permission::firstOrCreate(['name' => $perm, 'guard_name' => 'web']);
+                    $allPermissions[] = $perm;
+                }
             }
         }
 

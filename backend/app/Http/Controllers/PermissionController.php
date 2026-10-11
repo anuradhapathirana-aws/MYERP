@@ -61,8 +61,13 @@ class PermissionController extends Controller
                 'delivery_orders'       => ['label' => 'Delivery Orders',       'actions' => ['view', 'create', 'edit', 'delete']],
                 'invoices'              => ['label' => 'Invoices',              'actions' => ['view', 'create', 'edit', 'delete']],
                 'customer_returns'      => ['label' => 'Customer Returns',      'actions' => ['view', 'create', 'edit', 'delete', 'confirm']],
-                'supplier_payments'     => ['label' => 'Supplier Payments',     'actions' => ['view', 'create', 'edit', 'delete', 'confirm']],
+                'supplier_payments'     => ['label' => 'Supplier Payments',     'actions' => ['view', 'create', 'edit', 'delete', 'confirm', 'void']],
                 'supplier_credit_notes' => ['label' => 'Supplier Credit Notes', 'actions' => ['view']],
+                // These two were missing from this list entirely, so their
+                // permissions existed but never appeared in the Roles screen --
+                // which is the standing hazard of a hand-maintained map.
+                'customer_receipts'     => ['label' => 'Customer Receipts',     'actions' => ['view', 'create', 'edit', 'delete', 'confirm', 'void']],
+                'customer_credit_notes' => ['label' => 'Customer Credit Notes', 'actions' => ['view']],
                 'reports'               => ['label' => 'Reports',               'actions' => ['view']],
             ],
         ],
@@ -72,6 +77,14 @@ class PermissionController extends Controller
                 'account_categories' => ['label' => 'Account Categories', 'actions' => ['view', 'create', 'edit', 'delete']],
                 'control_accounts'   => ['label' => 'Control Accounts',   'actions' => ['view', 'create', 'edit', 'delete']],
                 'ledger_accounts'    => ['label' => 'Ledger Accounts',    'actions' => ['view', 'create', 'edit', 'delete']],
+            ],
+        ],
+        'finance_ledger' => [
+            'label'     => 'Finance · General Ledger',
+            'resources' => [
+                'journal_entries'  => ['label' => 'Journal Vouchers',  'actions' => ['view', 'create', 'post', 'reverse', 'delete']],
+                'finance_reports'  => ['label' => 'Financial Reports', 'actions' => ['view']],
+                'finance_settings' => ['label' => 'Account Mapping',   'actions' => ['view', 'manage']],
             ],
         ],
         'administration' => [

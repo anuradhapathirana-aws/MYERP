@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle, Plus } from 'lucide-react'
+import { Ban, CheckCircle, Plus } from 'lucide-react'
 import {
   confirmSupplierPayment,
   deleteSupplierPayment,
   getSupplierPayments,
+  voidSupplierPayment,
 } from '../../api/supplierPayments'
 import { getAllSuppliers } from '../../api/suppliers'
 import { getAllSupplierGroups } from '../../api/supplierGroups'
@@ -15,7 +16,8 @@ import Breadcrumb from '../../components/Breadcrumb'
 import TableFilter, { FilterField } from '../../components/TableFilter'
 import FilterSearchSelect from '../../components/ui/FilterSearchSelect'
 import { useTableFilter } from '../../hooks/useTableFilter'
-import { confirmDelete, confirmAction, showError, showSuccess } from '../../utils/alerts'
+import { confirmDelete, confirmAction, confirmWithReason, showError, showSuccess } from '../../utils/alerts'
+import { usePermissions } from '../../hooks/usePermissions'
 import { ViewBtn, EditBtn, DeleteBtn } from '../../components/ui/ActionButtons'
 import { FILTER_INPUT_CLS, FILTER_SELECT_CLS } from '../../utils/fieldStyles'
 
@@ -30,9 +32,11 @@ const INITIAL_FILTERS = { search: '', status: '', supplier_id: '', supplier_grou
 const STATUS_STYLES = {
   draft:     'bg-amber-100 text-amber-700',
   confirmed: 'bg-green-100 text-green-700',
+  voided:    'bg-slate-200 text-slate-500 line-through',
 }
 
 export default function SupplierPaymentsPage() {
+  const { can } = usePermissions()
   const [page, setPage] = useState(1)
   const queryClient     = useQueryClient()
   const resetPage       = () => setPage(1)
@@ -74,6 +78,33 @@ export default function SupplierPaymentsPage() {
     onError: (err) => showError(err.response?.data?.message ?? 'Confirmation failed.'),
   })
 
+  /*
+   * Void reverses a CONFIRMED payment. It is not an undo and not a delete: the
+   * document stays, the ledger receives a mirror journal, consumed credit
+   * notes are restored and the GRNs it cleared become payable again. A reason
+   * is mandatory -- confirmWithReason() refuses an empty one -- because it is
+   * appended to the payment remark as the permanent record of why.
+   */
+  const voidMutation = useMutation({
+    mutationFn: voidSupplierPayment,
+    onSuccess:  () => {
+      queryClient.invalidateQueries({ queryKey: ['supplier-payments'] })
+      queryClient.invalidateQueries({ queryKey: ['grns'] })
+      showSuccess('Payment voided. Outstanding balances and credit notes restored.')
+    },
+    onError: (err) => showError(err.response?.data?.message ?? 'Void failed.'),
+  })
+
+  const handleVoid = async (id, paymentNo) => {
+    const reason = await confirmWithReason({
+      title: `Void ${paymentNo}?`,
+      inputLabel: 'Why is this payment being voided?',
+      inputPlaceholder: 'e.g. Wrong amount entered',
+      confirmText: 'Yes, Void Payment',
+    })
+    if (reason) voidMutation.mutate({ id, reason })
+  }
+
   const handleDelete = async (id, paymentNo) => {
     if (await confirmDelete(paymentNo)) deleteMutation.mutate(id)
   }
@@ -81,7 +112,7 @@ export default function SupplierPaymentsPage() {
   const handleConfirm = async (id, paymentNo) => {
     const ok = await confirmAction({
       title: `Confirm ${paymentNo}?`,
-      message: 'This will <strong>deduct against outstanding GRN balances</strong> and post any setoffs. This action cannot be easily undone.',
+      message: 'This will <strong>deduct against outstanding GRN balances</strong> and post any setoffs. Once confirmed it can only be reversed by a <strong>Void</strong>, never deleted.',
       confirmText: 'Yes, Confirm Payment',
     })
     if (ok) confirmMutation.mutate(id)
@@ -115,6 +146,7 @@ export default function SupplierPaymentsPage() {
             <option value="">All statuses</option>
             <option value="draft">Draft</option>
             <option value="confirmed">Confirmed</option>
+            <option value="voided">Voided</option>
           </select>
         </FilterField>
         <FilterField label="Supplier">
@@ -200,6 +232,9 @@ export default function SupplierPaymentsPage() {
                                 <button type="button" title="Confirm Payment" onClick={() => handleConfirm(p.id, p.payment_no)} disabled={confirmMutation.isPending} className="inline-flex items-center justify-center rounded-lg p-1.5 bg-green-50 text-green-600 hover:bg-green-100 transition-colors disabled:opacity-40"><CheckCircle size={14} strokeWidth={2} /></button>
                                 <DeleteBtn onClick={() => handleDelete(p.id, p.payment_no)} disabled={deleteMutation.isPending} />
                               </>
+                            )}
+                            {p.status === 'confirmed' && can('void_supplier_payments') && (
+                              <button type="button" title="Void Payment" onClick={() => handleVoid(p.id, p.payment_no)} disabled={voidMutation.isPending} className="inline-flex items-center justify-center rounded-lg p-1.5 bg-red-50 text-red-600 hover:bg-red-100 transition-colors disabled:opacity-40"><Ban size={14} strokeWidth={2} /></button>
                             )}
                           </div>
                         </td>

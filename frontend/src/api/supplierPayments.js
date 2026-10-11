@@ -18,6 +18,13 @@ export const deleteSupplierPayment = (id) =>
 export const confirmSupplierPayment = (id) =>
   api.post(`/api/v1/supplier-payments/${id}/confirm`).then((r) => r.data)
 
+/**
+ * Reverse a confirmed payment. Not a delete: the document stays, the ledger
+ * receives a mirror journal and the GRNs it cleared become payable again.
+ */
+export const voidSupplierPayment = ({ id, reason }) =>
+  api.post(`/api/v1/supplier-payments/${id}/void`, { reason }).then((r) => r.data)
+
 export const getNextPaymentNo = () =>
   api.get('/api/v1/supplier-payments/next-payment-no').then((r) => r.data.data.payment_no)
 

@@ -43,6 +43,13 @@ class LedgerAccountResource extends JsonResource
             'allows_cash'          => $this->allows_cash,
             'allows_cheque'        => $this->allows_cheque,
 
+            // ── Party block ──────────────────────────────────────────────────
+            // Set only when this account represents one specific supplier or
+            // customer. Exposed so a picker can group them apart from the
+            // ordinary chart, and so the list can mark them as auto-created.
+            'party_type' => $this->party_type,
+            'party_id'   => $this->party_id,
+
             // The owning legal entity — null on ordinary accounts, which the
             // whole group shares.
             'company_id'   => $this->company_id,

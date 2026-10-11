@@ -44,6 +44,11 @@ class LedgerAccount extends Model
         'bank_id',
         'bank_branch_id',
         'bank_account_no',
+        // Set only by PartyLedgerProvisioner, never from a form: the form has
+        // no field for it, and a user retargeting an account at a different
+        // supplier would silently move that supplier's whole balance.
+        'party_type',
+        'party_id',
     ];
 
     protected $casts = [
@@ -55,11 +60,37 @@ class LedgerAccount extends Model
         'allows_cheque'      => 'boolean',
         'bank_id'            => 'integer',
         'bank_branch_id'     => 'integer',
+        'party_id'           => 'integer',
     ];
 
     public function controlAccount(): BelongsTo
     {
         return $this->belongsTo(ControlAccount::class, 'control_account_id');
+    }
+
+    /** True when this account represents one specific supplier or customer. */
+    public function isPartyAccount(): bool
+    {
+        return $this->party_type !== null && $this->party_id !== null;
+    }
+
+    /** The account standing for one party, if the chart keeps them per party. */
+    public function scopeForParty(Builder $query, string $partyType, int $partyId): Builder
+    {
+        return $query->where('party_type', $partyType)->where('party_id', $partyId);
+    }
+
+    /**
+     * Everything EXCEPT the per-party accounts.
+     *
+     * What every picker should show. A chart with 4,000 customer accounts in it
+     * makes the Journal Voucher dropdown unusable, and hand-picking a party
+     * account is almost always a mistake anyway -- documents resolve those
+     * automatically through the party on the line.
+     */
+    public function scopeExcludingParties(Builder $query): Builder
+    {
+        return $query->whereNull('party_type');
     }
 
     /**

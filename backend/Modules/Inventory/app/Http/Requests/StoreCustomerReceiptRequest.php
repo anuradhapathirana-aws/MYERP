@@ -48,6 +48,12 @@ class StoreCustomerReceiptRequest extends FormRequest
             'settlements.*.payment_mode_id'        => ['required_with:settlements', 'integer', 'exists:inv_payment_modes,id'],
             'settlements.*.amount'                 => ['required_with:settlements', 'numeric', 'min:0.01'],
             'settlements.*.bank_id'                => ['nullable', 'integer', 'exists:core_banks,id'],
+            // The cash or bank ACCOUNT the money arrived in. Nullable here
+            // rather than required: an Inventory-only client has no chart of
+            // accounts to pick from. When Finance IS installed, posting fails
+            // loudly at confirm time instead -- a draft should still be savable
+            // while the user is part way through the form.
+            'settlements.*.ledger_account_id'      => ['nullable', 'integer'],
             'settlements.*.bank_name'              => ['nullable', 'string', 'max:100'],
             'settlements.*.bank_account_no'        => ['nullable', 'string', 'max:50'],
             'settlements.*.reference_no'           => ['nullable', 'string', 'max:50'],
@@ -70,6 +76,7 @@ class StoreCustomerReceiptRequest extends FormRequest
             'setoffs.*.amount'                 => 'setoff amount',
             'settlements.*.payment_mode_id'    => 'payment mode',
             'settlements.*.amount'             => 'settlement amount',
+            'settlements.*.ledger_account_id'  => 'deposit to account',
         ];
     }
 

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Services;
 
+use App\Contracts\JournalPoster;
+use App\Support\Journal\PostingRole;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +22,7 @@ use Modules\Inventory\Models\SupplierPayment;
 use Modules\Inventory\Models\SupplierPaymentAllocation;
 use Modules\Inventory\Models\SupplierPaymentSetoff;
 use Modules\Inventory\Models\SupplierPaymentSettlement;
+use Modules\Inventory\Posting\SupplierPaymentJournal;
 
 class SupplierPaymentService
 {
@@ -382,9 +385,112 @@ class SupplierPaymentService
             ]);
 
             $fresh = $payment->fresh(['allocations', 'setoffs.creditNote', 'settlements']);
+
+            // Post to the general ledger, inside the transaction this method
+            // already opened -- so either the payment and its journal both
+            // save, or neither does. A document that believes it posted when
+            // it did not is worse than one that failed to save.
+            //
+            // JournalPoster is a CORE contract. On an installation without
+            // Finance the container hands back a no-op and this line does
+            // nothing, which is why Inventory never asks whether Finance
+            // exists. See App\Support\Journal\NullJournalPoster.
+            $poster = app(JournalPoster::class);
+
+            // Asked first because building the request can legitimately fail --
+            // it demands a Pay From account, which a client without Finance has
+            // no chart of accounts to choose from. Skipping the build keeps
+            // their confirm() behaving exactly as it did before Finance
+            // existed, which is the whole premise of selling the modules apart.
+            if ($poster->acceptsPostings()) {
+                $poster->post(SupplierPaymentJournal::build($fresh));
+            }
+
             $this->attachSupplierSnapshots([$fresh]);
 
             return $fresh;
+        });
+    }
+
+    /**
+     * Undo a confirmed payment.
+     *
+     * The only way back from Confirmed, and not an undo: nothing is deleted.
+     * The ledger receives a reversing journal, the GRNs this payment cleared
+     * become outstanding again on their own -- computeOutstanding() counts only
+     * CONFIRMED allocations -- and any credit note it minted or consumed is put
+     * back as it was.
+     *
+     * Deliberately separate from delete(), which still refuses anything past
+     * Draft. Deleting a confirmed payment would erase the record that the
+     * mistake happened, which is the one thing an audit trail exists to prevent.
+     */
+    public function void(SupplierPayment $payment, ?string $reason = null): SupplierPayment
+    {
+        if ($payment->status !== SupplierPaymentStatus::Confirmed) {
+            abort(422, 'Only a confirmed payment can be voided.');
+        }
+
+        return DB::transaction(function () use ($payment, $reason): SupplierPayment {
+            $payment->loadMissing(['setoffs', 'settlements']);
+
+            // Give back what this payment consumed. Locked in id order, the
+            // same discipline confirm() uses, so two concurrent voids cannot
+            // deadlock against each other.
+            $consumedIds = $payment->setoffs
+                ->pluck('credit_note_id')
+                ->filter()
+                ->unique()
+                ->sort()
+                ->values();
+
+            foreach ($consumedIds as $creditNoteId) {
+                $note = SupplierCreditNote::lockForUpdate()->find($creditNoteId);
+
+                if ($note === null) {
+                    continue;
+                }
+
+                $restored = (float) $payment->setoffs
+                    ->where('credit_note_id', $creditNoteId)
+                    ->sum('amount');
+
+                $note->update([
+                    'remaining_balance' => round((float) $note->remaining_balance + $restored, 4),
+                    'status'            => CreditNoteStatus::Open,
+                ]);
+            }
+
+            // Retire what this payment minted. A note that has already been
+            // drawn on elsewhere cannot simply vanish, so that case is refused
+            // rather than silently rewritten.
+            $minted = SupplierCreditNote::where('source_payment_id', $payment->id)->lockForUpdate()->get();
+
+            foreach ($minted as $note) {
+                if (round((float) $note->remaining_balance, 2) < round((float) $note->amount, 2)) {
+                    abort(422, 'Credit note ' . $note->credit_note_no . ' from this payment has already '
+                        . 'been used on another payment. Void that one first.');
+                }
+
+                $note->delete();
+            }
+
+            app(JournalPoster::class)->reverseDocument(
+                PostingRole::SOURCE_SUPPLIER_PAYMENT,
+                (int) $payment->id,
+                $reason === null
+                    ? 'Void of ' . $payment->payment_no . '.'
+                    : 'Void of ' . $payment->payment_no . ' - ' . $reason,
+            );
+
+            $payment->update([
+                'status'         => SupplierPaymentStatus::Voided,
+                'payment_remark' => trim(
+                    (string) $payment->payment_remark . ' [VOIDED: ' . ($reason ?: 'no reason given') . ']',
+                ),
+            ]);
+
+            return $payment->fresh(['allocations', 'setoffs', 'settlements']);
         });
     }
 
@@ -637,6 +743,15 @@ class SupplierPaymentService
                 'payment_mode_name' => $mode->payment_mode_name  ?? '',
                 'amount'            => $amount,
                 'bank_id'           => $bankId,
+                // bank_id names the BANK; this names the ACCOUNT. A company
+                // holding a current and a savings account at the same bank has
+                // one bank_id and two ledger accounts, so only this column can
+                // say where the money actually moved -- which is what makes the
+                // GL line correct and the account reconcilable against its own
+                // statement. Nullable: an Inventory-only client never sets it.
+                'ledger_account_id' => isset($row['ledger_account_id']) && $row['ledger_account_id'] !== ''
+                    ? (int) $row['ledger_account_id']
+                    : null,
                 'bank_name'         => $bankName,
                 'bank_account_no'   => $row['bank_account_no']   ?? null,
                 'reference_no'      => $row['reference_no']      ?? null,

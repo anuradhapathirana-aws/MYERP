@@ -19,6 +19,9 @@ class CustomerReceiptSettlementResource extends JsonResource
             'payment_mode_name'  => $this->payment_mode_name,
             'amount'             => (float) $this->amount,
             'bank_id'            => $this->bank_id,
+            // The exact cash/bank account, so the form can re-select it on edit
+            // and a voucher view can show where the money moved.
+            'ledger_account_id'  => $this->ledger_account_id,
             'bank_name'          => $this->bank_name,
             'bank_account_no'    => $this->bank_account_no,
             'reference_no'       => $this->reference_no,

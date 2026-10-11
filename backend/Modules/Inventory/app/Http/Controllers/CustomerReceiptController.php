@@ -23,6 +23,7 @@ class CustomerReceiptController extends Controller
         $this->middleware('permission:create_customer_receipts')->only(['store']);
         $this->middleware('permission:edit_customer_receipts')->only(['update']);
         $this->middleware('permission:confirm_customer_receipts')->only(['confirm']);
+        $this->middleware('permission:void_customer_receipts')->only(['void']);
         $this->middleware('permission:delete_customer_receipts')->only(['destroy']);
     }
 
@@ -81,6 +82,26 @@ class CustomerReceiptController extends Controller
     public function confirm(CustomerReceipt $customerReceipt): JsonResponse
     {
         $receipt = $this->service->confirm($customerReceipt);
+
+        return response()->json(
+            ['data' => (new CustomerReceiptResource($receipt))->toArray(request())],
+        );
+    }
+
+    /**
+     * Undo a confirmed receipt.
+     *
+     * Its own permission rather than reusing confirm: undoing something already
+     * in the books, and already in the general ledger, is a different level of
+     * trust from entering it.
+     */
+    public function void(CustomerReceipt $customerReceipt): JsonResponse
+    {
+        $reason  = request()->input('reason');
+        $receipt = $this->service->void(
+            $customerReceipt,
+            is_string($reason) && trim($reason) !== '' ? trim($reason) : null,
+        );
 
         return response()->json(
             ['data' => (new CustomerReceiptResource($receipt))->toArray(request())],

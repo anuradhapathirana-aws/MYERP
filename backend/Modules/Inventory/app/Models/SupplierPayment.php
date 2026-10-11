@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Modules\Inventory\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\SupplierMaster;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\Inventory\Enums\SupplierPaymentStatus;
@@ -47,6 +49,15 @@ class SupplierPayment extends Model
         'created_by'       => 'integer',
         'status'           => SupplierPaymentStatus::class,
     ];
+
+    /**
+     * SupplierMaster lives in App\Models -- core, always installed -- so this
+     * is a core relation, not a reach into another module.
+     */
+    public function supplier(): BelongsTo
+    {
+        return $this->belongsTo(SupplierMaster::class, 'supplier_id');
+    }
 
     public function allocations(): HasMany
     {

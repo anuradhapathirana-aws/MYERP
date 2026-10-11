@@ -237,13 +237,37 @@ class InvoiceService
             abort(422, 'This invoice has confirmed customer returns and cannot be cancelled.');
         }
 
-        $invoice->update([
-            'status'    => $newStatus,
-            'issued_at' => $newStatus === InvoiceStatus::Issued ? now() : $invoice->issued_at,
-            'paid_at'   => $newStatus === InvoiceStatus::Paid ? now() : $invoice->paid_at,
-        ]);
+        return DB::transaction(function () use ($invoice, $newStatus): Invoice {
+            $invoice->update([
+                'status'    => $newStatus,
+                'issued_at' => $newStatus === InvoiceStatus::Issued ? now() : $invoice->issued_at,
+                'paid_at'   => $newStatus === InvoiceStatus::Paid ? now() : $invoice->paid_at,
+            ]);
 
-        return $invoice;
+            $poster = app(\App\Contracts\JournalPoster::class);
+
+            if ($poster->acceptsPostings()) {
+                // Issuing is the act that creates the claim on the customer and
+                // recognises the revenue, so that is when it posts -- not when
+                // the draft was created.
+                if ($newStatus === InvoiceStatus::Issued) {
+                    $poster->post(\Modules\Inventory\Posting\InvoiceJournal::build($invoice->fresh('items')));
+                }
+
+                // Cancelling an issued invoice retracts the claim. A reversing
+                // journal rather than a deletion, because the original posting
+                // is part of the audit trail.
+                if ($newStatus === InvoiceStatus::Cancelled) {
+                    $poster->reverseDocument(
+                        \App\Support\Journal\PostingRole::SOURCE_INVOICE,
+                        (int) $invoice->id,
+                        'Invoice ' . $invoice->invoice_no . ' cancelled.',
+                    );
+                }
+            }
+
+            return $invoice;
+        });
     }
 
     public function delete(Invoice $invoice): void

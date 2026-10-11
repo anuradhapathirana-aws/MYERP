@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Services;
 
+use App\Contracts\JournalPoster;
+use App\Support\Journal\PostingRole;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\DTOs\CustomerReceiptData;
@@ -17,6 +19,7 @@ use Modules\Inventory\Models\CustomerReceipt;
 use Modules\Inventory\Models\CustomerReceiptAllocation;
 use Modules\Inventory\Models\CustomerReceiptSetoff;
 use Modules\Inventory\Models\CustomerReceiptSettlement;
+use Modules\Inventory\Posting\CustomerReceiptJournal;
 use Modules\Inventory\Models\Invoice;
 use App\Models\Bank;
 use App\Models\PaymentMode;
@@ -380,10 +383,120 @@ class CustomerReceiptService
             $this->balances->markPaidIfSettled($invoiceIds);
 
             $fresh = $receipt->fresh(['allocations', 'setoffs.creditNote', 'settlements']);
+
+            // Post to the general ledger, inside the transaction this method
+            // already opened -- so either the receipt and its journal both
+            // save, or neither does.
+            //
+            // Asked before building: building the request demands a Deposit To
+            // account, which a client without Finance has no chart of accounts
+            // to choose from. Skipping it keeps their confirm() behaving
+            // exactly as it did before Finance existed.
+            $poster = app(JournalPoster::class);
+
+            if ($poster->acceptsPostings()) {
+                $poster->post(CustomerReceiptJournal::build($fresh));
+            }
+
             $this->attachCustomerSnapshots([$fresh]);
             $this->attachInvoiceNumbers($fresh);
 
             return $fresh;
+        });
+    }
+
+    /**
+     * Undo a confirmed receipt.
+     *
+     * Nothing is deleted. The ledger receives a reversing journal, the invoices
+     * this receipt settled become outstanding again on their own -- 
+     * InvoiceBalanceService counts only CONFIRMED receipts -- and any credit
+     * note it minted or consumed is put back as it was. Invoices flipped to
+     * Paid are returned to Issued, since they are no longer settled.
+     *
+     * Deliberately separate from delete(), which still refuses anything past
+     * Draft: deleting a confirmed receipt would erase the record that the
+     * mistake happened.
+     */
+    public function void(CustomerReceipt $receipt, ?string $reason = null): CustomerReceipt
+    {
+        if ($receipt->status !== CustomerReceiptStatus::Confirmed) {
+            abort(422, 'Only a confirmed receipt can be voided.');
+        }
+
+        return DB::transaction(function () use ($receipt, $reason): CustomerReceipt {
+            $receipt->loadMissing(['allocations', 'setoffs']);
+
+            // Give back what this receipt consumed, locked in id order so two
+            // concurrent voids cannot deadlock against each other.
+            $consumedIds = $receipt->setoffs
+                ->pluck('credit_note_id')
+                ->filter()
+                ->unique()
+                ->sort()
+                ->values();
+
+            foreach ($consumedIds as $creditNoteId) {
+                $note = CustomerCreditNote::lockForUpdate()->find($creditNoteId);
+
+                if ($note === null) {
+                    continue;
+                }
+
+                $restored = (float) $receipt->setoffs
+                    ->where('credit_note_id', $creditNoteId)
+                    ->sum('amount');
+
+                $note->update([
+                    'remaining_balance' => round((float) $note->remaining_balance + $restored, 4),
+                    'status'            => CreditNoteStatus::Open,
+                ]);
+            }
+
+            // Retire what it minted. A note already drawn on elsewhere cannot
+            // simply vanish, so that case is refused rather than rewritten.
+            $minted = CustomerCreditNote::where('source_receipt_id', $receipt->id)->lockForUpdate()->get();
+
+            foreach ($minted as $note) {
+                if (round((float) $note->remaining_balance, 2) < round((float) $note->amount, 2)) {
+                    abort(422, 'Credit note ' . $note->credit_note_no . ' from this receipt has already '
+                        . 'been used on another receipt. Void that one first.');
+                }
+
+                $note->delete();
+            }
+
+            // An invoice marked Paid by this receipt is not settled any more.
+            $invoiceIds = $receipt->allocations
+                ->where('reference_type', 'invoice')
+                ->pluck('reference_id')
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
+            if ($invoiceIds !== []) {
+                Invoice::whereIn('id', $invoiceIds)
+                    ->where('status', InvoiceStatus::Paid)
+                    ->update(['status' => InvoiceStatus::Issued, 'paid_at' => null]);
+            }
+
+            app(JournalPoster::class)->reverseDocument(
+                PostingRole::SOURCE_CUSTOMER_RECEIPT,
+                (int) $receipt->id,
+                $reason === null
+                    ? 'Void of ' . $receipt->receipt_no . '.'
+                    : 'Void of ' . $receipt->receipt_no . ' - ' . $reason,
+            );
+
+            $receipt->update([
+                'status'         => CustomerReceiptStatus::Voided,
+                'receipt_remark' => trim(
+                    (string) $receipt->receipt_remark . ' [VOIDED: ' . ($reason ?: 'no reason given') . ']',
+                ),
+            ]);
+
+            return $receipt->fresh(['allocations', 'setoffs', 'settlements']);
         });
     }
 
@@ -599,6 +712,15 @@ class CustomerReceiptService
                 'payment_mode_name' => $mode->payment_mode_name  ?? '',
                 'amount'            => $amount,
                 'bank_id'           => $bankId,
+                // bank_id names the BANK; this names the ACCOUNT. A company
+                // holding a current and a savings account at the same bank has
+                // one bank_id and two ledger accounts, so only this column can
+                // say where the money actually moved -- which is what makes the
+                // GL line correct and the account reconcilable against its own
+                // statement. Nullable: an Inventory-only client never sets it.
+                'ledger_account_id' => isset($row['ledger_account_id']) && $row['ledger_account_id'] !== ''
+                    ? (int) $row['ledger_account_id']
+                    : null,
                 'bank_name'         => $bankName,
                 'bank_account_no'   => $row['bank_account_no']   ?? null,
                 'reference_no'      => $row['reference_no']      ?? null,

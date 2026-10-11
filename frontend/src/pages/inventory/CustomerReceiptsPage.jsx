@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle, Plus } from 'lucide-react'
+import { Ban, CheckCircle, Plus } from 'lucide-react'
 import {
   confirmCustomerReceipt,
   deleteCustomerReceipt,
   getCustomerReceipts,
+  voidCustomerReceipt,
 } from '../../api/customerReceipts'
 import { getAllCustomers } from '../../api/customers'
 import Pagination from '../../components/ui/Pagination'
@@ -14,7 +15,8 @@ import Breadcrumb from '../../components/Breadcrumb'
 import TableFilter, { FilterField } from '../../components/TableFilter'
 import FilterSearchSelect from '../../components/ui/FilterSearchSelect'
 import { useTableFilter } from '../../hooks/useTableFilter'
-import { confirmDelete, confirmAction, showError, showSuccess } from '../../utils/alerts'
+import { confirmDelete, confirmAction, confirmWithReason, showError, showSuccess } from '../../utils/alerts'
+import { usePermissions } from '../../hooks/usePermissions'
 import { ViewBtn, EditBtn, DeleteBtn } from '../../components/ui/ActionButtons'
 import { FILTER_INPUT_CLS, FILTER_SELECT_CLS } from '../../utils/fieldStyles'
 
@@ -29,9 +31,11 @@ const INITIAL_FILTERS = { search: '', status: '', customer_id: '', date_from: ''
 const STATUS_STYLES = {
   draft:     'bg-amber-100 text-amber-700',
   confirmed: 'bg-green-100 text-green-700',
+  voided:    'bg-slate-200 text-slate-500 line-through',
 }
 
 export default function CustomerReceiptsPage() {
+  const { can } = usePermissions()
   const [page, setPage] = useState(1)
   const navigate        = useNavigate()
   const queryClient     = useQueryClient()
@@ -69,6 +73,33 @@ export default function CustomerReceiptsPage() {
     onError: (err) => showError(err.response?.data?.message ?? 'Confirmation failed.'),
   })
 
+  /*
+   * Void reverses a CONFIRMED receipt. It is not an undo and not a delete: the
+   * document stays, the ledger receives a mirror journal, consumed credit
+   * notes are restored and the invoices it settled return to Issued. A reason
+   * is mandatory -- confirmWithReason() refuses an empty one -- because it is
+   * appended to the receipt remark as the permanent record of why.
+   */
+  const voidMutation = useMutation({
+    mutationFn: voidCustomerReceipt,
+    onSuccess:  () => {
+      queryClient.invalidateQueries({ queryKey: ['customer-receipts'] })
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      showSuccess('Receipt voided. Invoice balances and credit notes restored.')
+    },
+    onError: (err) => showError(err.response?.data?.message ?? 'Void failed.'),
+  })
+
+  const handleVoid = async (id, receiptNo) => {
+    const reason = await confirmWithReason({
+      title: `Void ${receiptNo}?`,
+      inputLabel: 'Why is this receipt being voided?',
+      inputPlaceholder: 'e.g. Cheque returned unpaid',
+      confirmText: 'Yes, Void Receipt',
+    })
+    if (reason) voidMutation.mutate({ id, reason })
+  }
+
   const handleDelete = async (id, receiptNo) => {
     if (await confirmDelete(receiptNo)) deleteMutation.mutate(id)
   }
@@ -76,7 +107,7 @@ export default function CustomerReceiptsPage() {
   const handleConfirm = async (id, receiptNo) => {
     const ok = await confirmAction({
       title: `Confirm ${receiptNo}?`,
-      message: 'This will <strong>settle against outstanding invoice balances</strong>, post any setoffs and mark fully-received invoices as Paid. This action cannot be easily undone.',
+      message: 'This will <strong>settle against outstanding invoice balances</strong>, post any setoffs and mark fully-received invoices as Paid. Once confirmed it can only be reversed by a <strong>Void</strong>, never deleted.',
       confirmText: 'Yes, Confirm Receipt',
     })
     if (ok) confirmMutation.mutate(id)
@@ -110,6 +141,7 @@ export default function CustomerReceiptsPage() {
             <option value="">All statuses</option>
             <option value="draft">Draft</option>
             <option value="confirmed">Confirmed</option>
+            <option value="voided">Voided</option>
           </select>
         </FilterField>
         <FilterField label="Customer">
@@ -188,6 +220,9 @@ export default function CustomerReceiptsPage() {
                                 <button type="button" title="Confirm Receipt" onClick={() => handleConfirm(r.id, r.receipt_no)} disabled={confirmMutation.isPending} className="inline-flex items-center justify-center rounded-lg p-1.5 bg-green-50 text-green-600 hover:bg-green-100 transition-colors disabled:opacity-40"><CheckCircle size={14} strokeWidth={2} /></button>
                                 <DeleteBtn onClick={() => handleDelete(r.id, r.receipt_no)} disabled={deleteMutation.isPending} />
                               </>
+                            )}
+                            {r.status === 'confirmed' && can('void_customer_receipts') && (
+                              <button type="button" title="Void Receipt" onClick={() => handleVoid(r.id, r.receipt_no)} disabled={voidMutation.isPending} className="inline-flex items-center justify-center rounded-lg p-1.5 bg-red-50 text-red-600 hover:bg-red-100 transition-colors disabled:opacity-40"><Ban size={14} strokeWidth={2} /></button>
                             )}
                           </div>
                         </td>

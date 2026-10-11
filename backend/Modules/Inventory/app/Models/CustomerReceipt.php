@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\Inventory\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\Inventory\Enums\CustomerReceiptStatus;
@@ -47,6 +48,11 @@ class CustomerReceipt extends Model
         'created_by'       => 'integer',
         'status'           => CustomerReceiptStatus::class,
     ];
+
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(CustomerMaster::class, 'customer_id');
+    }
 
     public function allocations(): HasMany
     {

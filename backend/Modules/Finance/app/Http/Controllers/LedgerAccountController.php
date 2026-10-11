@@ -52,8 +52,12 @@ class LedgerAccountController extends Controller
      */
     public function all(): JsonResponse
     {
+        // account_category_id was missing here while the service supported it,
+        // so "every account under Current Assets" was unreachable from the API.
         $accounts = $this->service->all(request()->only([
-            'control_account_id', 'account_type', 'cash_book_type', 'company_id', 'fund_sources_only',
+            'control_account_id', 'account_category_id', 'account_type',
+            'cash_book_type', 'company_id', 'fund_sources_only',
+            'include_party_accounts',
         ]));
 
         return response()->json(['data' => LedgerAccountResource::collection($accounts)]);

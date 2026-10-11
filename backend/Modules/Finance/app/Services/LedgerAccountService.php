@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Modules\Finance\DTOs\LedgerAccountData;
 use Modules\Finance\Models\ControlAccount;
+use Modules\Finance\Models\JournalLine;
 use Modules\Finance\Models\LedgerAccount;
 
 class LedgerAccountService
@@ -22,6 +23,33 @@ class LedgerAccountService
     private const EAGER = ['controlAccount.category', 'company', 'bank', 'bankBranch'];
 
     public function __construct(private readonly AccountCodeGenerator $codes) {}
+
+    /**
+     * Read cash_book_type as a list, however it arrived.
+     *
+     * "Offer cash AND bank in one request" is the common case -- a Supplier
+     * Payment can be settled either way -- so a single scalar would make it
+     * inexpressible. Accepts an array from PHP callers and a comma-separated
+     * string from a query string, since ?cash_book_type[]=a&cash_book_type[]=b
+     * is awkward for the frontend to build.
+     *
+     * @return list<string>|null null means "do not filter at all"
+     */
+    private static function cashBookTypes(mixed $value): ?array
+    {
+        if ($value === null || $value === '' || $value === []) {
+            return null;
+        }
+
+        $list = is_array($value) ? $value : explode(',', (string) $value);
+
+        $list = array_values(array_filter(array_map(
+            static fn ($t): string => trim((string) $t),
+            $list,
+        ), static fn (string $t): bool => $t !== ''));
+
+        return $list === [] ? null : $list;
+    }
 
     /** @param array<string, mixed> $filters */
     public function paginate(int $perPage = 50, array $filters = []): LengthAwarePaginator
@@ -51,8 +79,8 @@ class LedgerAccountService
             );
         }
 
-        if (! empty($filters['cash_book_type'])) {
-            $query->where('cash_book_type', $filters['cash_book_type']);
+        if (($types = self::cashBookTypes($filters['cash_book_type'] ?? null)) !== null) {
+            $query->whereIn('cash_book_type', $types);
         }
 
         if (! empty($filters['company_id'])) {
@@ -72,7 +100,8 @@ class LedgerAccountService
      * `fund_sources_only` is what payment screens use: rather than offering the
      * entire chart of accounts, they ask for the handful of accounts money
      * actually moves through. Pass cash_book_type to narrow further — a Petty
-     * Cash Payment wants petty_cash_book alone.
+     * Cash Payment wants petty_cash_book alone, while a Supplier Payment wants
+     * cash and bank together, which is why it accepts a list.
      *
      * @param array<string, mixed> $filters
      */
@@ -80,6 +109,14 @@ class LedgerAccountService
     {
         return LedgerAccount::with(self::EAGER)
             ->where('is_active', true)
+            // Per-party accounts are excluded by default: a chart with
+            // thousands of customer accounts makes a dropdown unusable, and
+            // documents resolve those automatically from the party on the
+            // line, so hand-picking one is nearly always a mistake.
+            ->when(
+                empty($filters['include_party_accounts']),
+                fn ($q) => $q->excludingParties(),
+            )
             ->when(
                 ! empty($filters['control_account_id']),
                 fn ($q) => $q->where('control_account_id', (int) $filters['control_account_id']),
@@ -95,7 +132,7 @@ class LedgerAccountService
             ->when(
                 ! empty($filters['fund_sources_only']),
                 fn ($q) => $q->fundSources(
-                    ! empty($filters['cash_book_type']) ? [(string) $filters['cash_book_type']] : null,
+                    self::cashBookTypes($filters['cash_book_type'] ?? null),
                     // A payment made by one company may only draw on that
                     // company's own cash and bank accounts.
                     ! empty($filters['company_id']) ? (int) $filters['company_id'] : null,
@@ -126,6 +163,42 @@ class LedgerAccountService
         });
     }
 
+    /**
+     * Create the ledger account that represents one supplier or customer.
+     *
+     * Separate from create() on purpose. That one takes a LedgerAccountData
+     * built from a form, with a cash/bank block and a company that make no
+     * sense for a party. This one is called by PartyLedgerProvisioner during a
+     * posting, so it accepts only what a party account can legitimately have.
+     *
+     * The unique index on (party_type, party_id) is the real guarantee here:
+     * two concurrent postings for the same new supplier cannot both succeed, so
+     * a party can never end up with two accounts.
+     */
+    public function createForParty(
+        int    $controlAccountId,
+        string $name,
+        string $partyType,
+        int    $partyId,
+    ): LedgerAccount {
+        return DB::transaction(function () use ($controlAccountId, $name, $partyType, $partyId): LedgerAccount {
+            $control = ControlAccount::findOrFail($controlAccountId);
+
+            $ledger = new LedgerAccount([
+                'control_account_id'  => $control->id,
+                'ledger_account_name' => $name,
+                'is_active'           => true,
+                'party_type'          => $partyType,
+                'party_id'            => $partyId,
+            ]);
+
+            $ledger->code = $this->codes->nextLedgerAccountCode($control, lock: true);
+            $ledger->save();
+
+            return $ledger;
+        });
+    }
+
     public function update(LedgerAccount $ledger, LedgerAccountData $data): LedgerAccount
     {
         // The control account's code is the first five digits of this one.
@@ -143,15 +216,29 @@ class LedgerAccountService
     }
 
     /**
-     * Soft delete only.
+     * Soft delete, and never once an account has been posted to.
      *
-     * There is no GL table yet, so there is nothing to check against. When
-     * journal entries land (Step 3), this is where the "account has postings"
-     * guard goes — a posted account must never disappear, because historical
-     * reports still have to resolve its code and name.
+     * This is the guard the earlier version of this comment asked for. A posted
+     * account must not disappear: historical reports still have to resolve its
+     * code and name, and fin_journal_lines.ledger_account_id carries
+     * restrictOnDelete precisely so the database would refuse a hard delete.
+     * Checking here turns that database error into a readable message.
+     *
+     * Deactivating is the right move for an account that should no longer be
+     * used -- it stays resolvable for history while refusing new postings.
      */
     public function delete(LedgerAccount $ledger): void
     {
+        $lines = JournalLine::where('ledger_account_id', $ledger->id)->count();
+
+        if ($lines > 0) {
+            throw ValidationException::withMessages([
+                'id' => $ledger->code . ' ' . $ledger->ledger_account_name . ' has ' . $lines
+                    . ' journal line(s) posted to it and can never be deleted. Set it inactive '
+                    . 'instead -- history keeps resolving it, and nothing new can post to it.',
+            ]);
+        }
+
         $ledger->delete();
     }
 

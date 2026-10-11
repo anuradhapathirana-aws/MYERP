@@ -18,6 +18,9 @@ class SupplierPaymentSettlement extends Model
         'payment_mode_name',
         'amount',
         'bank_id',
+        // Which cash or bank ACCOUNT the money moved through. A soft link to
+        // fin_ledger_accounts with no FK: Finance may not be installed.
+        'ledger_account_id',
         'bank_name',
         'bank_account_no',
         'reference_no',
@@ -29,6 +32,7 @@ class SupplierPaymentSettlement extends Model
     protected $casts = [
         'payment_id'       => 'integer',
         'payment_mode_id'  => 'integer',
+        'ledger_account_id' => 'integer',
         'amount'           => 'decimal:4',
         'instrument_date'  => 'date',
         'is_thirdparty'    => 'boolean',

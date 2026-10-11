@@ -272,6 +272,8 @@ Route::middleware(['auth:sanctum', 'module:inventory'])->prefix('v1')->group(fun
         ->name('inventory.supplier-payments.open-credit-notes');
     Route::post('supplier-payments/{supplier_payment}/confirm', [SupplierPaymentController::class, 'confirm'])
         ->name('inventory.supplier-payments.confirm');
+    Route::post('supplier-payments/{supplier_payment}/void', [SupplierPaymentController::class, 'void'])
+        ->name('inventory.supplier-payments.void');
     Route::apiResource('supplier-payments', SupplierPaymentController::class)
         ->names('inventory.supplier-payments');
 
@@ -288,6 +290,8 @@ Route::middleware(['auth:sanctum', 'module:inventory'])->prefix('v1')->group(fun
         ->name('inventory.customer-receipts.open-credit-notes');
     Route::post('customer-receipts/{customer_receipt}/confirm', [CustomerReceiptController::class, 'confirm'])
         ->name('inventory.customer-receipts.confirm');
+    Route::post('customer-receipts/{customer_receipt}/void', [CustomerReceiptController::class, 'void'])
+        ->name('inventory.customer-receipts.void');
     Route::get('customer-receipts/{customer_receipt}/pdf', [CustomerReceiptPdfController::class, 'download'])
         ->name('inventory.customer-receipts.pdf');
     Route::apiResource('customer-receipts', CustomerReceiptController::class)

@@ -18,6 +18,13 @@ export const deleteCustomerReceipt = (id) =>
 export const confirmCustomerReceipt = (id) =>
   api.post(`/api/v1/customer-receipts/${id}/confirm`).then((r) => r.data)
 
+/**
+ * Reverse a confirmed receipt. Not a delete: the document stays, the ledger
+ * receives a mirror journal and the invoices it settled become open again.
+ */
+export const voidCustomerReceipt = ({ id, reason }) =>
+  api.post(`/api/v1/customer-receipts/${id}/void`, { reason }).then((r) => r.data)
+
 export const getNextReceiptNo = () =>
   api.get('/api/v1/customer-receipts/next-receipt-no').then((r) => r.data.data.receipt_no)
 

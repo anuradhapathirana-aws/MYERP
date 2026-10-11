@@ -23,6 +23,7 @@ class SupplierPaymentController extends Controller
         $this->middleware('permission:create_supplier_payments')->only(['store']);
         $this->middleware('permission:edit_supplier_payments')->only(['update']);
         $this->middleware('permission:confirm_supplier_payments')->only(['confirm']);
+        $this->middleware('permission:void_supplier_payments')->only(['void']);
         $this->middleware('permission:delete_supplier_payments')->only(['destroy']);
     }
 
@@ -81,6 +82,26 @@ class SupplierPaymentController extends Controller
     public function confirm(SupplierPayment $supplierPayment): JsonResponse
     {
         $payment = $this->service->confirm($supplierPayment);
+
+        return response()->json(
+            ['data' => (new SupplierPaymentResource($payment))->toArray(request())],
+        );
+    }
+
+    /**
+     * Undo a confirmed payment.
+     *
+     * Its own permission rather than reusing confirm: undoing something already
+     * in the books, and already in the general ledger, is a different level of
+     * trust from entering it.
+     */
+    public function void(SupplierPayment $supplierPayment): JsonResponse
+    {
+        $reason  = request()->input('reason');
+        $payment = $this->service->void(
+            $supplierPayment,
+            is_string($reason) && trim($reason) !== '' ? trim($reason) : null,
+        );
 
         return response()->json(
             ['data' => (new SupplierPaymentResource($payment))->toArray(request())],

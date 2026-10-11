@@ -15,9 +15,11 @@ import {
 import { getAllCustomers } from '../../api/customers'
 import { getAllPaymentModes } from '../../api/paymentModes'
 import { getAllBanks } from '../../api/banks'
+import { getAllLedgerAccounts } from '../../api/ledgerAccounts'
 import { getInvoice } from '../../api/invoices'
 import Breadcrumb from '../../components/Breadcrumb'
 import Money from '../../components/ui/Money'
+import FilterSearchSelect from '../../components/ui/FilterSearchSelect'
 import { confirmAction, showError, showSuccess } from '../../utils/alerts'
 import { fmtMoneyWithSymbol } from '../../utils/currency'
 import { printPdfBlob } from '../../utils/pdf'
@@ -39,7 +41,7 @@ function SectionHeader({ icon: Icon, title, colorClass, right }) {
 
 function emptySettlementDraft() {
   return {
-    payment_mode_id: '', amount: '', bank_name: '', bank_account_no: '',
+    payment_mode_id: '', amount: '', ledger_account_id: '', bank_name: '', bank_account_no: '',
     reference_no: '', instrument_date: '',
   }
 }
@@ -96,6 +98,14 @@ export default function CustomerReceiptFormPage() {
   // Banks come from the shared master, not a hardcoded list, so there is one
   // spelling of each bank across the whole system.
   const { data: banks = EMPTY_ARRAY } = useQuery({ queryKey: ['banks-all'], queryFn: getAllBanks })
+
+  // The cash and bank accounts money can actually arrive in. Comes back empty
+  // on an installation without Finance, which is what hides Deposit To there.
+  const { data: fundSources = EMPTY_ARRAY } = useQuery({
+    queryKey: ['ledger-accounts-fund-sources'],
+    queryFn:  () => getAllLedgerAccounts({ fund_sources_only: 1 }),
+    staleTime: 5 * 60 * 1000,
+  })
   const settleableModes = paymentModes.filter((m) => m.code !== 'setoff')
 
   const { data: nextReceiptNo } = useQuery({
@@ -164,6 +174,7 @@ export default function CustomerReceiptFormPage() {
     setSettlements((r.settlements ?? []).map((s) => ({
       _key: s.id, payment_mode_id: s.payment_mode_id, payment_mode_name: s.payment_mode_name,
       amount: String(s.amount), bank_id: s.bank_id ?? null, bank_name: s.bank_name ?? '', bank_account_no: s.bank_account_no ?? '',
+      ledger_account_id: s.ledger_account_id ? String(s.ledger_account_id) : '',
       reference_no: s.reference_no ?? '', instrument_date: s.instrument_date ?? '',
     })))
   }, [existing])
@@ -344,6 +355,35 @@ export default function CustomerReceiptFormPage() {
   const isOnlineTransferMode = selectedMode?.code === 'online_transfer'
   const transferRefMissing   = isOnlineTransferMode && !settlementDraft.reference_no.trim()
 
+  /*
+   * Deposit To options, narrowed by how the money is arriving.
+   *
+   * Cash lands in a cash box, a cheque or transfer in a bank. Filtered
+   * client-side rather than per-request: the list is small, cached once, and
+   * re-fetching on every mode change would be slower for no gain.
+   *
+   * Grouped by company so a multi-company installation reads clearly: a
+   * receipt may only land in one company's accounts, which the backend
+   * enforces when it derives the company for the journal.
+   *
+   * Not wrapped in useMemo on purpose: a manual memo here BLOCKS the React
+   * Compiler from optimizing the component, since it cannot prove the query
+   * result is stable. Letting the compiler do it is cheaper.
+   */
+  const depositToOptions = (() => {
+    const wantsCash = ['cash', 'petty_cash'].includes(selectedMode?.code ?? '')
+
+    return fundSources
+      .filter((a) => (wantsCash
+        ? a.cash_book_type !== 'bank'
+        : a.cash_book_type === 'bank'))
+      .map((a) => ({
+        value: String(a.id),
+        label: `${a.code} · ${a.ledger_account_name}`,
+        group: a.company_name ?? undefined,
+      }))
+  })()
+
   const addSettlement = () => {
     if (!settlementDraft.payment_mode_id || !(parseFloat(settlementDraft.amount) > 0)) {
       showError('Select a pay mode and enter an amount.')
@@ -361,6 +401,10 @@ export default function CustomerReceiptFormPage() {
       showError('Transaction reference number is required.')
       return
     }
+    if (fundSources.length > 0 && !settlementDraft.ledger_account_id) {
+      showError('Choose the Deposit To account — the exact cash or bank account the money arrives in.')
+      return
+    }
     setSettlements((prev) => [...prev, {
       _key: Date.now() + Math.random(),
       payment_mode_id:   settlementDraft.payment_mode_id,
@@ -369,6 +413,9 @@ export default function CustomerReceiptFormPage() {
       // Resolve the master id from the chosen name. A legacy name that is
       // not in the master yields null, and the backend keeps the text.
       bank_id:            banks.find((b) => b.bank_name === settlementDraft.bank_name)?.id ?? null,
+      // Which ACCOUNT the money landed in. bank_id names only the bank, which
+      // is ambiguous when a company holds two accounts at one of them.
+      ledger_account_id:  settlementDraft.ledger_account_id,
       bank_name:          settlementDraft.bank_name,
       bank_account_no:    settlementDraft.bank_account_no,
       reference_no:       settlementDraft.reference_no,
@@ -449,6 +496,7 @@ export default function CustomerReceiptFormPage() {
         payment_mode_id:  parseInt(s.payment_mode_id),
         amount:           parseFloat(s.amount),
         bank_id:          s.bank_id || null,
+        ledger_account_id: s.ledger_account_id ? parseInt(s.ledger_account_id) : null,
         bank_name:        s.bank_name || null,
         bank_account_no:  s.bank_account_no || null,
         reference_no:     s.reference_no || null,
@@ -482,7 +530,7 @@ export default function CustomerReceiptFormPage() {
   const handleConfirm = async () => {
     const ok = await confirmAction({
       title: 'Confirm this receipt?',
-      message: 'This will settle against invoice outstanding balances, post any setoffs and mark fully-received invoices as Paid. This action cannot be easily undone.',
+      message: 'This will settle against invoice outstanding balances, post any setoffs and mark fully-received invoices as Paid. Once confirmed it can only be reversed by a Void, never deleted.',
       confirmText: 'Yes, Confirm Receipt',
     })
     if (ok) confirmMutation.mutate()
@@ -889,6 +937,29 @@ export default function CustomerReceiptFormPage() {
                     onChange={(e) => setSettlementDraft((d) => ({ ...d, amount: e.target.value }))}
                   />
                 </div>
+                {/*
+                  Only rendered when a chart of accounts exists. An
+                  Inventory-only client has nothing to choose from, and their
+                  receipt still confirms exactly as it did before Finance.
+                */}
+                {fundSources.length > 0 && (
+                  <div>
+                    <label className={LABEL_CLS}>Deposit To *</label>
+                    <FilterSearchSelect
+                      size="form"
+                      wide
+                      clearable={false}
+                      placeholder="Select account…"
+                      value={settlementDraft.ledger_account_id}
+                      onChange={(v) => setSettlementDraft((d) => ({ ...d, ledger_account_id: v }))}
+                      options={depositToOptions}
+                    />
+                    <p className="mt-0.5 text-[10px] text-slate-400">
+                      The exact cash or bank account the money arrives in
+                    </p>
+                  </div>
+                )}
+
                 {selectedMode?.requires_bank_details && (
                   <>
                     {/* Feature disabled — shown for layout continuity but never interactive or submitted */}

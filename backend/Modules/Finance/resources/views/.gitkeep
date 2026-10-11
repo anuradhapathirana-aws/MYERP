@@ -1,0 +1,14 @@
+Keeps this directory in git.
+
+The Finance module serves JSON only -- every screen is React, so there are no
+Blade templates here and there may never be. The directory still has to exist,
+because nwidart's ModuleServiceProvider::registerViews() calls loadViewsFrom()
+on it unconditionally (unlike registerTranslations(), which guards with
+is_dir()). Without the directory, `php artisan view:cache` aborts the whole
+deployment with:
+
+    The "<...>/Modules/Finance/resources/views" directory does not exist.
+
+Git does not track empty directories, so this file is the only thing that
+makes the path survive a clone. Do not delete it. If Finance ever gains a PDF
+template, it goes here and this file can go.

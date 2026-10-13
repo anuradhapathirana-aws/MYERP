@@ -571,4 +571,31 @@ class QuantityTrackedProductTest extends TestCase
             'counted_qty' => 5,
         ])->assertStatus(422)->assertJsonValidationErrors('attribute_id');
     }
+
+    // ── Delivery Order source: what is still free to ship ─────────────────────
+
+    public function test_do_source_reports_quantity_still_free_after_other_drafts(): void
+    {
+        $red     = $this->colour('Red');
+        $product = $this->finishedGood($red);
+        $this->receive([$this->grnLine($product, 30, $red)]);
+        $so = $this->confirmedSo($product, 10, $red);
+
+        // Another draft DO already claims 4 of the 10.
+        $this->actingAs($this->user)->postJson('/api/v1/delivery-orders', [
+            'so_id'         => $so->id,
+            'delivery_date' => '2026-10-13',
+            'store_id'      => $this->storeId,
+            'location_id'   => $this->locationId,
+            'items'         => [['so_item_id' => $so->items()->first()->id, 'quantity' => 4]],
+        ])->assertCreated();
+
+        $line = $this->actingAs($this->user)
+            ->getJson("/api/v1/delivery-orders/from-so/{$so->id}")
+            ->assertOk()
+            ->json('data.items.0');
+
+        $this->assertEquals(10.0, (float) $line['remaining']);
+        $this->assertEquals(6.0, (float) $line['available_to_ship']);
+    }
 }

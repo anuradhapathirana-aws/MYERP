@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Modules\Inventory\Enums\StockReconciliationStatus;
 use Modules\Inventory\Models\ProductLocationStore;
+use Modules\Inventory\Services\StockReconciliationService;
 
 class StockReconciliationResource extends JsonResource
 {
@@ -31,10 +32,17 @@ class StockReconciliationResource extends JsonResource
             // the decision is still pending; a decided reconciliation is history.
             'live_system_qty_base' => $this->when(
                 $this->status === StockReconciliationStatus::PendingApproval,
-                fn () => (float) (ProductLocationStore::where('product_id', $this->product_id)
-                    ->where('store_id', $this->store_id)
-                    ->where('location_id', $this->location_id)
-                    ->value('current_stock') ?? 0.0),
+                fn () => $this->product !== null && $this->pieces->isEmpty()
+                    ? app(StockReconciliationService::class)->systemQtyFor(
+                        $this->product,
+                        $this->attribute_id !== null ? (int) $this->attribute_id : null,
+                        (int) $this->store_id,
+                        (int) $this->location_id,
+                    )
+                    : (float) (ProductLocationStore::where('product_id', $this->product_id)
+                        ->where('store_id', $this->store_id)
+                        ->where('location_id', $this->location_id)
+                        ->value('current_stock') ?? 0.0),
             ),
             'source_type'      => $this->source_type,
             'source_id'        => $this->source_id,

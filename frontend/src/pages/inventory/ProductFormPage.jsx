@@ -15,7 +15,14 @@ import Breadcrumb from '../../components/Breadcrumb'
 import TreeSelect from '../../components/TreeSelect'
 import { showError, showSuccess } from '../../utils/alerts'
 
-const PRODUCT_TYPES   = ['Inventory', 'Raw Material', 'Service']
+const PRODUCT_TYPES   = ['Inventory', 'Fabric', 'Finished Good', 'Raw Material', 'Service']
+// How stock is counted: Roll = QR-labelled rolls on GRN/SO/DO; Quantity = plain qty (+ colour).
+const STOCK_TRACKING_OPTIONS = [
+  { value: 'roll',     label: 'Roll' },
+  { value: 'quantity', label: 'Quantity' },
+]
+// Picking one of these product types pre-selects the matching tracking (still editable).
+const TRACKING_BY_TYPE = { 'Finished Good': 'quantity', Fabric: 'roll' }
 const STOCK_METHODS   = ['FIFO', 'LIFO', 'FEFO']
 const TRACKING_TYPES  = ['Batch', 'Serial']
 
@@ -59,6 +66,7 @@ const EMPTY_FORM = {
   name:                      '',
   display_name:              '',
   product_type:              'Inventory',
+  stock_tracking:            'roll',
   description:               '',
   category_id:               '',
   base_unit_type_id:         '',
@@ -813,6 +821,7 @@ export default function ProductFormPage() {
         name:                      p.name                     ?? '',
         display_name:              p.display_name             ?? '',
         product_type:              p.product_type             ?? '',
+        stock_tracking:            p.stock_tracking           ?? 'roll',
         description:               p.description              ?? '',
         category_id:               p.category_id  != null ? String(p.category_id)  : '',
         base_unit_type_id:         p.base_unit_type_id != null ? String(p.base_unit_type_id) : '',
@@ -921,6 +930,10 @@ export default function ProductFormPage() {
     const { name, value } = e.target
     setForm((prev) => {
       const updates = { [name]: value }
+      // Finished Good → Quantity, Fabric → Roll — unless stock already locks it
+      if (name === 'product_type' && TRACKING_BY_TYPE[value] && !stockingUomLocked) {
+        updates.stock_tracking = TRACKING_BY_TYPE[value]
+      }
       // Mirror product name → display name while they are still in sync
       if (name === 'name' && (prev.display_name === '' || prev.display_name === prev.name)) {
         updates.display_name = value
@@ -1097,6 +1110,7 @@ export default function ProductFormPage() {
       name:                   form.name.trim(),
       display_name:           form.display_name.trim(),
       product_type:           form.product_type,
+      stock_tracking:         form.stock_tracking,
       description:            form.description.trim() || null,
       category_id:            form.category_id !== '' ? Number(form.category_id) : null,
       base_unit_type_id:      form.base_unit_type_id !== '' ? Number(form.base_unit_type_id) : null,
@@ -1222,7 +1236,9 @@ export default function ProductFormPage() {
                 </Field>
                 <Field label="Product Type" required error={e.product_type} touched={t.product_type}>
                   <SelectField name="product_type" value={f.product_type} onChange={handleChange} onBlur={handleBlur}
-                    error={e.product_type} touched={t.product_type} options={PRODUCT_TYPES} placeholder="— Select type —" />
+                    error={e.product_type} touched={t.product_type}
+                    options={f.product_type && !PRODUCT_TYPES.includes(f.product_type) ? [f.product_type, ...PRODUCT_TYPES] : PRODUCT_TYPES}
+                    placeholder="— Select type —" />
                 </Field>
               </div>
 
@@ -1278,6 +1294,29 @@ export default function ProductFormPage() {
                     {stockingUomLocked
                       ? 'Locked — stock already recorded.'
                       : 'Stock is held in this unit. GRN & SO may use any unit of the same category.'}
+                  </p>
+                </Field>
+                <Field label="Stock Tracking" required className="min-w-[130px] shrink-0">
+                  <select
+                    name="stock_tracking"
+                    value={f.stock_tracking}
+                    onChange={handleChange}
+                    disabled={stockingUomLocked}
+                    className={[
+                      'block w-full rounded-md border-2 px-2 py-1 text-xs outline-none transition-all',
+                      stockingUomLocked
+                        ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-500'
+                        : 'border-slate-200 bg-slate-50 text-slate-800 focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/15',
+                    ].join(' ')}
+                  >
+                    {STOCK_TRACKING_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                  <p className="mt-0.5 text-[10px] text-slate-400">
+                    {stockingUomLocked
+                      ? 'Locked — stock already recorded.'
+                      : f.stock_tracking === 'roll' ? 'Received & sold as rolls.' : 'Received & sold by quantity — no rolls.'}
                   </p>
                 </Field>
               </div>

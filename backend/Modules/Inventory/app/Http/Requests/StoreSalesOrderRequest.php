@@ -10,7 +10,9 @@ use Illuminate\Validation\Validator;
 use Modules\Inventory\Enums\SalesOrderSource;
 use Modules\Inventory\Models\GrnItemPiece;
 use Modules\Inventory\Models\Product;
+use Modules\Inventory\Models\ProductAttribute;
 use Modules\Inventory\Models\ProductLocationStore;
+use Modules\Inventory\Services\ColourStockService;
 
 class StoreSalesOrderRequest extends FormRequest
 {
@@ -94,6 +96,13 @@ class StoreSalesOrderRequest extends FormRequest
                 ->where('allow_minus', false)
                 ->pluck('name', 'id');
 
+            // Quantity-tracked products (finished goods, …) are stocked per colour:
+            // a product that offers colours needs one on every line, and the stock
+            // check is that colour's own balance, not the product total.
+            $rollProductIds     = Product::rollTrackedIds(array_map('intval', $productIds));
+            $colourProductIds   = ProductAttribute::colourProductIds(array_map('intval', $productIds));
+            $colourStock        = app(ColourStockService::class);
+
             $stockByProduct = $checkableProducts->isEmpty()
                 ? collect()
                 : ProductLocationStore::whereIn('product_id', $checkableProducts->keys())
@@ -112,12 +121,28 @@ class StoreSalesOrderRequest extends FormRequest
                     continue;
                 }
 
+                $pieceCodes  = array_values(array_filter((array) ($item['piece_codes'] ?? [])));
+                $qty         = (float) ($item['quantity'] ?? 0);
+                $isQtyTracked = ! in_array($productId, $rollProductIds, true);
+                $attributeId  = !empty($item['attribute_id']) ? (int) $item['attribute_id'] : null;
+
+                if ($isQtyTracked && $attributeId === null && in_array($productId, $colourProductIds, true)) {
+                    $v->errors()->add("items.{$index}.attribute_id", 'Colour is required for this item.');
+                    continue;
+                }
+
                 if (!$checkableProducts->has($productId)) {
                     continue;
                 }
 
-                $pieceCodes = array_values(array_filter((array) ($item['piece_codes'] ?? [])));
-                $qty        = (float) ($item['quantity'] ?? 0);
+                if ($isQtyTracked && $attributeId !== null && $qty > 0
+                    && $colourStock->available($productId, $attributeId) <= 0) {
+                    $v->errors()->add(
+                        "items.{$index}.attribute_id",
+                        "{$checkableProducts->get($productId)} has no available stock in this colour.",
+                    );
+                    continue;
+                }
 
                 if ($pieceCodes === [] && $qty > 0 && (float) ($stockByProduct[$productId] ?? 0) <= 0) {
                     $v->errors()->add(

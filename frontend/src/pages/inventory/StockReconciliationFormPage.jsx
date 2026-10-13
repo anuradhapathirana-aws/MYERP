@@ -13,7 +13,7 @@ import {
 import { getAllProducts, getProduct } from '../../api/products'
 import { getAllStores } from '../../api/stores'
 import { getAllLocations } from '../../api/locations'
-import { getProductStock } from '../../api/stock'
+import { getColourStock, getProductStock } from '../../api/stock'
 import Breadcrumb from '../../components/Breadcrumb'
 import StockReconciliationRollPickerModal from '../../components/inventory/StockReconciliationRollPickerModal'
 import { confirmAction, confirmWithReason, showError, showSuccess } from '../../utils/alerts'
@@ -36,12 +36,13 @@ export default function StockReconciliationFormPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
-  const [mode, setMode] = useState('rolls') // 'qty' | 'rolls' — rolls is the only mode currently enabled
+  const [mode, setMode] = useState('rolls') // 'rolls' for roll-tracked products, 'qty' for quantity-tracked ones
   const [pickerOpen, setPickerOpen] = useState(false)
   const [errors, setErrors] = useState({})
 
   const [form, setForm] = useState({
     product_id: '',
+    attribute_id: '', // colour being counted (quantity-tracked products)
     store_id: '',
     location_id: '',
     unit_id: '',
@@ -86,19 +87,40 @@ export default function StockReconciliationFormPage() {
     enabled:  Boolean(form.product_id) && Boolean(form.store_id) && !isEdit,
   })
 
+  // Quantity-tracked products (finished goods) have no rolls: they are counted per
+  // colour, against that colour's own balance in this store/location.
+  const isQtyProduct = selectedProduct?.stock_tracking === 'quantity'
+
+  const { data: colourRows } = useQuery({
+    queryKey: ['colour-stock', form.product_id, form.store_id, form.location_id],
+    queryFn:  () => getColourStock(form.product_id, { storeId: form.store_id, locationId: form.location_id }),
+    enabled:  isQtyProduct && Boolean(form.store_id) && Boolean(form.location_id) && !isEdit,
+  })
+
+  // On a new reconciliation the mode follows the product's tracking: quantity-tracked
+  // items are counted, roll-tracked ones corrected roll by roll.
+  const activeMode = !isEdit && productDetail ? (isQtyProduct ? 'qty' : 'rolls') : mode
+
   const systemQtyLive = useMemo(() => {
     if (isEdit) return existing?.system_qty_base ?? null
+    if (isQtyProduct && form.attribute_id) {
+      if (!colourRows) return null
+      return colourRows
+        .filter((r) => String(r.attribute_id) === String(form.attribute_id))
+        .reduce((sum, r) => sum + Number(r.quantity || 0), 0)
+    }
     if (!stockInfo) return null
     if (!form.location_id) return stockInfo.total_stock
     const row = stockInfo.breakdown?.find((b) => String(b.location_id) === String(form.location_id))
     return row ? Number(row.current_stock) : 0
-  }, [isEdit, existing, stockInfo, form.location_id])
+  }, [isEdit, existing, stockInfo, form.location_id, isQtyProduct, form.attribute_id, colourRows])
 
   // Load an existing draft/submitted reconciliation into form state
   useEffect(() => {
     if (!existing) return
     setForm({
       product_id: existing.product_id ?? '',
+      attribute_id: existing.attribute_id ?? '',
       store_id: existing.store_id ?? '',
       location_id: existing.location_id ?? '',
       unit_id: existing.unit_id ?? '',
@@ -186,10 +208,11 @@ export default function StockReconciliationFormPage() {
       source_id: form.source_type ? (form.source_id || null) : null,
       also_adjust_po: form.source_type === 'grn' ? form.also_adjust_po : false,
     }
-    if (mode === 'rolls') {
+    if (activeMode === 'rolls') {
       payload.pieces = pieces.map((p) => ({ grn_item_piece_id: p.grn_item_piece_id, new_weight: p.new_weight }))
     } else {
       payload.counted_qty = form.counted_qty
+      payload.attribute_id = form.attribute_id || null
     }
     setErrors({})
     saveMutation.mutate(payload)
@@ -402,18 +425,20 @@ export default function StockReconciliationFormPage() {
                 <button
                   type="button"
                   onClick={() => setMode('rolls')}
-                  className={`flex-1 rounded-md px-2 py-1 transition-colors ${mode === 'rolls' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`}
+                  disabled={isQtyProduct}
+                  title={isQtyProduct ? 'Quantity-tracked item — it has no rolls' : undefined}
+                  className={`flex-1 rounded-md px-2 py-1 transition-colors disabled:cursor-not-allowed disabled:text-slate-300 ${activeMode === 'rolls' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`}
                 >
                   Correct Specific Roll(s)
                 </button>
                 <button
                   type="button"
-                  disabled
-                  title="Coming soon"
-                  className="flex flex-1 cursor-not-allowed items-center justify-center gap-1.5 rounded-md px-2 py-1 text-slate-300"
+                  onClick={() => setMode('qty')}
+                  disabled={!isQtyProduct}
+                  title={!isQtyProduct ? 'Roll-tracked items are corrected roll by roll' : undefined}
+                  className={`flex-1 rounded-md px-2 py-1 transition-colors disabled:cursor-not-allowed disabled:text-slate-300 ${activeMode === 'qty' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`}
                 >
                   Correct Total Quantity
-                  <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-400">Soon</span>
                 </button>
               </div>
             )}
@@ -433,8 +458,28 @@ export default function StockReconciliationFormPage() {
               </div>
             )}
 
-            {mode === 'qty' ? (
+            {activeMode === 'qty' ? (
               <div>
+                {isQtyProduct && (
+                  <div className="mb-2">
+                    <label className={LABEL_CLS}>Colour</label>
+                    <select
+                      className={errors.attribute_id ? INPUT_ERR_CLS : SELECT_CLS}
+                      value={form.attribute_id}
+                      disabled={!isDraft}
+                      onChange={(e) => setField('attribute_id', e.target.value)}
+                    >
+                      <option value="">{form.store_id && form.location_id ? 'Select colour…' : 'Select store & location first…'}</option>
+                      {(colourRows ?? []).filter((r) => r.attribute_id != null).map((r) => (
+                        <option key={r.attribute_id} value={r.attribute_id}>{r.color} ({fmt(r.quantity, 2)})</option>
+                      ))}
+                      {isEdit && existing?.attribute && (
+                        <option value={existing.attribute_id}>{existing.attribute.name ?? existing.attribute.attribute_name}</option>
+                      )}
+                    </select>
+                    {errors.attribute_id && <p className="mt-0.5 text-[10px] text-red-500">{errors.attribute_id[0]}</p>}
+                  </div>
+                )}
                 <label className={LABEL_CLS}>Counted / Actual Quantity *</label>
                 <input
                   type="number" step="0.0001" min="0"

@@ -18,7 +18,7 @@ import {
 } from '../../api/salesOrders'
 import SalesOrderRollPickerModal from '../../components/inventory/SalesOrderRollPickerModal'
 import { getProducts, getProduct } from '../../api/products'
-import { getProductStock } from '../../api/stock'
+import { colourStockMap, getColourStock, getProductStock } from '../../api/stock'
 import { getAllCustomers } from '../../api/customers'
 import { getUsersAll } from '../../api/users'
 import { getAllUnitTypesFlat } from '../../api/unitTypes'
@@ -331,6 +331,8 @@ function emptyItem() {
     available_count: null, // in-stock rolls of the product (null = not fetched yet)
     available_weight: 0,
     available_stock: null, // total current stock — only checked when available_count is 0
+    stock_tracking:  'roll', // 'quantity' = finished goods etc.: typed qty + colour, never rolls
+    colour_stock:    null, // quantity lines: { [attribute_id]: qty } (null = not fetched / allow_minus)
     cost_hint:       null, // latest GRN cost — below-cost warning basis on manual lines
     no_selling_price: false, // product has no price-list selling price configured
     expanded:        false,
@@ -342,6 +344,25 @@ function isColorAttributeTypeName(name) {
   const n = (name || '').trim().toLowerCase()
   return n === 'color' || n === 'colour'
 }
+
+// Quantity-tracked products (finished goods, …) are sold by typed qty + colour — no rolls.
+const isQtyRow = (row) => row.stock_tracking === 'quantity'
+
+// Fetch a quantity line's colour-wise stock into row.colour_stock.
+function loadColourStock(setItems, rowKey, productId) {
+  getColourStock(productId)
+    .then((rows) => {
+      const map = colourStockMap(rows)
+      setItems((prev) => prev.map((row) => row._key === rowKey ? { ...row, colour_stock: map } : row))
+    })
+    .catch(() => { /* silent — server guard still applies on save */ })
+}
+
+// Stock of the line's chosen colour on a quantity line (null = unknown / not checked).
+const colourAvailable = (row) =>
+  isQtyRow(row) && row.colour_stock && row.attribute_id
+    ? (row.colour_stock[String(row.attribute_id)] ?? 0)
+    : null
 
 // A roll line no longer derives its quantity from the rolls: the customer may buy 50 yd
 // off a 100 m roll, and the roll gets cut at dispatch. Attaching rolls auto-fills the
@@ -716,6 +737,8 @@ export default function SalesOrderFormPage() {
         available_count: null,
         available_weight: 0,
         available_stock: null,
+        stock_tracking: it.product?.stock_tracking ?? 'roll',
+        colour_stock:   null,
         pieces:       (it.pieces ?? []).map((p) => ({
           piece_code:     p.piece_code,
           weight:         p.weight,
@@ -744,6 +767,7 @@ export default function SalesOrderFormPage() {
           const stock = Number(total_stock) || 0
           setItems((prev) => prev.map((row) => row._key === r._key ? { ...row, available_stock: stock } : row))
         }).catch(() => { /* silent — server guard still applies on save */ })
+        if (isQtyRow(r)) loadColourStock(setItems, r._key, r.product_id)
       })
       if (so.items.some((it) => parseFloat(it.discount) > 0)) setDiscountEnabled(true)
       if (so.items.some((it) => parseFloat(it.tax) > 0))      setTaxEnabled(true)
@@ -917,6 +941,8 @@ export default function SalesOrderFormPage() {
             color_options: [],
             available_count: null,
             available_stock: null,
+            stock_tracking: product.stock_tracking ?? 'roll',
+            colour_stock:   null,
           }
         : row
     ))
@@ -958,6 +984,25 @@ export default function SalesOrderFormPage() {
     // GRN, so "roll-tracked" just means "has rolls in stock right now". For roll-tracked
     // products the colour choices are the colours that actually have rolls in stock
     // (not the full attribute master).
+    // Quantity-tracked products never have rolls: typed qty + colour, checked
+    // against that colour's own stock.
+    if ((product.stock_tracking ?? 'roll') === 'quantity') {
+      setItems((prev) => prev.map((row) =>
+        row._key === rowKey ? { ...row, available_count: 0, available_weight: 0 } : row
+      ))
+      if (!product.allow_minus) {
+        getProductStock(product.id)
+          .then(({ total_stock }) => {
+            const stock = Number(total_stock) || 0
+            setItems((prev) => prev.map((row) => row._key === rowKey ? { ...row, available_stock: stock } : row))
+          })
+          .catch(() => { /* silent — server guard still applies on save */ })
+        loadColourStock(setItems, rowKey, product.id)
+      }
+      setTimeout(() => focusCell(rowKey, 'color'), 50)
+      return
+    }
+
     getAvailablePieces(product.id)
       .then(({ pieces, count, total_weight }) => {
         if (count === 0) {
@@ -1158,6 +1203,17 @@ export default function SalesOrderFormPage() {
     // Lines with no rolls in stock have no roll picker to guard them — block the line
     // outright when the product has zero stock anywhere. (Roll-tracked lines with rolls
     // attached are already covered above.)
+    // Quantity lines: a product that offers colours needs one, and that colour must be in stock
+    const noColourLine = items.find((r) =>
+      isQtyRow(r) && r.product_id && parseFloat(r.quantity) > 0 && r.color_options.length > 0 && !r.attribute_id)
+    if (noColourLine)
+      clientErrors.items = [`Select a colour for ${noColourLine.product_name}.`]
+
+    const noColourStockLine = items.find((r) =>
+      r.product_id && parseFloat(r.quantity) > 0 && colourAvailable(r) !== null && colourAvailable(r) <= 0)
+    if (noColourStockLine)
+      clientErrors.items = [`${noColourStockLine.product_name} has no available stock in the selected colour.`]
+
     const outOfStockLine = items.find((r) =>
       r.product_id && parseFloat(r.quantity) > 0 && r.available_stock === 0)
     if (outOfStockLine)
@@ -1417,7 +1473,18 @@ export default function SalesOrderFormPage() {
                         </button>
                       )}
                     </div>
-                    {row.product_id && !isScanned && row.available_count === 0 && row.available_stock !== 0 && (
+                    {isQtyRow(row) && row.product_id && row.available_stock !== 0 && (
+                      colourAvailable(row) !== null ? (
+                        <span className={`mt-0.5 inline-block rounded px-1.5 py-px text-[9px] font-bold ${colourAvailable(row) > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-500'}`}>
+                          {colourAvailable(row) > 0 ? `In stock: ${fmtQty(colourAvailable(row))}` : 'No stock in this colour'}
+                        </span>
+                      ) : row.available_stock != null && (
+                        <span className="mt-0.5 inline-block rounded bg-slate-100 px-1.5 py-px text-[9px] font-bold text-slate-500">
+                          In stock: {fmtQty(row.available_stock)}
+                        </span>
+                      )
+                    )}
+                    {row.product_id && !isScanned && !isQtyRow(row) && row.available_count === 0 && row.available_stock !== 0 && (
                       <span className="mt-0.5 inline-block rounded bg-red-50 px-1.5 py-px text-[9px] font-bold text-red-500">
                         No rolls available in stock
                       </span>

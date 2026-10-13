@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Modules\Inventory\Models\ProductLocationStore;
+use Modules\Inventory\Services\ColourStockService;
 
 class StockController extends Controller
 {
@@ -39,6 +40,28 @@ class StockController extends Controller
                 'total_stock' => $totalStock,
                 'breakdown'   => $rows->values(),
             ],
+        ]);
+    }
+
+    /**
+     * GET /stock/by-colour?product_id=&store_id=&location_id=
+     * Colour-wise balances of one product (from the stock ledger) — the SO/DO
+     * forms show these for quantity-tracked products.
+     */
+    public function byColour(Request $request, ColourStockService $colourStock): JsonResponse
+    {
+        $request->validate([
+            'product_id'  => ['required', 'integer', 'exists:inv_products,id'],
+            'store_id'    => ['nullable', 'integer', 'exists:inv_stores,id'],
+            'location_id' => ['nullable', 'integer', 'exists:inv_locations,id'],
+        ]);
+
+        return response()->json([
+            'data' => $colourStock->balances(
+                $request->integer('product_id'),
+                $request->filled('store_id') ? $request->integer('store_id') : null,
+                $request->filled('location_id') ? $request->integer('location_id') : null,
+            ),
         ]);
     }
 

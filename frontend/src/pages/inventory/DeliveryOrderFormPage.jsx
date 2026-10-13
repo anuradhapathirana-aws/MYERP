@@ -204,12 +204,18 @@ export default function DeliveryOrderFormPage() {
   const { data: locations = [] } = useQuery({ queryKey: ['locations-all'], queryFn: getAllLocations, staleTime: 5 * 60 * 1000 })
   const { data: stores    = [] } = useQuery({ queryKey: ['stores-all'],    queryFn: getAllStores,    staleTime: 5 * 60 * 1000 })
 
+  // Only one location (or only one store in the chosen location)? Use it without
+  // making the user pick — they can still change it when there are more.
+  const locationId = form.location_id || (locations.length === 1 ? String(locations[0].id) : '')
+
   const filteredStores = useMemo(
-    () => form.location_id
-      ? stores.filter((s) => String(s.location_id) === String(form.location_id))
+    () => locationId
+      ? stores.filter((s) => String(s.location_id) === String(locationId))
       : stores,
-    [stores, form.location_id],
+    [stores, locationId],
   )
+
+  const storeId = form.store_id || (locationId && filteredStores.length === 1 ? String(filteredStores[0].id) : '')
 
   const { data: nextDoNo, isLoading: loadingDoNo } = useQuery({
     queryKey: ['next-do-no'],
@@ -229,7 +235,16 @@ export default function DeliveryOrderFormPage() {
   useEffect(() => {
     if (!soSource || isEdit) return
     setForm((f) => ({ ...f, delivery_address: f.delivery_address || soSource.sales_order.delivery_address || '' }))
-    setSelection({})
+    // Typed-quantity lines (finished goods, …) start at their full undelivered
+    // remainder, less what other draft DOs already claim. Roll lines stay unpicked.
+    const prefill = {}
+    for (const item of soSource.items ?? []) {
+      const free = Number(item.available_to_ship ?? item.remaining ?? 0)
+      if (!item.is_scanned && free > 0) {
+        prefill[item.so_item_id] = { pieceIds: new Set(), quantity: String(free) }
+      }
+    }
+    setSelection(prefill)
   }, [soSource, isEdit])
 
   /* ── Edit-mode hydration ──────────────────────────────────── */
@@ -401,7 +416,7 @@ export default function DeliveryOrderFormPage() {
     if (items.length === 0)
       clientErrors.items = ['Select at least one roll or quantity to deliver.']
 
-    if (hasManualQty && (!form.store_id || !form.location_id))
+    if (hasManualQty && (!storeId || !locationId))
       clientErrors.store_id = ['Select the store and location manual lines ship from.']
 
     if (Object.keys(clientErrors).length) {
@@ -418,8 +433,8 @@ export default function DeliveryOrderFormPage() {
       delivery_mode:      form.delivery_mode || null,
       delivery_vehicle:   form.delivery_vehicle.trim() || null,
       responsible_person: form.responsible_person.trim() || null,
-      store_id:           form.store_id    ? parseInt(form.store_id)    : null,
-      location_id:        form.location_id ? parseInt(form.location_id) : null,
+      store_id:           storeId    ? parseInt(storeId)    : null,
+      location_id:        locationId ? parseInt(locationId) : null,
       delivery_address:   form.delivery_address.trim() || null,
       remarks:            form.remarks.trim() || null,
       items,
@@ -542,7 +557,7 @@ export default function DeliveryOrderFormPage() {
                 <>
                   <div>
                     <label className={LABEL_CLS}>Ship-From Location <span className="text-red-500 normal-case font-bold">*</span></label>
-                    <select className={SELECT_CLS} value={form.location_id} onChange={(e) => setForm((f) => ({ ...f, location_id: e.target.value, store_id: '' }))}>
+                    <select className={SELECT_CLS} value={locationId} onChange={(e) => setForm((f) => ({ ...f, location_id: e.target.value, store_id: '' }))}>
                       <option value="">— Select —</option>
                       {locations.map((l) => <option key={l.id} value={l.id}>{l.location_name ?? l.name}</option>)}
                     </select>
@@ -550,7 +565,7 @@ export default function DeliveryOrderFormPage() {
                   </div>
                   <div>
                     <label className={LABEL_CLS}>Ship-From Store <span className="text-red-500 normal-case font-bold">*</span></label>
-                    <select className={SELECT_CLS} value={form.store_id} onChange={(e) => setForm((f) => ({ ...f, store_id: e.target.value }))}>
+                    <select className={SELECT_CLS} value={storeId} onChange={(e) => setForm((f) => ({ ...f, store_id: e.target.value }))}>
                       <option value="">— Select —</option>
                       {filteredStores.map((s) => <option key={s.id} value={s.id}>{s.store_name}</option>)}
                     </select>
@@ -683,7 +698,7 @@ export default function DeliveryOrderFormPage() {
                           </label>
                           <div className="relative">
                             <input
-                              type="number" min="0" max={line.remaining} step="0.0001" placeholder="0"
+                              type="number" min="0" max={line.available_to_ship ?? line.remaining} step="0.0001" placeholder="0"
                               value={sel.quantity}
                               onChange={(e) => setQty(line.so_item_id, e.target.value)}
                               className="block w-32 rounded border border-slate-200 bg-slate-50 py-0.5 pl-1.5 pr-9 text-xs text-slate-800 outline-none transition-all focus:border-indigo-400 focus:bg-white"

@@ -119,6 +119,7 @@ class GoodsReceivedNoteService
                     'product_code' => $item->product->product_code,
                     'is_batch'     => $item->product->is_batch,
                     'is_serial'    => $item->product->is_serial,
+                    'stock_tracking' => $item->product->stockTrackingValue(),
                     'base_unit_type_id'     => $item->product->base_unit_type_id,
                     'base_unit_category_id' => $item->product->baseUnit?->unit_category_id,
                 ],
@@ -170,6 +171,7 @@ class GoodsReceivedNoteService
                         'product_code' => $item->product->product_code,
                         'is_batch'     => $item->product->is_batch,
                         'is_serial'    => $item->product->is_serial,
+                        'stock_tracking' => $item->product->stockTrackingValue(),
                         'base_unit_type_id'     => $item->product->base_unit_type_id,
                         'base_unit_category_id' => $item->product->baseUnit?->unit_category_id,
                     ],
@@ -322,11 +324,12 @@ class GoodsReceivedNoteService
 
             $grn->load(['items.product.baseUnit', 'items.batchAssignments.batch', 'items.pieces']);
 
-            // Every line must be received as rolls — they become the QR-labelled
-            // pieces that sales orders allocate. Catches legacy drafts saved
-            // before rolls became mandatory.
+            // Roll-tracked lines must be received as rolls — they become the
+            // QR-labelled pieces that sales orders allocate. Catches legacy drafts
+            // saved before rolls became mandatory. Quantity-tracked lines post
+            // their quantity alone.
             foreach ($grn->items as $item) {
-                if ($item->pieces->isEmpty()) {
+                if ($item->product?->isRollTracked() && $item->pieces->isEmpty()) {
                     abort(422, "Add rolls for {$item->product?->name} before confirming — every GRN line must be received as rolls.");
                 }
             }

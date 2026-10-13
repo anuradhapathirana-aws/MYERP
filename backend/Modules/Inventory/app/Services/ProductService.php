@@ -263,6 +263,9 @@ class ProductService
             'loyalty'                  => $data->loyalty,
             'is_batch'                 => $data->isBatch,
             'is_serial'                => $data->isSerial,
-        ];
+        ] + ($data->stockTracking !== null
+            // Absent = leave as is: the column default on create, unchanged on update.
+            ? ['stock_tracking' => $data->stockTracking->value]
+            : []);
     }
 }

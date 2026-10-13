@@ -29,6 +29,12 @@ class ProductFactory extends Factory
         ];
     }
 
+    /** A plain quantity-tracked item (finished good, …): no rolls anywhere. */
+    public function quantityTracked(): static
+    {
+        return $this->state(['stock_tracking' => 'quantity', 'product_type' => 'Finished Good']);
+    }
+
     public static function defaultUnitType(): UnitType
     {
         $category = UnitCategory::firstOrCreate(['name' => 'Test Unit Category']);

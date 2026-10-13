@@ -38,6 +38,7 @@ class StockReconciliationService
         private readonly UnitConversionService $units,
         private readonly ProductPricingService $pricing,
         private readonly GoodsReceivedNoteService $grn,
+        private readonly ColourStockService $colourStock,
     ) {
     }
 
@@ -89,7 +90,9 @@ class StockReconciliationService
         return DB::transaction(function () use ($data): StockReconciliation {
             $product = Product::findOrFail($data->productId);
 
-            $systemQtyBase = $this->liveStockBase($data->productId, $data->storeId, $data->locationId);
+            $systemQtyBase = empty($data->pieces)
+                ? $this->systemQtyFor($product, $data->attributeId, $data->storeId, $data->locationId)
+                : $this->liveStockBase($data->productId, $data->storeId, $data->locationId);
 
             [$countedQtyBase, $varianceQtyBase, $pieceRows, $attributeId] = $this->computeCorrection($product, $data, $systemQtyBase);
 
@@ -128,7 +131,9 @@ class StockReconciliationService
         return DB::transaction(function () use ($reconciliation, $data): StockReconciliation {
             $product = Product::findOrFail($data->productId);
 
-            $systemQtyBase = $this->liveStockBase($data->productId, $data->storeId, $data->locationId);
+            $systemQtyBase = empty($data->pieces)
+                ? $this->systemQtyFor($product, $data->attributeId, $data->storeId, $data->locationId)
+                : $this->liveStockBase($data->productId, $data->storeId, $data->locationId);
 
             [$countedQtyBase, $varianceQtyBase, $pieceRows, $attributeId] = $this->computeCorrection($product, $data, $systemQtyBase);
 
@@ -228,6 +233,17 @@ class StockReconciliationService
                 // always reapplied against the CURRENT live balance, so the ending
                 // balance lands exactly on what was counted regardless of any stock
                 // movement that happened while this was pending.
+                // A quantity-tracked product's count is per colour — measured against
+                // that colour's balance (the pivot row lock above serialises writers).
+                $product = Product::find($locked->product_id);
+                if ($product !== null) {
+                    $liveSystemQtyBase = $this->systemQtyFor(
+                        $product,
+                        $locked->attribute_id !== null ? (int) $locked->attribute_id : null,
+                        (int) $locked->store_id,
+                        (int) $locked->location_id,
+                    );
+                }
                 $varianceBase = (float) $locked->counted_qty_base - $liveSystemQtyBase;
             }
 
@@ -331,6 +347,20 @@ class StockReconciliationService
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * The balance a counted-quantity correction is measured against: the colour's
+     * own balance for a quantity-tracked product counted per colour (its colours
+     * share one pivot row), else the product's pivot balance.
+     */
+    public function systemQtyFor(Product $product, ?int $attributeId, int $storeId, int $locationId): float
+    {
+        if ($attributeId !== null && ! $product->isRollTracked()) {
+            return $this->colourStock->available($product->id, $attributeId, $storeId, $locationId);
+        }
+
+        return $this->liveStockBase($product->id, $storeId, $locationId);
+    }
 
     private function liveStockBase(int $productId, int $storeId, int $locationId): float
     {

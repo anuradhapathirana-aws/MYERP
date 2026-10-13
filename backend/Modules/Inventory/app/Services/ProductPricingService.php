@@ -170,6 +170,32 @@ class ProductPricingService
     }
 
     /**
+     * The newest confirmed-costing price of a product + colour, regardless of
+     * which GRN line it costed — the quantity-tracked counterpart of
+     * costingPricingForGrnItem (those products have no rolls to trace back).
+     *
+     * @return array{selling_price: float, before_tax_price: float, vat_pct: float}|null
+     */
+    public function latestCostingPricingFor(int $productId, ?int $attributeId): ?array
+    {
+        $grnItemId = DB::table('inv_costing_items')
+            ->join('inv_costings', 'inv_costings.id', '=', 'inv_costing_items.costing_id')
+            ->where('inv_costing_items.product_id', $productId)
+            ->when(
+                $attributeId === null,
+                fn ($q) => $q->whereNull('inv_costing_items.attribute_id'),
+                fn ($q) => $q->where('inv_costing_items.attribute_id', $attributeId),
+            )
+            ->where('inv_costings.status', CostingStatus::Confirmed->value)
+            ->whereNull('inv_costings.deleted_at')
+            ->whereNotNull('inv_costing_items.grn_item_id')
+            ->orderByDesc('inv_costing_items.id')
+            ->value('inv_costing_items.grn_item_id');
+
+        return $grnItemId !== null ? $this->costingPricingForGrnItem((int) $grnItemId) : null;
+    }
+
+    /**
      * The price a specific roll sells at: its shipment's confirmed-costing
      * price first ("old stock at old price, new stock at new price"), the
      * product price list as fallback.

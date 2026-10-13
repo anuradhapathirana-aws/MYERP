@@ -8,6 +8,7 @@ use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Modules\Inventory\Models\AttributeType;
+use Modules\Inventory\Models\Product;
 use Modules\Inventory\Models\ProductAttribute;
 use Modules\Inventory\Models\UnitType;
 
@@ -60,9 +61,10 @@ class StoreGoodsReceivedNoteRequest extends FormRequest
             'items.*.batches.*.country_of_origin'     => ['nullable', 'string', 'max:100'],
             'items.*.batches.*.notes'                 => ['nullable', 'string', 'max:500'],
 
-            // Every GRN line must be received as physical rolls — they become
-            // the QR-labelled pieces that sales orders allocate.
-            'items.*.rolls'              => ['required', 'array', 'min:1'],
+            // Roll-tracked products must be received as physical rolls — they
+            // become the QR-labelled pieces that sales orders allocate. Quantity-
+            // tracked products (finished goods, …) take no rolls; enforced below.
+            'items.*.rolls'              => ['nullable', 'array'],
             'items.*.rolls.*.roll_no'    => ['required', 'string', 'max:100'],
             'items.*.rolls.*.weight'     => ['required', 'numeric', 'min:0.0001'],
         ];
@@ -99,6 +101,22 @@ class StoreGoodsReceivedNoteRequest extends FormRequest
     {
         $validator->after(function (Validator $validator): void {
             $items = (array) $this->input('items', []);
+
+            // ── Rolls follow the product's stock tracking ──────────────────
+            $rollProductIds = Product::rollTrackedIds(
+                collect($items)->pluck('product_id')->filter()->unique()->map('intval')->values()->all()
+            );
+
+            foreach ($items as $index => $item) {
+                $isRoll   = in_array((int) ($item['product_id'] ?? 0), $rollProductIds, true);
+                $hasRolls = ! empty($item['rolls']);
+
+                if ($isRoll && ! $hasRolls) {
+                    $validator->errors()->add("items.{$index}.rolls", 'Add rolls for this item — it is a roll-tracked product.');
+                } elseif (! $isRoll && $hasRolls) {
+                    $validator->errors()->add("items.{$index}.rolls", 'This item is quantity-tracked — it is received without rolls.');
+                }
+            }
 
             // ── Roll weight validation ────────────────────────────────────
             $unitIds = collect($items)->pluck('unit_id')->filter()->unique()->values();

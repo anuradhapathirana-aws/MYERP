@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 use Modules\Inventory\DTOs\DeliveryOrderData;
 use Modules\Inventory\Enums\DeliveryOrderStatus;
 use Modules\Inventory\Enums\SalesOrderStatus;
+use Modules\Inventory\Models\Attribute;
 use Modules\Inventory\Models\Batch;
 use Modules\Inventory\Models\DeliveryOrder;
 use Modules\Inventory\Models\DeliveryOrderItem;
@@ -42,6 +43,7 @@ class DeliveryOrderService
     public function __construct(
         private readonly UnitConversionService $units,
         private readonly RollService $rolls,
+        private readonly ColourStockService $colourStock,
     ) {
     }
 
@@ -143,7 +145,16 @@ class DeliveryOrderService
             ->map(fn (DeliveryOrderPiece $dp) => "{$dp->piece_id}|{$dp->sale_cycle}")
             ->all();
 
-        $items = $so->items->map(function (SalesOrderItem $item) use ($so, $takenPieceKeys): array {
+        // Typed-quantity lines: what other draft DOs already claim — the form pre-fills
+        // only what is still free, or saving would trip the overshoot guard in syncItems().
+        $claimedByDrafts = DeliveryOrderItem::whereIn('so_item_id', $so->items->pluck('id'))
+            ->where('is_scanned', false)
+            ->whereHas('deliveryOrder', fn ($q) => $q->where('status', DeliveryOrderStatus::Draft->value))
+            ->selectRaw('so_item_id, SUM(quantity) as qty')
+            ->groupBy('so_item_id')
+            ->pluck('qty', 'so_item_id');
+
+        $items = $so->items->map(function (SalesOrderItem $item) use ($so, $takenPieceKeys, $claimedByDrafts): array {
             $remaining = max(0.0, (float) $item->quantity - (float) $item->quantity_delivered);
 
             // The line is sold in one UOM (Yard) but the rolls are weighed in the product's
@@ -197,6 +208,10 @@ class DeliveryOrderService
                 'quantity'           => (float) $item->quantity,
                 'quantity_delivered' => (float) $item->quantity_delivered,
                 'remaining'          => $remaining,
+                // Remaining minus other draft DOs' claims (typed-quantity lines only)
+                'available_to_ship'  => $item->is_scanned
+                    ? $remaining
+                    : max(0.0, round($remaining - (float) ($claimedByDrafts[$item->id] ?? 0), 4)),
                 'unit_price'         => (float) $item->unit_price,
                 'available_pieces'   => $availablePieces,
                 'fully_delivered'    => $item->is_scanned
@@ -658,6 +673,47 @@ class DeliveryOrderService
                     abort(422, sprintf(
                         'Insufficient stock for %s: available %s %s, required %s %s.',
                         $product?->name ?? "product #{$productId}",
+                        number_format($balance, 4),
+                        $symbol,
+                        number_format($needed, 4),
+                        $symbol,
+                    ));
+                }
+            }
+
+            // ── Per-colour check for quantity-tracked products ───────────
+            // The pivot above is per product only; a quantity-tracked product's
+            // colours share it (30 Red + 20 Blue = 50). Each colour must cover its
+            // own lines, read from the ledger. The pivot row locks taken above
+            // serialise every concurrent writer of these products.
+            $colourNeeds = [];
+            foreach ($groups as $group) {
+                $product = $productsById->get($group['product_id']);
+                if ($group['piece_rows'] !== [] || $group['attribute_id'] === null
+                    || $product === null || $product->isRollTracked() || $product->allow_minus) {
+                    continue;
+                }
+                $key = "{$group['product_id']}|{$group['attribute_id']}|{$group['store_id']}|{$group['location_id']}";
+                $colourNeeds[$key] = ($colourNeeds[$key] ?? 0.0) + $group['qty'];
+            }
+
+            foreach ($colourNeeds as $key => $needed) {
+                [$productId, $attributeId, $storeId, $locationId] = array_map(
+                    fn ($v) => $v === '' ? null : (int) $v,
+                    explode('|', $key),
+                );
+
+                $balance = $this->colourStock->available($productId, $attributeId, $storeId, $locationId);
+
+                if ($balance - $needed < -self::EPSILON) {
+                    $product = $productsById->get($productId);
+                    $symbol  = $product?->baseUnit?->symbol ?? $product?->baseUnit?->name ?? '';
+                    $colour  = Attribute::whereKey($attributeId)->value('attribute_name') ?? "colour #{$attributeId}";
+
+                    abort(422, sprintf(
+                        'Insufficient stock for %s (%s): available %s %s, required %s %s.',
+                        $product?->name ?? "product #{$productId}",
+                        $colour,
                         number_format($balance, 4),
                         $symbol,
                         number_format($needed, 4),

@@ -195,6 +195,8 @@ Route::middleware(['auth:sanctum', 'module:inventory'])->prefix('v1')->group(fun
         ->name('inventory.stock.product');
     Route::get('stock/by-store', [StockController::class, 'byStore'])
         ->name('inventory.stock.by-store');
+    Route::get('stock/by-colour', [StockController::class, 'byColour'])
+        ->name('inventory.stock.by-colour');
     Route::get('stock-reference-types/all', [StockReferenceTypeController::class, 'all'])
         ->name('inventory.stock-reference-types.all');
 

@@ -553,11 +553,18 @@ class InvoiceService
             ->distinct()
             ->pluck('p.grn_item_id');
 
-        $pairs = $grnItemIds
-            ->map(fn ($id) => $this->pricing->costingPricingForGrnItem((int) $id))
-            ->filter()
-            ->unique(fn (array $p) => $p['before_tax_price'] . '|' . $p['vat_pct'])
-            ->values();
+        // Quantity-tracked lines have no rolls to trace — their costing is found
+        // by product + colour, and only its VAT % is trusted blindly (see below).
+        $isQtyLine = $grnItemIds->isEmpty()
+            && Product::whereKey($soItem->product_id)->first(['id', 'stock_tracking'])?->isRollTracked() === false;
+
+        $pairs = $isQtyLine
+            ? collect([$this->pricing->latestCostingPricingFor((int) $soItem->product_id, $soItem->attribute_id !== null ? (int) $soItem->attribute_id : null)])->filter()->values()
+            : $grnItemIds
+                ->map(fn ($id) => $this->pricing->costingPricingForGrnItem((int) $id))
+                ->filter()
+                ->unique(fn (array $p) => $p['before_tax_price'] . '|' . $p['vat_pct'])
+                ->values();
 
         // Lines are split by selling price at allocation, so one price pair is the
         // normal case; none (uncosted) or several (shouldn't happen) → fallback.
@@ -582,6 +589,16 @@ class InvoiceService
                 return $fallback; // no rate — better the derived price than a wrong-unit one
             }
             $factor = $rate;
+        }
+
+        // A quantity line's price was typed on the SO, not derived from the costing.
+        // When it differs from the costing price, bill the SO price (VAT stripped at
+        // the costing's rate) — the invoice must charge what the SO quoted.
+        if ($isQtyLine && abs($pair['selling_price'] * $factor - $soPrice) > 0.005) {
+            return [
+                'unit_price' => $this->money($soPrice / (1 + $pair['vat_pct'] / 100)),
+                'tax'        => $pair['vat_pct'],
+            ];
         }
 
         return [

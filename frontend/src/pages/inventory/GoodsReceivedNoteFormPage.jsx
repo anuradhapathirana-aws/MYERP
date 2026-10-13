@@ -400,6 +400,9 @@ function ProductSearchCell({ row, productSearch, onQueryChange, onSelect, onClea
 }
 
 /* ══════════════════════════════════════════════════════════════ */
+// Product's stock tracking: 'roll' lines need rolls, 'quantity' lines (finished goods) don't.
+const isRollRow = (row) => (row.stock_tracking ?? 'roll') === 'roll'
+
 export default function GoodsReceivedNoteFormPage() {
   const { id }      = useParams()
   const isEdit      = Boolean(id)
@@ -723,6 +726,7 @@ export default function GoodsReceivedNoteFormPage() {
         discount:           it.discount ?? '',
         tax:                it.tax      ?? '',
         is_batch:           it.product?.is_batch ?? false,
+        stock_tracking:     it.product?.stock_tracking ?? 'roll',
         batch_no:           it.batch_no    ?? '',
         expiry_date:        it.expiry_date ?? '',
         batch_assignments:  it.batch_assignments ?? [],
@@ -821,6 +825,7 @@ export default function GoodsReceivedNoteFormPage() {
     discount:          it.discount ?? '',
     tax:               it.tax      ?? '',
     is_batch:          it.product?.is_batch ?? false,
+    stock_tracking:    it.product?.stock_tracking ?? 'roll',
     batch_no:          '',
     expiry_date:       '',
     batches:           [],
@@ -941,6 +946,7 @@ export default function GoodsReceivedNoteFormPage() {
       discount:          '',
       tax:               '',
       is_batch:          false,
+      stock_tracking:    'roll',
       batch_no:          '',
       expiry_date:       '',
       batch_assignments: [],
@@ -1012,7 +1018,9 @@ export default function GoodsReceivedNoteFormPage() {
             base_unit_type_id:     product.base_unit_type_id ?? null,
             base_unit_category_id: product.base_unit_category_id ?? null,
             is_batch:     product.is_batch ?? false,
+            stock_tracking: product.stock_tracking ?? 'roll',
             batches:      [],
+            rolls:        [],
             batch_no:     '',
             expiry_date:  '',
             attribute_id: '',
@@ -1044,7 +1052,7 @@ export default function GoodsReceivedNoteFormPage() {
   const clearProductSelection = (rowKey) => {
     setItems((prev) => prev.map((row) =>
       row._key === rowKey
-        ? { ...row, product_id: null, product_code: '', product_name: '', is_batch: false, batches: [], attribute_id: '', color_options: [] }
+        ? { ...row, product_id: null, product_code: '', product_name: '', is_batch: false, stock_tracking: 'roll', batches: [], rolls: [], attribute_id: '', color_options: [] }
         : row
     ))
     setProductSearch({ key: rowKey, query: '', results: [], open: false })
@@ -1290,8 +1298,9 @@ export default function GoodsReceivedNoteFormPage() {
       return
     }
 
-    // Rolls are mandatory — they become the QR-labelled pieces sales orders allocate
-    const itemsMissingRolls = validItems.filter((r) => !(r.rolls?.length > 0))
+    // Roll-tracked items must be received as rolls — they become the QR-labelled
+    // pieces sales orders allocate. Quantity-tracked items (finished goods) take none.
+    const itemsMissingRolls = validItems.filter((r) => isRollRow(r) && !(r.rolls?.length > 0))
     if (itemsMissingRolls.length) {
       setItemTouched((t) => {
         const next = { ...t }
@@ -1409,7 +1418,7 @@ export default function GoodsReceivedNoteFormPage() {
     if (field === 'uom')   return row.unit_id ? null : 'Required'
     if (field === 'qty')   return parseFloat(row.quantity_received) > 0 ? null : 'Required'
     if (field === 'price') return row.unit_price !== '' && parseFloat(row.unit_price) >= 0 ? null : 'Required'
-    if (field === 'rolls') return (parseFloat(row.quantity_received) > 0 && !(row.rolls?.length > 0)) ? 'Required' : null
+    if (field === 'rolls') return (isRollRow(row) && parseFloat(row.quantity_received) > 0 && !(row.rolls?.length > 0)) ? 'Required' : null
     return null
   }
 
@@ -1973,7 +1982,7 @@ export default function GoodsReceivedNoteFormPage() {
                               onChange={(e) => setRowField(idx, 'quantity_received', e.target.value)}
                               onBlur={() => touchItemField(row._key, 'qty')}
                               onKeyDown={(e) => {
-                                if (e.key === 'Enter') { e.preventDefault(); openRollModal(idx) }
+                                if (e.key === 'Enter') { e.preventDefault(); isRollRow(row) ? openRollModal(idx) : focusCell(row._key, 'price') }
                               }}
                             />
                             {getItemErr(row._key, 'qty') && (
@@ -1993,8 +2002,14 @@ export default function GoodsReceivedNoteFormPage() {
                           </div>
                         </td>
 
-                        {/* Rolls — mandatory: real-time required state once a qty is entered */}
+                        {/* Rolls — mandatory for roll-tracked items (real-time required state once a qty
+                            is entered); quantity-tracked items show a static badge. */}
                         <td className="px-2 py-1">
+                          {!isRollRow(row) ? (
+                            <span title="Quantity-tracked item — received without rolls" className="inline-flex rounded bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-700">
+                              Qty only
+                            </span>
+                          ) : (
                           <div className="flex flex-col gap-0.5">
                             <button
                               ref={setCellRef(row._key, 'rolls')}
@@ -2021,6 +2036,7 @@ export default function GoodsReceivedNoteFormPage() {
                               <span className="text-[9px] text-red-500 leading-none">Rolls required</span>
                             )}
                           </div>
+                          )}
                         </td>
 
                         {/* Unit Price — typed per the line's UOM (straight off the supplier

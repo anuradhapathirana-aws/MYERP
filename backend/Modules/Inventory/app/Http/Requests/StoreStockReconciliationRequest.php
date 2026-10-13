@@ -7,6 +7,8 @@ namespace Modules\Inventory\Http\Requests;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Modules\Inventory\Models\Product;
+use Modules\Inventory\Models\ProductAttribute;
 
 class StoreStockReconciliationRequest extends FormRequest
 {
@@ -48,6 +50,15 @@ class StoreStockReconciliationRequest extends FormRequest
 
             if (!$hasCountedQty && !$hasPieces) {
                 $validator->errors()->add('counted_qty', 'Enter the counted quantity, or attach at least one roll to correct.');
+            }
+
+            // A quantity-tracked product is counted per colour: one that offers
+            // colours needs the colour being counted.
+            $productId = (int) $this->input('product_id');
+            if ($hasCountedQty && !$hasPieces && !$this->filled('attribute_id')
+                && Product::rollTrackedIds([$productId]) === []
+                && ProductAttribute::colourProductIds([$productId]) !== []) {
+                $validator->errors()->add('attribute_id', 'Select the colour being counted.');
             }
         });
     }

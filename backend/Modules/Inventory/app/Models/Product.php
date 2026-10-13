@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Modules\Inventory\Database\Factories\ProductFactory;
+use Modules\Inventory\Enums\StockTracking;
 use Modules\Inventory\Models\Category;
 use App\Models\Location;
 use Modules\Inventory\Models\ProductAttribute;
@@ -32,6 +33,7 @@ class Product extends Model
         'name',
         'display_name',
         'product_type',
+        'stock_tracking',
         'description',
         'category_id',
         'location_id',
@@ -58,6 +60,7 @@ class Product extends Model
         'category_id'               => 'integer',
         'location_id'               => 'integer',
         'base_unit_type_id'         => 'integer',
+        'stock_tracking'            => StockTracking::class,
         'reorder_level'             => 'decimal:4',
         'reorder_qty'               => 'decimal:4',
         'lock_purchase'             => 'boolean',
@@ -111,6 +114,42 @@ class Product extends Model
         return isset($this->attributes['stock_transactions_exists'])
             ? (bool) $this->attributes['stock_transactions_exists']
             : $this->stockTransactions()->exists();
+    }
+
+    /**
+     * Roll-tracked products are received as QR-labelled pieces and sold by
+     * picking those pieces; quantity-tracked ones move as plain quantities.
+     * A freshly-instantiated model (no DB default loaded yet) counts as roll.
+     */
+    public function isRollTracked(): bool
+    {
+        return ($this->stock_tracking ?? StockTracking::Roll) === StockTracking::Roll;
+    }
+
+    /** 'roll' | 'quantity' — for API payloads. */
+    public function stockTrackingValue(): string
+    {
+        return ($this->stock_tracking ?? StockTracking::Roll)->value;
+    }
+
+    /**
+     * Of the given product ids, the ones that are roll-tracked — one query, for
+     * request validators that check many lines at once.
+     *
+     * @param  array<int, int>  $productIds
+     * @return array<int, int>
+     */
+    public static function rollTrackedIds(array $productIds): array
+    {
+        if ($productIds === []) {
+            return [];
+        }
+
+        return static::whereIn('id', $productIds)
+            ->where('stock_tracking', StockTracking::Roll->value)
+            ->pluck('id')
+            ->map('intval')
+            ->all();
     }
 
     public function suppliers(): BelongsToMany

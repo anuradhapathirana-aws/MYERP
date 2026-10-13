@@ -38,6 +38,7 @@ class GoodsReceivedNoteItemResource extends JsonResource
                 'product_code' => $this->product->product_code,
                 'is_batch'     => $this->product->is_batch,
                 'is_serial'    => $this->product->is_serial,
+                'stock_tracking' => $this->product->stockTrackingValue(),
                 // Scopes the line's UOM dropdown to units convertible to the stocking UOM
                 'base_unit_type_id'     => $this->product->base_unit_type_id,
                 'base_unit_category_id' => $this->product->baseUnit?->unit_category_id,

@@ -6,6 +6,7 @@ namespace Modules\Inventory\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Modules\Inventory\Enums\StockTracking;
 
 class StoreProductRequest extends FormRequest
 {
@@ -21,6 +22,8 @@ class StoreProductRequest extends FormRequest
             // Required identifiers
             'display_name'           => ['required', 'string', 'max:100'],
             'product_type'           => ['required', 'string', 'max:50'],
+            // Omitted = keep current (update) / column default 'roll' (create).
+            'stock_tracking'         => ['nullable', Rule::enum(StockTracking::class)],
             'supplier_ids'           => ['required', 'array', 'min:1'],
             'supplier_ids.*'         => ['integer', 'exists:inv_supplier_masters,id'],
 

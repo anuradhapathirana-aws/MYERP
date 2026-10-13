@@ -37,6 +37,7 @@ class SalesOrderItemResource extends JsonResource
                 // Exempts the product from the plain-stock check — allow_minus is the
                 // deliberate way to let a product be sold/delivered below zero stock.
                 'allow_minus'  => $this->product->allow_minus,
+                'stock_tracking' => $this->product->stockTrackingValue(),
                 // Scopes the line's UOM dropdown to units convertible to the stocking UOM
                 'base_unit_type_id'     => $this->product->base_unit_type_id,
                 'base_unit_category_id' => $this->product->baseUnit?->unit_category_id,

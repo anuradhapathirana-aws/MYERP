@@ -83,6 +83,9 @@
     $company  = $do->location?->company;
     $totalQty = $do->items->sum(fn ($it) => (float) $it->quantity);
     $totalRolls = $do->items->sum(fn ($it) => $it->pieces->count());
+    // A DO of quantity-tracked goods only (finished goods, …) has no rolls to count.
+    $showRolls  = $totalRolls > 0;
+    $colCount   = $showRolls ? 7 : 6;
 
     /*
      * Cut a value down to what its column can physically show on ONE line. The
@@ -161,7 +164,7 @@
         <th>Product</th>
         <th style="width:136px;">Colour</th>
         <th style="width:42px;">UOM</th>
-        <th style="width:44px;" class="ta-r">Rolls</th>
+        @if($showRolls)<th style="width:44px;" class="ta-r">Rolls</th>@endif
         <th style="width:68px;" class="ta-r">Quantity</th>
       </tr>
     </thead>
@@ -175,12 +178,12 @@
           {{-- UOM prints the unit's short symbol (Kg, g, m) and only falls back
                to the full name when a unit has no symbol configured. --}}
           <td>{{ $item->unit?->symbol ?: ($item->unit?->name ?? '—') }}</td>
-          <td class="ta-r">{{ $item->pieces->count() ?: '—' }}</td>
+          @if($showRolls)<td class="ta-r">{{ $item->pieces->count() ?: '—' }}</td>@endif
           <td class="ta-r">{{ number_format((float) $item->quantity, 2) }}</td>
         </tr>
         @if($item->pieces->isNotEmpty())
           <tr>
-            <td colspan="7" style="padding:0;">
+            <td colspan="{{ $colCount }}" style="padding:0;">
               <table class="rolls-table">
                 @foreach($item->pieces->chunk(3) as $chunk)
                   <tr>
@@ -198,7 +201,7 @@
     <tfoot>
       <tr>
         <td colspan="5">Total</td>
-        <td class="ta-r">{{ $totalRolls ?: '—' }}</td>
+        @if($showRolls)<td class="ta-r">{{ $totalRolls ?: '—' }}</td>@endif
         <td class="ta-r">{{ number_format($totalQty, 2) }}</td>
       </tr>
     </tfoot>

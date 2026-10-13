@@ -21,13 +21,16 @@ const CRUMBS = [
 
 const INITIAL_FILTERS = { search: '', product_type: '', category_id: '' }
 
-const PRODUCT_TYPES = ['Product', 'Service', 'Bundle', 'Raw Material']
+const PRODUCT_TYPES = ['Inventory', 'Fabric', 'Finished Good', 'Raw Material', 'Service']
 
 const TYPE_COLORS = {
   Product:        'bg-blue-50 text-blue-700',
   Service:        'bg-purple-50 text-purple-700',
   Bundle:         'bg-amber-50 text-amber-700',
   'Raw Material': 'bg-green-50 text-green-700',
+  Inventory:       'bg-blue-50 text-blue-700',
+  Fabric:          'bg-sky-50 text-sky-700',
+  'Finished Good': 'bg-emerald-50 text-emerald-700',
 }
 
 export default function ProductsPage() {
@@ -217,6 +220,12 @@ export default function ProductsPage() {
                           ) : (
                             <span className="italic text-slate-300">—</span>
                           )}
+                          <span
+                            title={prod.stock_tracking === 'quantity' ? 'Sold by quantity — no rolls' : 'Received & sold as rolls'}
+                            className={`ml-1 inline-flex rounded px-1 py-0.5 text-[10px] font-semibold ${prod.stock_tracking === 'quantity' ? 'bg-teal-50 text-teal-700' : 'bg-slate-100 text-slate-500'}`}
+                          >
+                            {prod.stock_tracking === 'quantity' ? 'Qty' : 'Roll'}
+                          </span>
                         </td>
 
                         <td className="max-w-32 px-3 py-2">

@@ -7,6 +7,7 @@ namespace Modules\Inventory\Http\Requests;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Modules\Inventory\Enums\StockTracking;
 use Modules\Inventory\Models\Product;
 
 class UpdateProductRequest extends FormRequest
@@ -23,6 +24,8 @@ class UpdateProductRequest extends FormRequest
             // Required identifiers
             'display_name'           => ['required', 'string', 'max:100'],
             'product_type'           => ['required', 'string', 'max:50'],
+            // Omitted = keep current (update) / column default 'roll' (create).
+            'stock_tracking'         => ['nullable', Rule::enum(StockTracking::class)],
             'supplier_ids'           => ['required', 'array', 'min:1'],
             'supplier_ids.*'         => ['integer', 'exists:inv_supplier_masters,id'],
 
@@ -94,9 +97,31 @@ class UpdateProductRequest extends FormRequest
      * The stocking UOM is frozen once stock has moved: every existing balance,
      * batch quantity and roll weight is already denominated in it, so swapping it
      * would reinterpret them all (100 Kg silently becoming 100 g).
+     *
+     * Stock tracking is frozen for the same reason: a roll product's balance is
+     * backed by its pieces — switching to quantity (or back) would orphan them.
      */
     public function withValidator(Validator $validator): void
     {
+        $validator->after(function (Validator $validator): void {
+            $product = $this->route('product');
+
+            if (! $product instanceof Product) {
+                return;
+            }
+
+            $newTracking = $this->input('stock_tracking');
+            if ($newTracking !== null
+                && StockTracking::tryFrom((string) $newTracking) !== null
+                && StockTracking::from((string) $newTracking) !== ($product->stock_tracking ?? StockTracking::Roll)
+                && $product->hasStockMovements()) {
+                $validator->errors()->add(
+                    'stock_tracking',
+                    'Stock tracking cannot be changed — stock has already been recorded for this product.',
+                );
+            }
+        });
+
         $validator->after(function (Validator $validator): void {
             $product = $this->route('product');
             $newUnit = $this->input('base_unit_type_id');

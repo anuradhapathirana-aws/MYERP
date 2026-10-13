@@ -473,7 +473,10 @@ class SalesOrderService
             return;
         }
 
-        $blockedProductId = GrnItemPiece::whereIn('product_id', $manualProductIds)
+        // Quantity-tracked products are always sold by typed quantity.
+        $rollProductIds = Product::rollTrackedIds($manualProductIds->all());
+
+        $blockedProductId = GrnItemPiece::whereIn('product_id', $rollProductIds)
             ->where('status', GrnItemPiece::STATUS_IN_STOCK)
             ->value('product_id');
 

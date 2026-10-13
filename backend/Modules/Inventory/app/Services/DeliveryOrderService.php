@@ -145,7 +145,16 @@ class DeliveryOrderService
             ->map(fn (DeliveryOrderPiece $dp) => "{$dp->piece_id}|{$dp->sale_cycle}")
             ->all();
 
-        $items = $so->items->map(function (SalesOrderItem $item) use ($so, $takenPieceKeys): array {
+        // Typed-quantity lines: what other draft DOs already claim — the form pre-fills
+        // only what is still free, or saving would trip the overshoot guard in syncItems().
+        $claimedByDrafts = DeliveryOrderItem::whereIn('so_item_id', $so->items->pluck('id'))
+            ->where('is_scanned', false)
+            ->whereHas('deliveryOrder', fn ($q) => $q->where('status', DeliveryOrderStatus::Draft->value))
+            ->selectRaw('so_item_id, SUM(quantity) as qty')
+            ->groupBy('so_item_id')
+            ->pluck('qty', 'so_item_id');
+
+        $items = $so->items->map(function (SalesOrderItem $item) use ($so, $takenPieceKeys, $claimedByDrafts): array {
             $remaining = max(0.0, (float) $item->quantity - (float) $item->quantity_delivered);
 
             // The line is sold in one UOM (Yard) but the rolls are weighed in the product's
@@ -199,6 +208,10 @@ class DeliveryOrderService
                 'quantity'           => (float) $item->quantity,
                 'quantity_delivered' => (float) $item->quantity_delivered,
                 'remaining'          => $remaining,
+                // Remaining minus other draft DOs' claims (typed-quantity lines only)
+                'available_to_ship'  => $item->is_scanned
+                    ? $remaining
+                    : max(0.0, round($remaining - (float) ($claimedByDrafts[$item->id] ?? 0), 4)),
                 'unit_price'         => (float) $item->unit_price,
                 'available_pieces'   => $availablePieces,
                 'fully_delivered'    => $item->is_scanned

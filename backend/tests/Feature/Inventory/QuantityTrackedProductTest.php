@@ -21,7 +21,6 @@ use Modules\Inventory\Models\ProductLocationStore;
 use Modules\Inventory\Models\SalesChannel;
 use Modules\Inventory\Models\SalesOrder;
 use Modules\Inventory\Models\StockTransaction;
-use Modules\Inventory\Models\SupplierMaster;
 use Modules\Inventory\Services\ColourStockService;
 use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
@@ -36,7 +35,7 @@ class QuantityTrackedProductTest extends TestCase
 
     private User $user;
     private CustomerMaster $customer;
-    private SupplierMaster $supplier;
+    private int $supplierId;
     private int $storeId;
     private int $locationId;
 
@@ -69,9 +68,13 @@ class QuantityTrackedProductTest extends TestCase
             'customer_name' => 'Garment Buyer',
             'customer_type' => 'Retail',
         ]);
-        $this->supplier = SupplierMaster::create([
+        // Raw insert: the SupplierMaster model lives in a different namespace on
+        // the Finance branch, and this test must run on both.
+        $this->supplierId = DB::table('inv_supplier_masters')->insertGetId([
             'supplier_code' => 'SUP-0001',
             'supplier_name' => 'Garment Factory',
+            'created_at'    => now(),
+            'updated_at'    => now(),
         ]);
 
         $this->locationId = DB::table('inv_locations')->insertGetId([
@@ -140,7 +143,7 @@ class QuantityTrackedProductTest extends TestCase
     private function grnPayload(array $lines, string $shippingCode = 'SHIP-001'): array
     {
         return [
-            'supplier_id'   => $this->supplier->id,
+            'supplier_id'   => $this->supplierId,
             'grn_date'      => '2026-10-12',
             'shipping_code' => $shippingCode,
             'store_id'      => $this->storeId,
@@ -228,7 +231,7 @@ class QuantityTrackedProductTest extends TestCase
         $costingId = DB::table('inv_costings')->insertGetId([
             'document_no'  => 'CST-' . $line->id,
             'reference_no' => 'CRef-' . $line->id,
-            'supplier_id'  => $this->supplier->id,
+            'supplier_id'  => $this->supplierId,
             'costing_type' => 'fob',
             'status'       => 'confirmed',
             'apply_vat'    => $applyVat ? 1 : 0,
@@ -300,7 +303,7 @@ class QuantityTrackedProductTest extends TestCase
             'display_name'      => 'T-Shirt',
             'product_type'      => 'Finished Good',
             'stock_tracking'    => $tracking,
-            'supplier_ids'      => [$this->supplier->id],
+            'supplier_ids'      => [$this->supplierId],
             'category_id'       => $product->category_id,
             'base_unit_type_id' => $product->base_unit_type_id,
             'cost_details'      => [[

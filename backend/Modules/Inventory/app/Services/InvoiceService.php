@@ -17,6 +17,7 @@ use Modules\Inventory\Models\CustomerReturn;
 use Modules\Inventory\Models\DeliveryOrder;
 use Modules\Inventory\Models\Invoice;
 use Modules\Inventory\Models\InvoiceItem;
+use Modules\Inventory\Models\ProformaInvoiceItem;
 use Modules\Inventory\Models\Product;
 use Modules\Inventory\Models\SalesOrder;
 use Modules\Inventory\Models\SalesOrderItem;
@@ -45,6 +46,7 @@ class InvoiceService
     public function __construct(
         private readonly ProductPricingService $pricing,
         private readonly UnitConversionService $units,
+        private readonly ProformaInvoicingTracker $proformas,
     ) {
     }
     /** @param array<string, mixed> $filters */
@@ -95,6 +97,7 @@ class InvoiceService
             'items.attribute',
             'salesOrder',
             'deliveryOrder',
+            'proforma',
             'customer',
             'company',
         ])->findOrFail($id);
@@ -153,7 +156,9 @@ class InvoiceService
         $do = DeliveryOrder::with(['items.soItem', 'salesOrder.customer', 'salesOrder.items'])
             ->findOrFail($doId);
 
-        $so = $do->salesOrder;
+        $so       = $do->salesOrder;
+        $proforma = $this->proformas->linkableProformaForSo($so->id);
+        $pfItems  = $proforma ? $proforma->items->keyBy('so_item_id') : collect();
 
         return [
             'source'         => 'do',
@@ -164,10 +169,19 @@ class InvoiceService
             ],
             'sales_order' => $this->soSummary($so),
             'guards'      => $this->billingGuards($so, forDirect: false, do: $do),
+            'proforma'    => $proforma ? [
+                'id'           => $proforma->id,
+                'proforma_no'  => $proforma->proforma_no,
+                'invoice_type' => $proforma->invoice_type,
+            ] : null,
             'default_transport_charge' => $this->defaultTransportCharge($so),
-            'default_invoice_type'     => $this->defaultInvoiceType($so),
+            'default_invoice_type'     => $proforma?->invoice_type ?? $this->defaultInvoiceType($so),
             'items'       => $do->items
-                ->map(fn ($doItem) => $this->itemPreview($doItem->soItem, (float) $doItem->quantity, $doItem->id))
+                ->map(fn ($doItem) => $this->withProformaPricing(
+                    $this->itemPreview($doItem->soItem, (float) $doItem->quantity, $doItem->id),
+                    $proforma?->invoice_type,
+                    $pfItems->get($doItem->so_item_id),
+                ))
                 ->values()
                 ->all(),
         ];
@@ -243,6 +257,10 @@ class InvoiceService
             'paid_at'   => $newStatus === InvoiceStatus::Paid ? now() : $invoice->paid_at,
         ]);
 
+        if ($newStatus === InvoiceStatus::Cancelled && $invoice->proforma_id !== null) {
+            DB::transaction(fn () => $this->proformas->refreshInvoicingStatus($invoice->proforma_id));
+        }
+
         return $invoice;
     }
 
@@ -255,6 +273,10 @@ class InvoiceService
         DB::transaction(function () use ($invoice): void {
             $invoice->items()->delete();
             $invoice->delete();
+
+            if ($invoice->proforma_id !== null) {
+                $this->proformas->refreshInvoicingStatus($invoice->proforma_id);
+            }
         });
     }
 
@@ -280,6 +302,11 @@ class InvoiceService
                 abort(422, "Sales order {$so->so_no} is billed directly — per-delivery invoices are not allowed.");
             }
 
+            // An issued proforma on the SO is auto-linked: its invoice type is the
+            // default and its quoted line prices are billed (see below).
+            $proforma = $this->proformas->linkableProformaForSo($so->id);
+            $pfItems  = $proforma ? $proforma->items->keyBy('so_item_id') : collect();
+
             $invoice = Invoice::create([
                 'invoice_no'       => $this->buildInvoiceNo(
                     lock: true,
@@ -288,12 +315,13 @@ class InvoiceService
                 ),
                 'so_id'            => $so->id,
                 'do_id'            => $do->id,
+                'proforma_id'      => $proforma?->id,
                 'customer_id'      => $so->customer_id,
                 'company_id'       => $data->companyId ?? $this->defaultCompanyId(),
                 'invoice_date'     => $data->invoiceDate,
                 'due_date'         => $data->dueDate,
                 'status'           => InvoiceStatus::Draft,
-                'invoice_type'     => $data->invoiceType ?? $this->defaultInvoiceType($so),
+                'invoice_type'     => $data->invoiceType ?? $proforma?->invoice_type ?? $this->defaultInvoiceType($so),
                 'transport_charge' => $data->transportCharge !== null
                     ? $this->money($data->transportCharge)
                     : $this->defaultTransportCharge($so),
@@ -306,18 +334,24 @@ class InvoiceService
 
             foreach ($do->items as $doItem) {
                 $soItem  = $doItem->soItem;
-                $pricing = $this->linePricing($soItem, $invoice->invoice_type);
+                $pfItem  = $pfItems->get($doItem->so_item_id);
+                // The customer pays what the proforma quoted — when the invoice type
+                // matches it; a switched type is re-priced the normal way.
+                $pricing = $pfItem && $proforma->invoice_type === $invoice->invoice_type
+                    ? ['unit_price' => (float) $pfItem->unit_price, 'tax' => (float) $pfItem->tax, 'discount' => (float) $pfItem->discount]
+                    : $this->linePricing($soItem, $invoice->invoice_type) + ['discount' => (float) ($soItem?->discount ?? 0)];
                 $item    = new InvoiceItem([
                     'invoice_id'   => $invoice->id,
                     'so_item_id'   => $doItem->so_item_id,
                     'do_item_id'   => $doItem->id,
+                    'proforma_item_id' => $pfItem?->id,
                     'product_id'   => $doItem->product_id,
                     'unit_id'      => $doItem->unit_id,
                     'price_unit_id' => $soItem?->price_unit_id,
                     'attribute_id' => $doItem->attribute_id,
                     'quantity'     => (float) $doItem->quantity,
                     'unit_price'   => $pricing['unit_price'],
-                    'discount'     => (float) ($soItem?->discount ?? 0),
+                    'discount'     => $pricing['discount'],
                     'tax'          => $pricing['tax'],
                 ]);
                 $this->recalculateLineTotal($item);
@@ -327,8 +361,38 @@ class InvoiceService
             $this->enforceInvoiceType($invoice);
             $this->recalculateTotals($invoice);
 
+            if ($proforma) {
+                $this->proformas->refreshInvoicingStatus($proforma->id);
+            }
+
             return $this->find($invoice->id);
         });
+    }
+
+    /**
+     * Billing preview of a DO line priced from the SO's proforma: the quoted price,
+     * discount and VAT replace the SO/costing ones for the proforma's invoice type.
+     *
+     * @param array<string, mixed> $preview
+     * @return array<string, mixed>
+     */
+    private function withProformaPricing(array $preview, ?string $proformaType, ?ProformaInvoiceItem $pfItem): array
+    {
+        if ($pfItem === null || $proformaType === null) {
+            return $preview + ['proforma_item_id' => null];
+        }
+
+        $preview['proforma_item_id'] = $pfItem->id;
+        $preview['discount']         = (float) $pfItem->discount;
+
+        if ($proformaType === 'non_tax') {
+            $preview['unit_price'] = (float) $pfItem->unit_price;
+        } else {
+            $preview['tax_unit_price'] = (float) $pfItem->unit_price;
+            $preview['tax_vat_pct']    = (float) $pfItem->tax;
+        }
+
+        return $preview;
     }
 
     /**
@@ -513,9 +577,12 @@ class InvoiceService
      *   tax     — the costing's BEFORE-tax price plus the VAT % that costing used.
      *   non_tax — the SO price as-is (costing AFTER-tax, VAT already inside), 0 tax.
      *
+     * Shared with ProformaInvoiceService so a proforma quotes exactly what the
+     * DO invoice would bill.
+     *
      * @return array{unit_price: float, tax: float}
      */
-    private function linePricing(?SalesOrderItem $soItem, string $invoiceType): array
+    public function linePricing(?SalesOrderItem $soItem, string $invoiceType): array
     {
         if ($invoiceType === 'non_tax') {
             return ['unit_price' => $this->money((float) ($soItem?->unit_price ?? 0)), 'tax' => 0.0];

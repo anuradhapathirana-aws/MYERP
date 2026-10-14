@@ -14,6 +14,7 @@ import {
 import { getAllCompanies } from '../../api/companies'
 import { getDeliveryOrders } from '../../api/deliveryOrders'
 import Breadcrumb from '../../components/Breadcrumb'
+import KeyboardShortcuts from '../../components/ui/KeyboardShortcuts'
 import FilterSearchSelect from '../../components/ui/FilterSearchSelect'
 import Money from '../../components/ui/Money'
 import { confirmTriState, showError, showSuccess } from '../../utils/alerts'
@@ -411,6 +412,15 @@ export default function InvoiceFormPage() {
                     {' — '}{source.sales_order?.customer?.name}
                   </span>
                 )}
+                {/* The SO's issued proforma is auto-linked — its quoted prices are pre-filled */}
+                {source?.proforma && (
+                  <span
+                    className="ml-2 inline-flex items-center rounded-full bg-violet-100 px-2 py-0.5 font-mono text-[10px] font-semibold text-violet-700"
+                    title="This invoice links to the sales order's proforma and bills its quoted prices"
+                  >
+                    Proforma {source.proforma.proforma_no}
+                  </span>
+                )}
               </h2>
             </div>
             {/* Tax: Before-Tax prices + VAT per line · Non Tax: After-Tax prices, no VAT */}
@@ -637,6 +647,13 @@ export default function InvoiceFormPage() {
         </div>
 
       </div>
+
+      {/* Keyboard Shortcuts Reference */}
+      {!isEdit && (
+        <KeyboardShortcuts shortcuts={[
+          { keys: ['Ctrl', 'Enter'], desc: 'Create & issue invoice (asks to generate a receipt)' },
+        ]} />
+      )}
     </div>
   )
 }

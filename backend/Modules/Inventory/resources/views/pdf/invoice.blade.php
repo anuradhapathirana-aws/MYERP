@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
-<title>{{ $invoice->invoice_type === 'non_tax' ? 'Invoice' : 'Tax Invoice' }} — {{ $invoice->invoice_no }}</title>
+<title>{{ ($isProforma ?? false) ? 'Proforma Invoice' : ($invoice->invoice_type === 'non_tax' ? 'Invoice' : 'Tax Invoice') }} — {{ ($isProforma ?? false) ? $invoice->proforma_no : $invoice->invoice_no }}</title>
 <style>
   /*
    * DomPDF-safe layout: every block is a plain collapsed table with explicit
@@ -129,6 +129,15 @@
 <body>
 
   @php
+    /*
+     * The same layout prints a Proforma Invoice ($isProforma, $invoice is then a
+     * ProformaInvoice): its own number/date, "Valid Until" in place of the delivery
+     * date, payment terms, and a "not a tax invoice" note.
+     */
+    $isProforma = $isProforma ?? false;
+    $docNo      = $isProforma ? $invoice->proforma_no : $invoice->invoice_no;
+    $docDate    = $isProforma ? $invoice->proforma_date : $invoice->invoice_date;
+
     // The supplier is the company that issued the invoice, named on the invoice itself.
     $company  = $invoice->company;
     $customer = $invoice->customer;
@@ -138,7 +147,7 @@
      * delivery_date. A direct/advance invoice has no delivery order, so it falls back
      * to the date the invoice was issued.
      */
-    $deliveryDate = $invoice->deliveryOrder?->delivery_date ?? $invoice->issued_at;
+    $deliveryDate = $isProforma ? null : ($invoice->deliveryOrder?->delivery_date ?? $invoice->issued_at);
 
     $companyAddress = collect([
         $company?->street_address,
@@ -245,7 +254,7 @@
     // A non-tax invoice is titled plainly "Invoice" — its prices already carry
     // the VAT inside, so it must not present itself as a tax invoice.
     $isTaxInvoice = $invoice->invoice_type !== 'non_tax';
-    $docTitle     = $isTaxInvoice ? 'Tax Invoice' : 'Invoice';
+    $docTitle     = $isProforma ? 'Proforma Invoice' : ($isTaxInvoice ? 'Tax Invoice' : 'Invoice');
   @endphp
 
   {{-- ══ TITLE ══ --}}
@@ -257,13 +266,13 @@
   <table class="row">
     <tr>
       <td class="box" style="width:50%;">
-        <span class="lbl">Date of Invoice:</span>
-        <span class="val">{{ $invoice->invoice_date?->format('d/m/Y') }}</span>
+        <span class="lbl">Date of {{ $isProforma ? 'Proforma' : 'Invoice' }}:</span>
+        <span class="val">{{ $docDate?->format('d/m/Y') }}</span>
       </td>
       <td class="gap"></td>
       <td class="box" style="width:50%;">
         <span class="lbl">{{ $docTitle }} No.:</span>
-        <span class="val">{{ $invoice->invoice_no }}</span>
+        <span class="val">{{ $docNo }}</span>
       </td>
     </tr>
   </table>
@@ -297,8 +306,13 @@
   <table class="row">
     <tr>
       <td class="box" style="width:50%;">
+        @if($isProforma)
+        <span class="lbl">Valid Until:</span>
+        <span class="val">{{ $invoice->valid_until?->format('d/m/Y') }}</span>
+        @else
         <span class="lbl">Date of Delivery:</span>
         <span class="val">{{ $deliveryDate?->format('d/m/Y') }}</span>
+        @endif
       </td>
       <td class="gap"></td>
       <td class="box" style="width:50%;">
@@ -317,6 +331,17 @@
       </td>
     </tr>
   </table>
+
+  @if($isProforma && $invoice->payment_terms)
+  <table class="row">
+    <tr>
+      <td class="box">
+        <span class="lbl">Payment Terms:</span>
+        <span class="val">{{ $invoice->payment_terms }}</span>
+      </td>
+    </tr>
+  </table>
+  @endif
 
   {{-- ══ GOODS OR SERVICES ══ --}}
   <table class="items">
@@ -407,7 +432,7 @@
     </tr>
     {{-- Retired field: no longer captured on new invoices, but still printed for
          historical ones so a reprint matches the original document. --}}
-    @if($invoice->mode_of_payment)
+    @if(!$isProforma && $invoice->mode_of_payment)
     <tr>
       <td>
         <span class="lbl">Mode of Payment:</span>
@@ -427,7 +452,10 @@
     </table>
 
     <div class="note">
-      This is a computer-generated {{ strtolower($docTitle) }} — {{ $invoice->invoice_no }} — printed {{ now()->format('d/m/Y H:i') }}
+      @if($isProforma)
+        This is a proforma invoice, not a tax invoice — it does not demand payment or evidence a supply. —
+      @endif
+      This is a computer-generated {{ strtolower($docTitle) }} — {{ $docNo }} — printed {{ now()->format('d/m/Y H:i') }}
     </div>
   </div>
 

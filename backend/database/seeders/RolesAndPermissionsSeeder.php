@@ -48,6 +48,7 @@ class RolesAndPermissionsSeeder extends Seeder
         'sales_orders'          => ['view', 'create', 'edit', 'delete'],
         'delivery_orders'       => ['view', 'create', 'edit', 'delete'],
         'invoices'              => ['view', 'create', 'edit', 'delete'],
+        'proforma_invoices'     => ['view', 'create', 'edit', 'delete'],
         'supplier_payments'     => ['view', 'create', 'edit', 'delete', 'confirm'],
         'supplier_credit_notes' => ['view'],
         'customer_receipts'     => ['view', 'create', 'edit', 'delete', 'confirm'],

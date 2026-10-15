@@ -79,6 +79,9 @@ const SalesOrderViewPage        = lazy(() => import('./pages/inventory/SalesOrde
 const DeliveryOrdersPage        = lazy(() => import('./pages/inventory/DeliveryOrdersPage'))
 const DeliveryOrderFormPage     = lazy(() => import('./pages/inventory/DeliveryOrderFormPage'))
 const DeliveryOrderViewPage     = lazy(() => import('./pages/inventory/DeliveryOrderViewPage'))
+const ProformaInvoicesPage      = lazy(() => import('./pages/inventory/ProformaInvoicesPage'))
+const ProformaInvoiceFormPage   = lazy(() => import('./pages/inventory/ProformaInvoiceFormPage'))
+const ProformaInvoiceViewPage   = lazy(() => import('./pages/inventory/ProformaInvoiceViewPage'))
 const InvoicesPage              = lazy(() => import('./pages/inventory/InvoicesPage'))
 const InvoiceFormPage           = lazy(() => import('./pages/inventory/InvoiceFormPage'))
 const InvoiceViewPage           = lazy(() => import('./pages/inventory/InvoiceViewPage'))
@@ -213,6 +216,10 @@ export default function App() {
         <Route path="/inventory/delivery-orders/create"        element={<Lazy component={DeliveryOrderFormPage} />} />
         <Route path="/inventory/delivery-orders/:id"           element={<Lazy component={DeliveryOrderViewPage} />} />
         <Route path="/inventory/delivery-orders/:id/edit"      element={<Lazy component={DeliveryOrderFormPage} />} />
+        <Route path="/inventory/proforma-invoices"             element={<Lazy component={ProformaInvoicesPage} />} />
+        <Route path="/inventory/proforma-invoices/create"      element={<Lazy component={ProformaInvoiceFormPage} />} />
+        <Route path="/inventory/proforma-invoices/:id"         element={<Lazy component={ProformaInvoiceViewPage} />} />
+        <Route path="/inventory/proforma-invoices/:id/edit"    element={<Lazy component={ProformaInvoiceFormPage} />} />
         <Route path="/inventory/invoices"                      element={<Lazy component={InvoicesPage} />} />
         <Route path="/inventory/invoices/create"               element={<Lazy component={InvoiceFormPage} />} />
         <Route path="/inventory/invoices/:id"                  element={<Lazy component={InvoiceViewPage} />} />

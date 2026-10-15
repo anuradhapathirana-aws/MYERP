@@ -19,6 +19,7 @@ import { getProducts, getProduct } from '../../api/products'
 import { getAllAttributeTypes } from '../../api/attributeTypes'
 import { getAllAttributes } from '../../api/attributes'
 import Breadcrumb from '../../components/Breadcrumb'
+import KeyboardShortcuts from '../../components/ui/KeyboardShortcuts'
 import { showError, showSuccess } from '../../utils/alerts'
 import api from '../../api/axios'
 
@@ -1173,28 +1174,12 @@ export default function PurchaseRequestFormPage() {
       </div>{/* end main grid */}
 
       {/* Keyboard Shortcuts Reference */}
-      <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-        <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Keyboard Shortcuts</p>
-        <div className="flex flex-wrap gap-x-5 gap-y-1">
-          {[
-            { keys: ['Alt', 'N'],   desc: 'Add new item row' },
-            { keys: ['Enter'],      desc: 'Move to next field in row (Color → UOM → Qty)' },
-            { keys: ['↑', '↓'],    desc: 'Navigate product search results / dropdown options' },
-            { keys: ['Esc'],        desc: 'Close product search or dropdown' },
-          ].map(({ keys, desc }) => (
-            <div key={desc} className="flex items-center gap-1.5">
-              <div className="flex items-center gap-0.5">
-                {keys.map((k, i) => (
-                  <span key={i} className="inline-flex items-center justify-center rounded border border-slate-300 bg-white px-1 py-px text-[10px] font-mono font-semibold text-slate-600 shadow-sm">
-                    {k}
-                  </span>
-                ))}
-              </div>
-              <span className="text-[10px] text-slate-500">{desc}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+      <KeyboardShortcuts shortcuts={[
+        { keys: ['Alt', 'N'],   desc: 'Add new item row' },
+        { keys: ['Enter'],      desc: 'Move to next field in row (Color → UOM → Qty)' },
+        { keys: ['↑', '↓'],    desc: 'Navigate product search results / dropdown options' },
+        { keys: ['Esc'],        desc: 'Close product search or dropdown' },
+      ]} />
     </div>
   )
 }

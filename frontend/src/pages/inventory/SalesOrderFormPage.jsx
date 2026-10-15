@@ -3,8 +3,8 @@ import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
-  Boxes, CalendarDays, ChevronDown, ChevronRight, LayoutList, Package, Plus, QrCode,
-  RefreshCw, Save, Table as TableIcon, Trash2, User, X,
+  Boxes, CalendarDays, ChevronDown, ChevronRight, FileClock, LayoutList, Package, Plus, QrCode,
+  RefreshCw, Save, Table as TableIcon, Trash2, Truck, User, X,
 } from 'lucide-react'
 import {
   createSalesOrder,
@@ -24,7 +24,10 @@ import { getUsersAll } from '../../api/users'
 import { getAllUnitTypesFlat } from '../../api/unitTypes'
 import { getAllAttributeTypes } from '../../api/attributeTypes'
 import { getAllAttributes } from '../../api/attributes'
+import { getProformaInvoices } from '../../api/proformaInvoices'
+import { usePermissions } from '../../hooks/usePermissions'
 import Breadcrumb from '../../components/Breadcrumb'
+import KeyboardShortcuts from '../../components/ui/KeyboardShortcuts'
 import FilterSearchSelect from '../../components/ui/FilterSearchSelect'
 import Money from '../../components/ui/Money'
 import { confirmAction, showError, showSuccess, showWarning } from '../../utils/alerts'
@@ -1161,11 +1164,27 @@ export default function SalesOrderFormPage() {
   const netAmount       = totals.total + transportCharge
 
   /* ── Save ─────────────────────────────────────────────────── */
+  // Where to go after a successful save: back to the list, or straight into a
+  // pre-filled New Proforma / New DO for the (now confirmed) order.
+  const nextActionRef = useRef(null)
+  const { can } = usePermissions()
+
+  // A proforma is one per SO — hide "Save & Create Proforma" once a live one exists.
+  const { data: soProformas } = useQuery({
+    queryKey: ['proforma-invoices', 'by-so', id],
+    queryFn:  () => getProformaInvoices(1, { so_id: id }),
+    enabled:  isEdit && can('view_proforma_invoices'),
+  })
+  const hasLiveProforma = (soProformas?.data ?? []).some((p) => p.status !== 'cancelled')
+
   const saveMutation = useMutation({
     mutationFn: (payload) => isEdit ? updateSalesOrder(id, payload) : createSalesOrder(payload),
-    onSuccess: () => {
+    onSuccess: (res) => {
+      const soId = res?.data?.id ?? id
       showSuccess(isEdit ? 'Sales order updated.' : 'Sales order created.')
-      navigate('/inventory/sales-orders')
+      if (nextActionRef.current === 'proforma') navigate(`/inventory/proforma-invoices/create?so=${soId}`)
+      else if (nextActionRef.current === 'do') navigate(`/inventory/delivery-orders/create?so=${soId}`)
+      else navigate('/inventory/sales-orders')
     },
     onError: (e) => {
       const data = e.response?.data
@@ -1174,7 +1193,8 @@ export default function SalesOrderFormPage() {
     },
   })
 
-  const handleSubmit = async (saveStatus) => {
+  /** nextAction: null (back to list) | 'proforma' | 'do' — both need a confirmed SO. */
+  const handleSubmit = async (saveStatus, nextAction = null) => {
     const clientErrors = {}
 
     if (!form.order_date)
@@ -1252,6 +1272,7 @@ export default function SalesOrderFormPage() {
     }
 
     setErrors({})
+    nextActionRef.current = nextAction
     saveMutation.mutate({
       order_date:       form.order_date,
       reference_no:     form.reference_no.trim()     || null,
@@ -1300,6 +1321,28 @@ export default function SalesOrderFormPage() {
   const primaryLabel    = isEdit
     ? (status === 'draft' ? 'Save & Confirm' : 'Update Order')
     : 'Create & Close'
+  const showProformaButton = can('create_proforma_invoices') && !hasLiveProforma
+  const showDoButton       = can('create_delivery_orders')
+
+  /* ── Alt+P / Alt+D — save (confirmed) and continue to a new Proforma / DO ── */
+  const followUpRef = useRef(null)
+  useEffect(() => {
+    followUpRef.current = (action) => {
+      if (saveMutation.isPending) return
+      if (action === 'proforma' && !showProformaButton) return
+      if (action === 'do' && !showDoButton) return
+      handleSubmit(primaryStatus, action)
+    }
+  })
+  useEffect(() => {
+    const handler = (e) => {
+      if (!e.altKey || e.ctrlKey || e.metaKey) return
+      if (e.code === 'KeyP') { e.preventDefault(); followUpRef.current?.('proforma') }
+      if (e.code === 'KeyD') { e.preventDefault(); followUpRef.current?.('do') }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
 
   if (isEdit && loadingSO) {
     return (
@@ -2103,6 +2146,30 @@ export default function SalesOrderFormPage() {
                 <Save size={11} /> Save as Draft
               </button>
             )}
+            {showProformaButton && (
+              <button
+                type="button"
+                disabled={saveMutation.isPending}
+                onClick={() => handleSubmit(primaryStatus, 'proforma')}
+                title="Save as confirmed and open a new Proforma Invoice for this order (Alt+P)"
+                className="flex items-center gap-1 rounded border border-violet-300 bg-violet-50 px-3 py-1.5 text-xs font-bold text-violet-700 transition-all hover:bg-violet-100 disabled:opacity-60 active:scale-95"
+              >
+                <FileClock size={11} /> Save &amp; Create Proforma
+                <kbd className="ml-1 rounded border border-violet-200 bg-white px-1 text-[9px] font-semibold text-violet-500">Alt+P</kbd>
+              </button>
+            )}
+            {showDoButton && (
+              <button
+                type="button"
+                disabled={saveMutation.isPending}
+                onClick={() => handleSubmit(primaryStatus, 'do')}
+                title="Save as confirmed and open a new Delivery Order for this order (Alt+D)"
+                className="flex items-center gap-1 rounded border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 transition-all hover:bg-emerald-100 disabled:opacity-60 active:scale-95"
+              >
+                <Truck size={11} /> Save &amp; Create DO
+                <kbd className="ml-1 rounded border border-emerald-200 bg-white px-1 text-[9px] font-semibold text-emerald-500">Alt+D</kbd>
+              </button>
+            )}
             <button
               type="button"
               disabled={saveMutation.isPending}
@@ -2160,6 +2227,16 @@ export default function SalesOrderFormPage() {
           ))}
         </div>
       </div>
+
+      {/* Keyboard Shortcuts Reference */}
+      <KeyboardShortcuts shortcuts={[
+        { keys: ['Alt', 'N'], desc: 'Add new item row' },
+        { keys: ['Alt', 'P'], desc: 'Save & Create Proforma' },
+        { keys: ['Alt', 'D'], desc: 'Save & Create DO' },
+        { keys: ['Enter'], desc: 'Scan box: add the scanned piece · Qty: move to Price' },
+        { keys: ['↑', '↓'], desc: 'Navigate product search results' },
+        { keys: ['Esc'], desc: 'Close product search dropdown' },
+      ]} />
     </div>
   )
 }

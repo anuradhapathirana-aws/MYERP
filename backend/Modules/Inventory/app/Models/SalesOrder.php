@@ -77,6 +77,11 @@ class SalesOrder extends Model
         return $this->hasMany(Invoice::class, 'so_id');
     }
 
+    public function proformaInvoices(): HasMany
+    {
+        return $this->hasMany(ProformaInvoice::class, 'so_id');
+    }
+
     public function customer(): BelongsTo
     {
         return $this->belongsTo(CustomerMaster::class, 'customer_id');

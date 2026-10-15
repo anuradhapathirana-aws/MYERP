@@ -18,6 +18,7 @@ import { getAllBanks } from '../../api/banks'
 import { getAllLedgerAccounts } from '../../api/ledgerAccounts'
 import { getInvoice } from '../../api/invoices'
 import Breadcrumb from '../../components/Breadcrumb'
+import KeyboardShortcuts from '../../components/ui/KeyboardShortcuts'
 import Money from '../../components/ui/Money'
 import FilterSearchSelect from '../../components/ui/FilterSearchSelect'
 import { confirmAction, showError, showSuccess } from '../../utils/alerts'
@@ -384,6 +385,40 @@ export default function CustomerReceiptFormPage() {
       }))
   })()
 
+  /* ── Keyboard flow through Receipt Details:
+     Discount ↵ → Pay Mode (opens) → pick → Amount → ↵ (→ Ref No / Date / Deposit To
+     when required) → ↵ adds the line → Pay Mode reopens while money is left. ── */
+  const payModeRef = useRef(null)
+  const amountRef  = useRef(null)
+  const refNoRef   = useRef(null)
+  const dateRef    = useRef(null)
+  const depositRef = useRef(null)
+
+  const openPayMode = () => setTimeout(() => {
+    const el = payModeRef.current
+    if (!el) return
+    el.focus()
+    try { el.showPicker?.() } catch { /* needs a user gesture — focus is enough */ }
+  }, 0)
+
+  const focusAmount = () => setTimeout(() => { amountRef.current?.focus(); amountRef.current?.select() }, 0)
+
+  // Deposit To is a FilterSearchSelect — clicking its trigger opens it and focuses its search box.
+  const openDepositTo = () => setTimeout(() => depositRef.current?.querySelector('button')?.click(), 0)
+  const needsDepositTo = fundSources.length > 0 && !settlementDraft.ledger_account_id
+
+  /** Enter inside a Receipt Details field: next required field, else add the line. */
+  const onDetailEnter = (e, from) => {
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    const needsRef  = selectedMode?.requires_reference_no
+    const needsDate = selectedMode?.requires_date
+    if (from === 'amount' && needsRef) return refNoRef.current?.focus()
+    if ((from === 'amount' || from === 'ref') && needsDate) return dateRef.current?.focus()
+    if (needsDepositTo) return openDepositTo()
+    addSettlement()
+  }
+
   const addSettlement = () => {
     if (!settlementDraft.payment_mode_id || !(parseFloat(settlementDraft.amount) > 0)) {
       showError('Select a pay mode and enter an amount.')
@@ -422,6 +457,8 @@ export default function CustomerReceiptFormPage() {
       instrument_date:    settlementDraft.instrument_date,
     }])
     setSettlementDraft(emptySettlementDraft())
+    // Still money to cover → straight into the next payment line
+    if (remaining - (parseFloat(settlementDraft.amount) || 0) > 0.01) openPayMode()
   }
   const removeSettlement = (key) => setSettlements((prev) => prev.filter((s) => s._key !== key))
 
@@ -550,10 +587,47 @@ export default function CustomerReceiptFormPage() {
 
   useEffect(() => {
     const handler = (e) => {
-      if (e.key === 'Enter' && canContinueRef.current) {
+      if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && canContinueRef.current) {
         e.preventDefault()
         setContinued(true)
       }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
+  const isDraftReceipt = !isEdit || status === 'draft'
+
+  /* ── Auto-open Pay Mode once Receipt Details shows on a draft that still owes money ── */
+  const remainingRef = useRef(remaining)
+  useEffect(() => {
+    remainingRef.current = remaining
+  })
+  const detailsReady = showSummary && isDraftReceipt && settleableModes.length > 0 && !(isEdit && loadingExisting)
+  useEffect(() => {
+    if (detailsReady && remainingRef.current > 0.01) openPayMode()
+  }, [detailsReady])
+
+  /* ── Ctrl+Enter — New: Save Draft · Edit (draft): Confirm Receipt (asks first) ── */
+  const primaryActionRef = useRef(null)
+  useEffect(() => {
+    primaryActionRef.current = () => {
+      if (!isDraftReceipt || saveMutation.isPending || confirmMutation.isPending) return
+      if (isUnderfunded) {
+        showError(`Receipt is underfunded by ${fmt(remaining)}. Add more Setoffs or Receipt Details.`)
+        return
+      }
+      if (isEdit) handleConfirm()
+      else handleSubmit()
+    }
+  })
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.repeat) return
+      const popup = document.querySelector('.swal2-popup')
+      if (popup && !popup.classList.contains('swal2-toast')) return
+      e.preventDefault()
+      primaryActionRef.current?.()
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -748,6 +822,12 @@ export default function CustomerReceiptFormPage() {
                           className="w-20 rounded-md border-2 border-slate-200 bg-white px-2 py-0.5 text-xs outline-none focus:border-indigo-400"
                           value={discountPct}
                           onChange={(e) => setDiscountPct(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key !== 'Enter' || e.ctrlKey || e.metaKey) return
+                            e.preventDefault()
+                            applyDiscountPct()
+                            openPayMode()
+                          }}
                         />
                         <button type="button" onClick={applyDiscountPct} className="rounded-md border-2 border-indigo-200 bg-white px-2 py-0.5 text-[11px] font-bold text-indigo-600 hover:bg-indigo-50">
                           Apply as Discount
@@ -788,6 +868,11 @@ export default function CustomerReceiptFormPage() {
                               value={r.discount}
                               disabled={!isDraft}
                               onChange={(e) => setRowDiscount(r.invoice_id, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key !== 'Enter' || e.ctrlKey || e.metaKey) return
+                                e.preventDefault()
+                                openPayMode()
+                              }}
                             />
                           </td>
                           <td className="px-2 py-1">
@@ -920,9 +1005,14 @@ export default function CustomerReceiptFormPage() {
                 <div>
                   <label className={LABEL_CLS}>Pay Mode</label>
                   <select
+                    ref={payModeRef}
                     className={SELECT_CLS}
                     value={settlementDraft.payment_mode_id}
-                    onChange={(e) => setSettlementDraft((d) => ({ ...d, payment_mode_id: e.target.value }))}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      setSettlementDraft((d) => ({ ...d, payment_mode_id: value }))
+                      if (value) focusAmount()
+                    }}
                   >
                     <option value="">— Select —</option>
                     {settleableModes.map((m) => <option key={m.id} value={m.id}>{m.payment_mode_name}</option>)}
@@ -933,8 +1023,11 @@ export default function CustomerReceiptFormPage() {
                   <input
                     type="number" min="0" step="0.01"
                     className={INPUT_CLS}
+                    ref={amountRef}
                     value={settlementDraft.amount}
                     onChange={(e) => setSettlementDraft((d) => ({ ...d, amount: e.target.value }))}
+                    onKeyDown={(e) => onDetailEnter(e, 'amount')}
+                    title="Enter adds this payment line"
                   />
                 </div>
                 {/*
@@ -945,15 +1038,21 @@ export default function CustomerReceiptFormPage() {
                 {fundSources.length > 0 && (
                   <div>
                     <label className={LABEL_CLS}>Deposit To *</label>
-                    <FilterSearchSelect
-                      size="form"
-                      wide
-                      clearable={false}
-                      placeholder="Select account…"
-                      value={settlementDraft.ledger_account_id}
-                      onChange={(v) => setSettlementDraft((d) => ({ ...d, ledger_account_id: v }))}
-                      options={depositToOptions}
-                    />
+                    <div ref={depositRef}>
+                      <FilterSearchSelect
+                        size="form"
+                        wide
+                        clearable={false}
+                        placeholder="Select account…"
+                        value={settlementDraft.ledger_account_id}
+                        onChange={(v) => {
+                          setSettlementDraft((d) => ({ ...d, ledger_account_id: v }))
+                          // Back to Amount so the next ↵ adds the line
+                          if (v) focusAmount()
+                        }}
+                        options={depositToOptions}
+                      />
+                    </div>
                     <p className="mt-0.5 text-[10px] text-slate-400">
                       The exact cash or bank account the money arrives in
                     </p>
@@ -993,7 +1092,7 @@ export default function CustomerReceiptFormPage() {
                     </div>
                     <div>
                       <label className={LABEL_CLS}>Bank Account</label>
-                      <input className={INPUT_CLS} value={settlementDraft.bank_account_no} onChange={(e) => setSettlementDraft((d) => ({ ...d, bank_account_no: e.target.value }))} />
+                      <input className={INPUT_CLS} value={settlementDraft.bank_account_no} onChange={(e) => setSettlementDraft((d) => ({ ...d, bank_account_no: e.target.value }))} onKeyDown={(e) => onDetailEnter(e, 'bank')} />
                     </div>
                   </>
                 )}
@@ -1008,11 +1107,13 @@ export default function CustomerReceiptFormPage() {
                       inputMode={isChequeMode ? 'numeric' : undefined}
                       maxLength={isChequeMode ? 6 : 50}
                       placeholder={isChequeMode ? '6 digits' : ''}
+                      ref={refNoRef}
                       value={settlementDraft.reference_no}
                       onChange={(e) => {
                         const value = isChequeMode ? e.target.value.replace(/\D/g, '').slice(0, 6) : e.target.value
                         setSettlementDraft((d) => ({ ...d, reference_no: value }))
                       }}
+                      onKeyDown={(e) => onDetailEnter(e, 'ref')}
                     />
                     {isChequeMode && settlementDraft.reference_no && chequeNoInvalid && (
                       <p className="mt-0.5 text-[10px] text-red-500">Cheque number must be exactly 6 digits.</p>
@@ -1025,14 +1126,17 @@ export default function CustomerReceiptFormPage() {
                     <input
                       type="date"
                       className={chequeDateInvalid ? INPUT_CLS.replace('border-slate-200', 'border-red-300') : INPUT_CLS}
+                      ref={dateRef}
                       value={settlementDraft.instrument_date}
                       onChange={(e) => setSettlementDraft((d) => ({ ...d, instrument_date: e.target.value }))}
+                      onKeyDown={(e) => onDetailEnter(e, 'date')}
                     />
                   </div>
                 )}
                 <div className="flex items-end">
                   <button type="button" onClick={addSettlement} className="flex items-center gap-1 rounded bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700">
                     <Plus size={12} /> Add
+                    <kbd className="ml-1 rounded border border-emerald-300 bg-emerald-500 px-1 text-[9px] font-semibold text-emerald-50">Enter</kbd>
                   </button>
                 </div>
               </div>
@@ -1123,6 +1227,9 @@ export default function CustomerReceiptFormPage() {
               className="flex items-center gap-1 rounded bg-indigo-600 px-4 py-1.5 text-xs font-bold text-white shadow-sm shadow-indigo-100 transition-all hover:bg-indigo-700 disabled:opacity-40 active:scale-95"
             >
               {saveMutation.isPending ? (<><RefreshCw size={11} className="animate-spin" /> Saving…</>) : (<><Save size={11} /> {isEdit ? 'Update' : 'Save Draft'}</>)}
+              {!isEdit && (
+                <kbd className="ml-1 rounded border border-indigo-300 bg-indigo-500 px-1 text-[9px] font-semibold text-indigo-50">Ctrl+Enter</kbd>
+              )}
             </button>
           )}
 
@@ -1135,10 +1242,19 @@ export default function CustomerReceiptFormPage() {
               className="flex items-center gap-1 rounded bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white shadow-sm shadow-emerald-100 transition-all hover:bg-emerald-700 disabled:opacity-40 active:scale-95"
             >
               {confirmMutation.isPending ? 'Confirming…' : 'Confirm Receipt'}
+              <kbd className="ml-1 rounded border border-emerald-300 bg-emerald-500 px-1 text-[9px] font-semibold text-emerald-50">Ctrl+Enter</kbd>
             </button>
           )}
         </div>
       </div>
+
+      {/* Keyboard Shortcuts Reference */}
+      <KeyboardShortcuts shortcuts={[
+        { keys: ['Enter'], desc: 'Continue to the receipt summary (after ticking invoices)' },
+        { keys: ['Enter'], desc: 'Discount / Discount %: go to Pay Mode' },
+        { keys: ['Enter'], desc: 'Amount (→ Ref No / Date / Deposit To when required): add payment line' },
+        { keys: ['Ctrl', 'Enter'], desc: isEdit ? 'Confirm Receipt' : 'Save Draft' },
+      ]} />
     </div>
   )
 }

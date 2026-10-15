@@ -222,6 +222,14 @@ export default function InvoiceViewPage() {
             <Field label="Customer" value={inv.customer?.name} />
             <Field label="Sales Order" value={inv.sales_order?.so_no} mono />
             <Field label="Delivery Order" value={inv.delivery_order?.do_no ?? 'Direct billing'} mono />
+            {inv.proforma && (
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Proforma</p>
+                <Link to={`/inventory/proforma-invoices/${inv.proforma.id}`} className="font-mono text-xs text-indigo-600 hover:underline">
+                  {inv.proforma.proforma_no}
+                </Link>
+              </div>
+            )}
             <Field label="Invoice Date" value={inv.invoice_date} />
             <Field label="Due Date" value={inv.due_date} />
             <Field label="Issued / Paid" value={[inv.issued_at?.slice(0, 10), inv.paid_at?.slice(0, 10)].filter(Boolean).join(' / ')} />

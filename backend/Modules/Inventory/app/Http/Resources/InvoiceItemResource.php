@@ -17,6 +17,7 @@ class InvoiceItemResource extends JsonResource
             'invoice_id' => $this->invoice_id,
             'so_item_id' => $this->so_item_id,
             'do_item_id' => $this->do_item_id,
+            'proforma_item_id' => $this->proforma_item_id,
             'product_id' => $this->product_id,
             'unit_id'    => $this->unit_id,
             'price_unit_id' => $this->price_unit_id,

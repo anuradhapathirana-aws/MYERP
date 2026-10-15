@@ -1,9 +1,10 @@
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Ban, CheckCircle2, Download, FileText, Pencil, Printer, RefreshCw } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { downloadDoPdf, getDeliveryOrder, updateDeliveryOrderStatus } from '../../api/deliveryOrders'
 import Breadcrumb from '../../components/Breadcrumb'
+import KeyboardShortcuts from '../../components/ui/KeyboardShortcuts'
 import { confirmAction, showError, showSuccess } from '../../utils/alerts'
 import { printPdfBlob } from '../../utils/pdf'
 
@@ -45,6 +46,42 @@ export default function DeliveryOrderViewPage() {
     },
     onError: (e) => showError(e.response?.data?.message ?? 'Failed to update status.'),
   })
+
+  /* Confirm & Ship — stock is deducted, so the button and Ctrl+Enter both ask first. */
+  const handleConfirmShip = async () => {
+    const doc = data?.data
+    if (!doc || doc.status !== 'draft' || statusMutation.isPending) return
+    if (await confirmAction({
+      title: 'Confirm Delivery Order?',
+      message: `${doc.do_no} will be confirmed and <b>stock will be deducted</b> for the shipped rolls/quantities. Confirmed delivery orders cannot be edited.`,
+      confirmText: 'Yes, Confirm & Ship',
+      confirmColor: '#4f46e5',
+      icon: 'warning',
+    })) statusMutation.mutate('confirmed')
+  }
+
+  /* ── Ctrl+Enter = the DO's next step: Confirm & Ship (draft) →
+     Create Invoice (confirmed, not yet invoiced) ── */
+  const primaryActionRef = useRef(null)
+  useEffect(() => {
+    primaryActionRef.current = () => {
+      const doc = data?.data
+      if (doc?.status === 'draft') handleConfirmShip()
+      else if (doc?.status === 'confirmed' && !doc.invoice) navigate(`/inventory/invoices/create?do=${doc.id}`)
+    }
+  })
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.repeat) return
+      // An open SweetAlert dialog (e.g. this confirmation) owns the keystroke
+      const popup = document.querySelector('.swal2-popup')
+      if (popup && !popup.classList.contains('swal2-toast')) return
+      e.preventDefault()
+      primaryActionRef.current?.()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
 
   const handlePdf = async (print) => {
     setPdfBusy(true)
@@ -116,18 +153,12 @@ export default function DeliveryOrderViewPage() {
               <button
                 type="button"
                 disabled={statusMutation.isPending}
-                onClick={async () => {
-                  if (await confirmAction({
-                    title: 'Confirm Delivery Order?',
-                    message: `${doc.do_no} will be confirmed and <b>stock will be deducted</b> for the shipped rolls/quantities. Confirmed delivery orders cannot be edited.`,
-                    confirmText: 'Yes, Confirm & Ship',
-                    confirmColor: '#4f46e5',
-                    icon: 'warning',
-                  })) statusMutation.mutate('confirmed')
-                }}
+                onClick={handleConfirmShip}
+                title="Confirm & Ship (Ctrl+Enter)"
                 className="flex items-center gap-1 rounded bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition-all hover:bg-indigo-700 disabled:opacity-60 active:scale-95"
               >
                 <CheckCircle2 size={12} /> Confirm & Ship
+                <kbd className="ml-1 rounded border border-indigo-300 bg-indigo-500 px-1 text-[9px] font-semibold text-indigo-50">Ctrl+Enter</kbd>
               </button>
               <button
                 type="button"
@@ -156,9 +187,11 @@ export default function DeliveryOrderViewPage() {
           {doc.status === 'confirmed' && !doc.invoice && (
             <Link
               to={`/inventory/invoices/create?do=${doc.id}`}
+              title="Create Invoice (Ctrl+Enter)"
               className="flex items-center gap-1 rounded bg-blue-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition-all hover:bg-blue-700 active:scale-95"
             >
               <FileText size={12} /> Create Invoice
+              <kbd className="ml-1 rounded border border-blue-300 bg-blue-500 px-1 text-[9px] font-semibold text-blue-50">Ctrl+Enter</kbd>
             </Link>
           )}
           <button
@@ -273,6 +306,19 @@ export default function DeliveryOrderViewPage() {
         </div>
 
       </div>
+
+      {/* Keyboard Shortcuts Reference */}
+      {doc.status === 'draft' && (
+        <KeyboardShortcuts shortcuts={[
+          { keys: ['Ctrl', 'Enter'], desc: 'Confirm & Ship (asks before deducting stock)' },
+          { keys: ['Enter'], desc: 'In the confirmation: Yes, Confirm & Ship' },
+        ]} />
+      )}
+      {doc.status === 'confirmed' && !doc.invoice && (
+        <KeyboardShortcuts shortcuts={[
+          { keys: ['Ctrl', 'Enter'], desc: 'Create Invoice for this delivery order' },
+        ]} />
+      )}
     </div>
   )
 }

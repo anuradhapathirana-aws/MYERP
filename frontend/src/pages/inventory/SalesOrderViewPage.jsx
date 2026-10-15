@@ -1,10 +1,12 @@
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Ban, CheckCircle2, ChevronDown, ChevronRight, FileText, Pencil, QrCode, RefreshCw, Truck,
+  Ban, CheckCircle2, ChevronDown, ChevronRight, FileClock, FileText, Pencil, QrCode, RefreshCw, Truck,
 } from 'lucide-react'
 import { useState } from 'react'
 import { getSalesOrder, updateSalesOrderStatus } from '../../api/salesOrders'
+import { getProformaInvoices } from '../../api/proformaInvoices'
+import { usePermissions } from '../../hooks/usePermissions'
 import Breadcrumb from '../../components/Breadcrumb'
 import Money from '../../components/ui/Money'
 import { confirmAction, showError, showSuccess } from '../../utils/alerts'
@@ -36,6 +38,15 @@ export default function SalesOrderViewPage() {
     queryKey: ['sales-order', id],
     queryFn:  () => getSalesOrder(id),
   })
+
+  // The SO's live (non-cancelled) proforma, if any — drives Create Proforma vs. its link.
+  const { can } = usePermissions()
+  const { data: proformasRes } = useQuery({
+    queryKey: ['proforma-invoices', 'by-so', id],
+    queryFn:  () => getProformaInvoices(1, { so_id: id }),
+    enabled:  can('view_proforma_invoices'),
+  })
+  const liveProforma = (proformasRes?.data ?? []).find((p) => p.status !== 'cancelled')
 
   const statusMutation = useMutation({
     mutationFn: (status) => updateSalesOrderStatus(id, status),
@@ -91,6 +102,23 @@ export default function SalesOrderViewPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Optional quote before delivery — one live proforma per SO */}
+          {liveProforma ? (
+            <Link
+              to={`/inventory/proforma-invoices/${liveProforma.id}`}
+              className="flex items-center gap-1 rounded border border-violet-300 bg-violet-50 px-3 py-1.5 text-xs font-bold text-violet-700 transition-all hover:bg-violet-100 active:scale-95"
+              title={`Proforma ${liveProforma.status_label}`}
+            >
+              <FileClock size={12} /> {liveProforma.proforma_no}
+            </Link>
+          ) : so.status === 'confirmed' && can('create_proforma_invoices') && (
+            <Link
+              to={`/inventory/proforma-invoices/create?so=${so.id}`}
+              className="flex items-center gap-1 rounded border border-violet-300 bg-white px-3 py-1.5 text-xs font-bold text-violet-700 transition-all hover:bg-violet-50 active:scale-95"
+            >
+              <FileClock size={12} /> Create Proforma
+            </Link>
+          )}
           {so.status === 'confirmed' && (
             <Link
               to={`/inventory/delivery-orders/create?so=${so.id}`}

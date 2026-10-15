@@ -46,6 +46,7 @@ class RolesAndPermissionsSeeder extends Seeder
         'sales_orders'          => ['view', 'create', 'edit', 'delete'],
         'delivery_orders'       => ['view', 'create', 'edit', 'delete'],
         'invoices'              => ['view', 'create', 'edit', 'delete'],
+        'proforma_invoices'     => ['view', 'create', 'edit', 'delete'],
         // void is separate from confirm: undoing something already in the books
         // and already in the general ledger is a different level of trust.
         'supplier_payments'     => ['view', 'create', 'edit', 'delete', 'confirm', 'void'],

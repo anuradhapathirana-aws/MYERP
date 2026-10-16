@@ -13,6 +13,8 @@ import { getAllSuppliers } from '../../api/suppliers'
 import { getAllUnitTypesFlat } from '../../api/unitTypes'
 import Breadcrumb from '../../components/Breadcrumb'
 import TreeSelect from '../../components/TreeSelect'
+import ProductVariantsCard from '../../components/inventory/ProductVariantsCard'
+import { variantsFromApi, variantsToPayload } from '../../utils/productVariants'
 import { showError, showSuccess } from '../../utils/alerts'
 
 const PRODUCT_TYPES   = ['Inventory', 'Fabric', 'Finished Good', 'Raw Material', 'Service']
@@ -90,6 +92,7 @@ const EMPTY_FORM = {
   supplier_ids:               [],
   cost_details:               [],
   product_attributes:         [],
+  variants:                   [],
 }
 
 function validateField(field, value) {
@@ -854,6 +857,7 @@ export default function ProductFormPage() {
             return acc
           }, {})
         ),
+        variants:                   variantsFromApi(p.variants),
         cost_details:               (p.cost_details ?? []).map((c) => ({
           sales_channel_id:               String(c.sales_channel_id),
           unit_category_id:              c.unit_category_id != null ? String(c.unit_category_id) : '',
@@ -1159,6 +1163,8 @@ export default function ProductFormPage() {
           sale_privileges_discount:       toNum(r.sale_privileges_discount),
           purchasing_privileges_discount: toNum(r.purchasing_privileges_discount),
         })),
+      // Variants belong to quantity-tracked products only; omitted = left untouched.
+      ...(form.stock_tracking === 'quantity' ? { variants: variantsToPayload(form.variants) } : {}),
     }
     mutation.mutate(payload)
   }
@@ -1547,6 +1553,20 @@ export default function ProductFormPage() {
             )}
           </div>
         </section>
+
+        {/* ── Variants — quantity-tracked products only ── */}
+        {f.stock_tracking === 'quantity' && (
+          <ProductVariantsCard
+            variants={f.variants}
+            onChange={(variants) => setForm((prev) => ({ ...prev, variants }))}
+            productAttributes={f.product_attributes}
+            attributeTypes={attributeTypes}
+            allAttributes={allAttributes}
+            salesChannels={salesChannels}
+            costDetails={f.cost_details}
+            errors={e}
+          />
+        )}
 
         {/* ── Product Options — full width ── */}
         <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">

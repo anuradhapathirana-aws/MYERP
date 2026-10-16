@@ -54,7 +54,8 @@ class ProductController extends Controller
 
     public function show(Product $product): JsonResponse
     {
-        $product->loadMissing(['suppliers', 'salesChannels', 'category', 'location', 'productAttributes', 'locationStores']);
+        // Full detail incl. variants and which of them stock/documents already use.
+        $product = $this->service->find($product->id);
 
         return response()->json(
             ['data' => (new ProductResource($product))->toArray(request())],

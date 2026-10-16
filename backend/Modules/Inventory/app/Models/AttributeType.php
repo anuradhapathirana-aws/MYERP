@@ -34,4 +34,18 @@ class AttributeType extends Model
     {
         return $this->hasMany(Attribute::class, 'attribute_type_id');
     }
+
+    /**
+     * Ids of every Color/Colour type — one per category. Colour is identified by
+     * type name, the same rule the document forms use.
+     *
+     * @return array<int, int>
+     */
+    public static function colourTypeIds(): array
+    {
+        return static::whereRaw('LOWER(attribute_type_name) IN (?, ?)', ['color', 'colour'])
+            ->pluck('id')
+            ->map('intval')
+            ->all();
+    }
 }

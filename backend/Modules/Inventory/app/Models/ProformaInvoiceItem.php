@@ -22,6 +22,7 @@ class ProformaInvoiceItem extends Model
         'unit_id',
         'price_unit_id',
         'attribute_id',
+        'variant_id',
         'quantity',
         'unit_price',
         'discount',
@@ -38,6 +39,7 @@ class ProformaInvoiceItem extends Model
         'unit_id'        => 'integer',
         'price_unit_id'  => 'integer',
         'attribute_id'   => 'integer',
+        'variant_id'     => 'integer',
         'quantity'       => 'decimal:4',
         'unit_price'     => 'decimal:4',
         'discount'       => 'decimal:4',
@@ -74,5 +76,11 @@ class ProformaInvoiceItem extends Model
     public function attribute(): BelongsTo
     {
         return $this->belongsTo(Attribute::class, 'attribute_id');
+    }
+
+    /** The product variant (Red / Floral / M) — null for roll products and products without variants. */
+    public function variant(): BelongsTo
+    {
+        return $this->belongsTo(ProductVariant::class, 'variant_id');
     }
 }

@@ -17,6 +17,7 @@ class PurchaseOrderItem extends Model
         'product_id',
         'unit_id',
         'attribute_id',
+        'variant_id',
         'pr_item_id',
         'quantity_ordered',
         'quantity_received',
@@ -32,6 +33,7 @@ class PurchaseOrderItem extends Model
         'product_id'        => 'integer',
         'unit_id'           => 'integer',
         'attribute_id'      => 'integer',
+        'variant_id'        => 'integer',
         'pr_item_id'        => 'integer',
         'quantity_ordered'  => 'decimal:4',
         'quantity_received' => 'decimal:4',
@@ -64,6 +66,12 @@ class PurchaseOrderItem extends Model
     public function attribute(): BelongsTo
     {
         return $this->belongsTo(Attribute::class, 'attribute_id');
+    }
+
+    /** The product variant (Red / Floral / M) — null for roll products and products without variants. */
+    public function variant(): BelongsTo
+    {
+        return $this->belongsTo(ProductVariant::class, 'variant_id');
     }
 
     public function grnItems(): HasMany

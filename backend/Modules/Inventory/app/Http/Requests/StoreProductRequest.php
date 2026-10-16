@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Http\Requests;
 
+use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Modules\Inventory\Enums\StockTracking;
@@ -88,7 +89,34 @@ class StoreProductRequest extends FormRequest
             'cost_details.*.wholesale_price'                => ['nullable', 'numeric', 'min:0'],
             'cost_details.*.sale_privileges_discount'       => ['nullable', 'numeric', 'min:0', 'max:100'],
             'cost_details.*.purchasing_privileges_discount' => ['nullable', 'numeric', 'min:0', 'max:100'],
+
+            // Variants — quantity-tracked products only (see withValidator)
+            'variants'                              => ['nullable', 'array'],
+            'variants.*.id'                         => ['nullable', 'integer'],
+            'variants.*.attribute_ids'              => ['nullable', 'array'],
+            'variants.*.attribute_ids.*'            => ['integer', 'exists:inv_attributes,id'],
+            'variants.*.sku'                        => ['nullable', 'string', 'max:80', 'distinct'],
+            'variants.*.barcode'                    => ['nullable', 'string', 'max:80', 'distinct'],
+            'variants.*.is_active'                  => ['nullable', 'boolean'],
+            'variants.*.prices'                     => ['nullable', 'array'],
+            'variants.*.prices.*.sales_channel_id'  => ['required', 'integer', 'exists:inv_sales_channels,id'],
+            'variants.*.prices.*.selling_price'     => ['nullable', 'numeric', 'min:0'],
+            'variants.*.prices.*.wholesale_price'   => ['nullable', 'numeric', 'min:0'],
+            'variants.*.prices.*.min_price'         => ['nullable', 'numeric', 'min:0'],
+            'variants.*.prices.*.max_price'         => ['nullable', 'numeric', 'min:0'],
         ];
+    }
+
+    /** Variants exist only on quantity-tracked products (omitted tracking = 'roll'). */
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            $tracking = StockTracking::tryFrom((string) $this->input('stock_tracking')) ?? StockTracking::Roll;
+
+            if ($tracking === StockTracking::Roll && ! empty($this->input('variants'))) {
+                $validator->errors()->add('variants', 'Variants are for quantity-tracked products only — roll products track colour per roll.');
+            }
+        });
     }
 
     /** @return array<string, string> */

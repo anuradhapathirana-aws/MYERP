@@ -13,6 +13,7 @@ class ProformaInvoiceItemResource extends JsonResource
     public function toArray(Request $request): array
     {
         $invoiced = $this->resource->getAttribute('invoiced_quantity');
+        $recalled = $this->resource->getAttribute('recalled_quantity');
 
         return [
             'id'                => $this->id,
@@ -24,6 +25,10 @@ class ProformaInvoiceItemResource extends JsonResource
             'attribute_id'      => $this->attribute_id,
             'quantity'          => (float) $this->quantity,
             'invoiced_quantity' => $invoiced !== null ? (float) $invoiced : null,
+            'recalled_quantity' => $recalled !== null ? (float) $recalled : null,
+            // Snapshot taken when the proforma was issued (informational)
+            'stock_status'      => $this->stock_status,
+            'available_qty'     => $this->available_qty !== null ? (float) $this->available_qty : null,
             'unit_price'        => (float) $this->unit_price,
             'discount'          => (float) $this->discount,
             'tax'               => (float) $this->tax,

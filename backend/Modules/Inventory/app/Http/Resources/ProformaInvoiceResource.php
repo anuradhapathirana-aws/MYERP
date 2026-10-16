@@ -53,6 +53,17 @@ class ProformaInvoiceResource extends JsonResource
             ] : null),
 
             // DO invoices auto-linked to this proforma
+            // Sales orders the proforma's lines were recalled into
+            'sales_orders' => $this->when(
+                $this->resource->getAttribute('linked_sales_orders') !== null,
+                fn () => collect($this->resource->getAttribute('linked_sales_orders'))->map(fn ($so) => [
+                    'id'         => (int) $so->id,
+                    'so_no'      => $so->so_no,
+                    'status'     => $so->status,
+                    'order_date' => $so->order_date,
+                ])->values(),
+            ),
+
             'invoices' => $this->whenLoaded('invoices', fn () => $this->invoices->map(fn ($inv) => [
                 'id'           => $inv->id,
                 'invoice_no'   => $inv->invoice_no,

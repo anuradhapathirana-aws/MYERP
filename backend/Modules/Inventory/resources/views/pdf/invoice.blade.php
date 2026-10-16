@@ -222,6 +222,7 @@
                 'unit_price' => (float) $item->unit_price,
                 'colors'     => [],
                 'suffix'     => $item->attribute?->attribute_name,
+                'stock'      => $isProforma ? $item->stock_status : null,
             ];
             continue;
         }
@@ -230,6 +231,10 @@
 
         if (isset($rows[$key])) {
             $rows[$key]['quantity'] += (float) $item->quantity;
+            // A merged row is only "in stock" when every colour in it is
+            if ($isProforma && $item->stock_status && $item->stock_status !== 'in_stock') {
+                $rows[$key]['stock'] = $rows[$key]['stock'] === 'non_stock' ? 'non_stock' : $item->stock_status;
+            }
             if (! in_array($item->attribute->attribute_name, $rows[$key]['colors'], true)) {
                 $rows[$key]['colors'][] = $item->attribute->attribute_name;
             }
@@ -243,6 +248,7 @@
             'unit_price' => (float) $item->unit_price,
             'colors'     => [$item->attribute->attribute_name],
             'suffix'     => null,
+            'stock'      => $isProforma ? $item->stock_status : null,
         ];
     }
     $displayRows = array_values($rows);
@@ -362,6 +368,12 @@
             <span class="val">{{ $row['product']?->name }}</span>
             @if($row['suffix'])
               <span class="sub">— {{ $row['suffix'] }}</span>
+            @endif
+            {{-- Proforma: what could not ship on the day it was issued --}}
+            @if(($row['stock'] ?? null) === 'non_stock')
+              <span class="sub">· On order</span>
+            @elseif(($row['stock'] ?? null) === 'partial')
+              <span class="sub">· Partly in stock</span>
             @endif
             @if(count($row['colors']))
               <div class="tags">

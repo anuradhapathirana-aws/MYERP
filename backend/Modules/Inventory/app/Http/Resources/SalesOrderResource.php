@@ -57,6 +57,22 @@ class SalesOrderResource extends JsonResource
                 fn () => SalesOrderItemResource::collection($this->items),
             ),
 
+            // Proformas this order's lines were recalled from
+            'proformas' => $this->when(
+                $this->resource->relationLoaded('items'),
+                fn () => $this->items
+                    ->map(fn ($item) => $item->relationLoaded('proformaItem') ? $item->proformaItem?->proforma : null)
+                    ->filter()
+                    ->unique('id')
+                    ->map(fn ($pf) => [
+                        'id'           => $pf->id,
+                        'proforma_no'  => $pf->proforma_no,
+                        'status'       => $pf->status->value,
+                        'status_label' => $pf->status->label(),
+                    ])
+                    ->values(),
+            ),
+
             'delivery_orders' => $this->whenLoaded('deliveryOrders', fn () =>
                 $this->deliveryOrders->map(fn ($do) => [
                     'id'            => $do->id,

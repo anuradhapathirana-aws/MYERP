@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   Boxes, CalendarDays, ChevronDown, ChevronRight, FileClock, LayoutList, Package, Plus, QrCode,
@@ -17,6 +17,7 @@ import {
   updateSalesOrder,
 } from '../../api/salesOrders'
 import SalesOrderRollPickerModal from '../../components/inventory/SalesOrderRollPickerModal'
+import ProductSearchCell from '../../components/inventory/ProductSearchCell'
 import { getProducts, getProduct } from '../../api/products'
 import { colourStockMap, getColourStock, getProductStock } from '../../api/stock'
 import { getAllCustomers } from '../../api/customers'
@@ -24,7 +25,7 @@ import { getUsersAll } from '../../api/users'
 import { getAllUnitTypesFlat } from '../../api/unitTypes'
 import { getAllAttributeTypes } from '../../api/attributeTypes'
 import { getAllAttributes } from '../../api/attributes'
-import { getProformaInvoices } from '../../api/proformaInvoices'
+import { getProformaRecall } from '../../api/proformaInvoices'
 import { usePermissions } from '../../hooks/usePermissions'
 import Breadcrumb from '../../components/Breadcrumb'
 import KeyboardShortcuts from '../../components/ui/KeyboardShortcuts'
@@ -89,105 +90,6 @@ function CheckToggle({ checked, onChange, label, title }) {
       </span>
       <span className="text-[11px] font-semibold text-slate-600 group-hover:text-slate-800 transition-colors">{label}</span>
     </label>
-  )
-}
-
-/* ── Product search cell (same pattern as the PO form's Product cell) ── */
-function ProductSearchCell({ row, productSearch, onQueryChange, onSelect, onClear, onClose, onInputRef }) {
-  const [highlightIdx, setHighlightIdx] = useState(0)
-  const [dropPos, setDropPos]           = useState({ top: 0, left: 0, width: 420 })
-  const inputRef = useRef(null)
-
-  const results    = productSearch.key === row._key ? (productSearch.results ?? []) : []
-  const isOpen     = productSearch.key === row._key && productSearch.open && results.length > 0
-  const isSelected = Boolean(row.product_id)
-
-  useEffect(() => { setHighlightIdx(0) }, [results.length])
-
-  useEffect(() => {
-    if (isOpen && inputRef.current) {
-      const rect = inputRef.current.getBoundingClientRect()
-      // Wide pad so long product names stay fully readable; clamp to the viewport edge
-      const width = Math.min(Math.max(rect.width, 420), window.innerWidth - rect.left - 16)
-      setDropPos({ top: rect.bottom + 2, left: rect.left, width })
-    }
-  }, [isOpen])
-
-  const handleKeyDown = (e) => {
-    if (e.key === 'ArrowDown') {
-      if (!isOpen) return
-      e.preventDefault()
-      setHighlightIdx((i) => Math.min(i + 1, results.length - 1))
-    } else if (e.key === 'ArrowUp') {
-      if (!isOpen) return
-      e.preventDefault()
-      setHighlightIdx((i) => Math.max(i - 1, 0))
-    } else if (e.key === 'Enter') {
-      e.preventDefault()
-      if (isOpen && results[highlightIdx]) onSelect(row._key, results[highlightIdx])
-    } else if (e.key === 'Escape') {
-      onClose?.()
-    }
-  }
-
-  if (isSelected) {
-    return (
-      <div className="flex items-center gap-1 min-w-0">
-        <span className="truncate text-xs font-medium text-slate-700">{row.product_name}</span>
-        {row.pieces.length === 0 && (
-          <button
-            type="button"
-            title="Clear product"
-            onClick={() => onClear(row._key)}
-            className="shrink-0 text-slate-300 hover:text-red-500 transition-colors"
-          >
-            <X size={10} />
-          </button>
-        )}
-      </div>
-    )
-  }
-
-  return (
-    <div className="relative">
-      <input
-        ref={(el) => { inputRef.current = el; onInputRef?.(el) }}
-        type="text"
-        placeholder="Search product…"
-        className={TABLE_INPUT}
-        value={productSearch.key === row._key ? productSearch.query : ''}
-        onChange={(e) => onQueryChange(row._key, e.target.value)}
-        onKeyDown={handleKeyDown}
-        onFocus={() => {
-          const currentQuery = productSearch.key === row._key ? productSearch.query : ''
-          onQueryChange(row._key, currentQuery)
-        }}
-        autoComplete="off"
-      />
-      {isOpen && createPortal(
-        <div
-          style={{ position: 'fixed', top: dropPos.top, left: dropPos.left, width: dropPos.width, zIndex: 9999 }}
-          className="rounded border border-slate-200 bg-white shadow-xl max-h-52 overflow-y-auto"
-        >
-          {results.map((p, i) => (
-            <button
-              key={p.id}
-              type="button"
-              className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs transition-colors ${
-                i === highlightIdx ? 'bg-indigo-100 text-indigo-900' : 'hover:bg-slate-50 text-slate-700'
-              }`}
-              onMouseDown={(e) => { e.preventDefault(); onSelect(row._key, p) }}
-              onMouseEnter={() => setHighlightIdx(i)}
-              title={p.name}
-            >
-              <span className="font-mono text-[10px] text-indigo-400 shrink-0 w-24 truncate">{p.product_code}</span>
-              <span className="truncate font-medium">{p.name}</span>
-            </button>
-          ))}
-        </div>,
-        document.body
-      )}
-    </div>
   )
 }
 
@@ -338,6 +240,7 @@ function emptyItem() {
     colour_stock:    null, // quantity lines: { [attribute_id]: qty } (null = not fetched / allow_minus)
     cost_hint:       null, // latest GRN cost — below-cost warning basis on manual lines
     no_selling_price: false, // product has no price-list selling price configured
+    proforma_item_id: null, // line recalled from a proforma ("Create SO from Proforma") — keeps the quoted price
     expanded:        false,
   }
 }
@@ -455,6 +358,9 @@ const EMPTY_FORM = {
 
 export default function SalesOrderFormPage() {
   const { id }   = useParams()
+  const [search] = useSearchParams()
+  // "Create SO from Proforma" deep link — pre-fills the order from a proforma
+  const proformaFromUrl = search.get('proforma')
   const isEdit   = Boolean(id)
   const navigate = useNavigate()
   const CRUMBS = [
@@ -734,6 +640,7 @@ export default function SalesOrderFormPage() {
         unit_price:   it.unit_price,
         discount:     it.discount || '',
         tax:          it.tax      || '',
+        proforma_item_id: it.proforma_item_id ?? null,
         attribute_id: it.attribute_id != null ? String(it.attribute_id) : '',
         color_name:   it.attribute?.name ?? '',
         color_options: [],
@@ -1081,7 +988,8 @@ export default function SalesOrderFormPage() {
           pieces:       groupPieces,
           // Each group sells at its rolls' own shipment price (still editable);
           // rolls without a resolved price keep the line's existing price.
-          unit_price:   rollPrice != null ? String(Number(rollPrice.toFixed(4))) : base.unit_price,
+          // A line recalled from a proforma keeps the quoted price
+          unit_price:   !base.proforma_item_id && rollPrice != null ? String(Number(rollPrice.toFixed(4))) : base.unit_price,
           attribute_id: groupPieces[0].attribute_id != null ? String(groupPieces[0].attribute_id) : '',
           color_name:   groupPieces[0].color ?? '',
           expanded:     false,
@@ -1102,6 +1010,140 @@ export default function SalesOrderFormPage() {
     ))
     setProductSearch({ key: rowKey, query: '', results: [], open: false })
   }
+
+  /* ── "Create SO from Proforma" (?proforma=) — pre-fill the customer and every
+     line that can ship today; lines with no stock stay on the proforma for a
+     later SO. Each line runs the normal product pick (stock, colours, rolls),
+     then gets the quoted quantity / price and its proforma link back. ── */
+  const { data: recall } = useQuery({
+    queryKey: ['proforma-recall', proformaFromUrl],
+    queryFn:  () => getProformaRecall(proformaFromUrl),
+    enabled:  !isEdit && Boolean(proformaFromUrl),
+    retry:    false,
+  })
+  const heldBackLines = (recall?.lines ?? []).filter((l) => l.stock_status === 'non_stock')
+  const recallAppliedRef = useRef(false)
+
+  useEffect(() => {
+    if (!recall || recallAppliedRef.current || customers.length === 0 || unitTypes.length === 0) return
+    recallAppliedRef.current = true
+
+    const pf       = recall.proforma
+    const customer = customers.find((c) => String(c.id) === String(pf.customer_id))
+    setForm((f) => ({
+      ...f,
+      customer_type:    customer?.customer_type || pf.customer_type || f.customer_type,
+      customer_id:      String(pf.customer_id),
+      delivery_address: pf.delivery_address || customer?.shipping_address || '',
+      transport_charge: Number(pf.transport_charge) > 0 ? String(pf.transport_charge) : '',
+      remarks:          `Recalled from ${pf.proforma_no}`,
+    }))
+
+    const lines = recall.lines.filter((l) => l.stock_status !== 'non_stock')
+    if (lines.length === 0) {
+      showWarning('Nothing on this proforma is in stock yet — recall it after the goods arrive.')
+      return
+    }
+
+    const rows = lines.map(() => emptyItem())
+    setItems(rows)
+    if (lines.some((l) => Number(l.discount) > 0)) setDiscountEnabled(true)
+
+    // One line at a time, so two lines of the same product never claim the same roll
+    const claimed    = new Set()
+    const shortfalls = []
+
+    const recallLine = async (line, rowKey) => {
+      const name = line.product?.name ?? 'a product'
+      let product
+      try {
+        const res = await getProduct(line.product_id)
+        product = res?.data ?? res
+      } catch {
+        showError(`Could not load ${name} from the proforma.`)
+        return
+      }
+
+      selectProduct(rowKey, product)
+      // selectProduct resets the line — put the quoted values back
+      setItems((prev) => prev.map((row) => row._key === rowKey ? {
+        ...row,
+        unit_id:          line.unit_id != null ? String(line.unit_id) : row.unit_id,
+        price_unit_id:    line.unit_id != null ? String(line.unit_id) : row.price_unit_id,
+        attribute_id:     line.attribute_id != null ? String(line.attribute_id) : '',
+        quantity:         String(line.remaining_quantity),
+        unit_price:       String(line.so_unit_price),
+        discount:         Number(line.discount) > 0 ? String(line.discount) : '',
+        proforma_item_id: line.proforma_item_id,
+      } : row))
+
+      // Quantity-tracked lines take the typed quantity — no rolls to pick
+      if ((product.stock_tracking ?? 'roll') !== 'roll') return
+
+      /* Auto-pick rolls for the quoted quantity — the same rule as the picker's
+         Auto-pick: oldest roll first (FIFO), matching colour, until covered.
+         Roll weights are in the stocking UOM; the quote may be in another unit. */
+      let available
+      try {
+        available = await getAvailablePieces(product.id)
+      } catch {
+        return
+      }
+      const conv     = conversionFor({ unit_id: line.unit_id, base_unit_type_id: product.base_unit_type_id })
+      const goalBase = Number(line.remaining_quantity) * (conv?.factor || 1)
+      const picked   = []
+      let   total    = 0
+      for (const p of available?.pieces ?? []) {
+        if (total >= goalBase - QTY_TOLERANCE) break
+        if (claimed.has(p.piece_code)) continue
+        if (line.attribute_id != null && String(p.attribute_id ?? '') !== String(line.attribute_id)) continue
+        picked.push(p)
+        claimed.add(p.piece_code)
+        total += parseFloat(p.weight) || 0
+      }
+
+      if (picked.length === 0) {
+        shortfalls.push(`${name} (no rolls)`)
+        return
+      }
+
+      applyPickedRolls(rowKey, picked.map((p) => ({
+        piece_code:     p.piece_code,
+        weight:         p.weight,
+        roll_no:        p.roll_no ?? '',
+        grn_unit_price: p.grn_unit_price,
+        selling_price:  p.selling_price ?? null,
+        price_source:   p.price_source ?? null,
+        attribute_id:   p.attribute_id ?? null,
+        color:          p.color ?? '',
+      })))
+
+      // Sell exactly the quoted quantity (the last roll is cut at dispatch); a split
+      // by roll price spreads it over the resulting lines in order.
+      setItems((prev) => {
+        let left = Number(line.remaining_quantity)
+        return prev.map((row) => {
+          if (row.proforma_item_id !== line.proforma_item_id || row.pieces.length === 0) return row
+          const qty = Math.min(capacityInLineUom(row), Math.max(0, left))
+          left -= qty
+          return { ...row, quantity: String(Number(qty.toFixed(4))) }
+        })
+      })
+
+      if (total < goalBase - QTY_TOLERANCE) {
+        const short = (goalBase - total) / (conv?.factor || 1)
+        shortfalls.push(`${name} (short ${fmtQty(short)} ${conv?.lineSymbol ?? ''})`)
+      }
+    }
+
+    lines
+      .reduce((chain, line, i) => chain.then(() => recallLine(line, rows[i]._key)), Promise.resolve())
+      .then(() => {
+        if (shortfalls.length) {
+          showWarning(`Not enough rolls in stock for: ${shortfalls.join(', ')} — adjust with Select Rolls.`)
+        }
+      })
+  }, [recall, customers, unitTypes])
 
   /* ── Row helpers ──────────────────────────────────────────── */
   const addManualRow = useCallback(() => {
@@ -1164,26 +1206,18 @@ export default function SalesOrderFormPage() {
   const netAmount       = totals.total + transportCharge
 
   /* ── Save ─────────────────────────────────────────────────── */
-  // Where to go after a successful save: back to the list, or straight into a
-  // pre-filled New Proforma / New DO for the (now confirmed) order.
+  // Where to go after a successful save: back to the list (or to the proforma this
+  // order was recalled from), or straight into a pre-filled New DO.
   const nextActionRef = useRef(null)
   const { can } = usePermissions()
-
-  // A proforma is one per SO — hide "Save & Create Proforma" once a live one exists.
-  const { data: soProformas } = useQuery({
-    queryKey: ['proforma-invoices', 'by-so', id],
-    queryFn:  () => getProformaInvoices(1, { so_id: id }),
-    enabled:  isEdit && can('view_proforma_invoices'),
-  })
-  const hasLiveProforma = (soProformas?.data ?? []).some((p) => p.status !== 'cancelled')
 
   const saveMutation = useMutation({
     mutationFn: (payload) => isEdit ? updateSalesOrder(id, payload) : createSalesOrder(payload),
     onSuccess: (res) => {
       const soId = res?.data?.id ?? id
       showSuccess(isEdit ? 'Sales order updated.' : 'Sales order created.')
-      if (nextActionRef.current === 'proforma') navigate(`/inventory/proforma-invoices/create?so=${soId}`)
-      else if (nextActionRef.current === 'do') navigate(`/inventory/delivery-orders/create?so=${soId}`)
+      if (nextActionRef.current === 'do') navigate(`/inventory/delivery-orders/create?so=${soId}`)
+      else if (proformaFromUrl) navigate(`/inventory/proforma-invoices/${proformaFromUrl}`)
       else navigate('/inventory/sales-orders')
     },
     onError: (e) => {
@@ -1193,7 +1227,7 @@ export default function SalesOrderFormPage() {
     },
   })
 
-  /** nextAction: null (back to list) | 'proforma' | 'do' — both need a confirmed SO. */
+  /** nextAction: null (back to list) | 'do' (needs a confirmed SO). */
   const handleSubmit = async (saveStatus, nextAction = null) => {
     const clientErrors = {}
 
@@ -1297,6 +1331,7 @@ export default function SalesOrderFormPage() {
         discount:     discountEnabled ? (parseFloat(r.discount) || 0) : 0,
         tax:          taxEnabled      ? (parseFloat(r.tax)      || 0) : 0,
         piece_codes:  r.pieces.map((p) => p.piece_code),
+        proforma_item_id: r.proforma_item_id || null,
       })),
     })
   }
@@ -1321,15 +1356,13 @@ export default function SalesOrderFormPage() {
   const primaryLabel    = isEdit
     ? (status === 'draft' ? 'Save & Confirm' : 'Update Order')
     : 'Create & Close'
-  const showProformaButton = can('create_proforma_invoices') && !hasLiveProforma
-  const showDoButton       = can('create_delivery_orders')
+  const showDoButton = can('create_delivery_orders')
 
-  /* ── Alt+P / Alt+D — save (confirmed) and continue to a new Proforma / DO ── */
+  /* ── Alt+D — save (confirmed) and continue to a new DO ── */
   const followUpRef = useRef(null)
   useEffect(() => {
     followUpRef.current = (action) => {
       if (saveMutation.isPending) return
-      if (action === 'proforma' && !showProformaButton) return
       if (action === 'do' && !showDoButton) return
       handleSubmit(primaryStatus, action)
     }
@@ -1337,7 +1370,6 @@ export default function SalesOrderFormPage() {
   useEffect(() => {
     const handler = (e) => {
       if (!e.altKey || e.ctrlKey || e.metaKey) return
-      if (e.code === 'KeyP') { e.preventDefault(); followUpRef.current?.('proforma') }
       if (e.code === 'KeyD') { e.preventDefault(); followUpRef.current?.('do') }
     }
     window.addEventListener('keydown', handler)
@@ -1557,6 +1589,7 @@ export default function SalesOrderFormPage() {
                     <DropdownSelectCell
                       cellRef={setCellRef(row._key, 'unit')}
                       value={row.unit_id}
+                      disabled={Boolean(row.proforma_item_id)}
                       groups={uomGroupsFor(row.base_unit_category_id)}
                       onChange={(val) => setRowField(idx, 'unit_id', val)}
                       // Quantity is the next column; lines showing "Select Rolls" instead
@@ -1816,6 +1849,7 @@ export default function SalesOrderFormPage() {
                 <label className={LABEL_CLS}>UOM</label>
                 <DropdownSelectCell
                   value={row.unit_id}
+                  disabled={Boolean(row.proforma_item_id)}
                   groups={uomGroupsFor(row.base_unit_category_id)}
                   onChange={(val) => setRowField(idx, 'unit_id', val)}
                 />
@@ -1916,6 +1950,19 @@ export default function SalesOrderFormPage() {
             {isEdit ? 'Edit Sales Order' : 'New Sales Order'}
           </h1>
           <Breadcrumb crumbs={CRUMBS} />
+          {recall && (
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+              <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 font-semibold text-violet-700">
+                <FileClock size={11} /> From proforma {recall.proforma.proforma_no}
+              </span>
+              <span className="text-slate-500">Quoted prices kept · pick rolls for each line.</span>
+              {heldBackLines.length > 0 && (
+                <span className="rounded bg-amber-50 px-1.5 py-0.5 font-medium text-amber-700" title="Recall these into another SO once the goods arrive">
+                  Awaiting stock (not added): {heldBackLines.map((l) => l.product?.name).join(', ')}
+                </span>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex gap-2">
           <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-1.5 text-center">
@@ -2146,18 +2193,6 @@ export default function SalesOrderFormPage() {
                 <Save size={11} /> Save as Draft
               </button>
             )}
-            {showProformaButton && (
-              <button
-                type="button"
-                disabled={saveMutation.isPending}
-                onClick={() => handleSubmit(primaryStatus, 'proforma')}
-                title="Save as confirmed and open a new Proforma Invoice for this order (Alt+P)"
-                className="flex items-center gap-1 rounded border border-violet-300 bg-violet-50 px-3 py-1.5 text-xs font-bold text-violet-700 transition-all hover:bg-violet-100 disabled:opacity-60 active:scale-95"
-              >
-                <FileClock size={11} /> Save &amp; Create Proforma
-                <kbd className="ml-1 rounded border border-violet-200 bg-white px-1 text-[9px] font-semibold text-violet-500">Alt+P</kbd>
-              </button>
-            )}
             {showDoButton && (
               <button
                 type="button"
@@ -2231,7 +2266,6 @@ export default function SalesOrderFormPage() {
       {/* Keyboard Shortcuts Reference */}
       <KeyboardShortcuts shortcuts={[
         { keys: ['Alt', 'N'], desc: 'Add new item row' },
-        { keys: ['Alt', 'P'], desc: 'Save & Create Proforma' },
         { keys: ['Alt', 'D'], desc: 'Save & Create DO' },
         { keys: ['Enter'], desc: 'Scan box: add the scanned piece · Qty: move to Price' },
         { keys: ['↑', '↓'], desc: 'Navigate product search results' },

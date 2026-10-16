@@ -114,7 +114,7 @@ export default function ProformaInvoicesPage() {
 
       <TableFilter open={open} onToggle={toggle} onApply={() => apply(resetPage)} onClear={() => clear(resetPage)} activeCount={activeCount}>
         <FilterField label="Search">
-          <input className={FILTER_INPUT_CLS} placeholder="Proforma No, SO No or customer…" value={draft.search} onChange={(e) => setDraft((d) => ({ ...d, search: e.target.value }))} />
+          <input className={FILTER_INPUT_CLS} placeholder="Proforma No or customer…" value={draft.search} onChange={(e) => setDraft((d) => ({ ...d, search: e.target.value }))} />
         </FilterField>
         <FilterField label="Status">
           <select className={FILTER_SELECT_CLS} value={draft.status} onChange={(e) => setDraft((d) => ({ ...d, status: e.target.value }))}>
@@ -150,7 +150,6 @@ export default function ProformaInvoicesPage() {
                   <tr className="border-b border-slate-200 bg-slate-50 text-left">
                     <th className="w-8 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">#</th>
                     <th className="w-44 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Proforma No</th>
-                    <th className="w-28 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">SO</th>
                     <th className="px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Customer</th>
                     <th className="w-24 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Date</th>
                     <th className="w-24 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Valid Until</th>
@@ -162,10 +161,10 @@ export default function ProformaInvoicesPage() {
                 <tbody className="divide-y divide-slate-100">
                   {rows.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="px-4 py-12 text-center text-sm text-slate-400">
+                      <td colSpan={8} className="px-4 py-12 text-center text-sm text-slate-400">
                         {activeCount > 0
                           ? 'No proforma invoices match the current filters.'
-                          : 'No proforma invoices yet — click New Proforma and select a confirmed Sales Order.'}
+                          : 'No proforma invoices yet — click New Proforma to quote any product, in stock or not.'}
                       </td>
                     </tr>
                   ) : (
@@ -179,7 +178,6 @@ export default function ProformaInvoicesPage() {
                         <td className="px-3 py-2 font-mono font-medium text-indigo-600">
                           <Link to={`/inventory/proforma-invoices/${row.id}`} className="hover:underline">{row.proforma_no}</Link>
                         </td>
-                        <td className="px-3 py-2 font-mono text-[10px] text-slate-500">{row.sales_order?.so_no}</td>
                         <td className="max-w-0 truncate px-3 py-2 font-medium text-slate-700" title={row.customer?.name}>{row.customer?.name || <span className="italic text-slate-300">—</span>}</td>
                         <td className="whitespace-nowrap px-3 py-2 text-slate-500">{row.proforma_date}</td>
                         <td className={`whitespace-nowrap px-3 py-2 ${row.is_expired ? 'font-semibold text-red-500' : 'text-slate-500'}`}>

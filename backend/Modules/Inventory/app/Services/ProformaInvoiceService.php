@@ -488,10 +488,10 @@ class ProformaInvoiceService
         return $address !== '' ? $address : null;
     }
 
-    /** Same default as the invoice: a customer with a TIN is quoted tax prices. */
+    /** Same default as the invoice: only a VAT-registered customer (TIN …7000) is quoted Tax. */
     private function defaultInvoiceType(CustomerMaster $customer): string
     {
-        return trim((string) $customer->customer_tin) !== '' ? 'tax' : 'non_tax';
+        return $customer->isVatRegistered() ? 'tax' : 'non_tax';
     }
 
     private function defaultCompanyId(): ?int

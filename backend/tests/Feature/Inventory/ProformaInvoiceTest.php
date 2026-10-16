@@ -472,6 +472,30 @@ class ProformaInvoiceTest extends TestCase
         $this->invoiceDo($this->confirmedDo($soId, $pieces))->assertJsonPath('data.proforma_id', null);
     }
 
+    public function test_default_type_follows_vat_registration_not_just_any_tin(): void
+    {
+        $p = Product::factory()->create();
+
+        // Plain TIN (no VAT code 7000) → Non Tax
+        $this->customer->update(['customer_tin' => '114567890']);
+        $this->createProforma([$this->line($p, 1, 100)], ['invoice_type' => null])
+            ->assertCreated()
+            ->assertJsonPath('data.invoice_type', 'non_tax');
+
+        // VAT registration number (TIN + 7000) → Tax
+        $this->customer->update(['customer_tin' => '114567890-7000']);
+        $this->createProforma([$this->line($p, 1, 100)], ['invoice_type' => null])
+            ->assertCreated()
+            ->assertJsonPath('data.invoice_type', 'tax');
+
+        // The customer list feeds the form's auto-select
+        Permission::firstOrCreate(['name' => 'view_customer_masters', 'guard_name' => 'web']);
+        $this->user->givePermissionTo('view_customer_masters');
+        $this->actingAs($this->user)->getJson('/api/v1/customer-masters/all')
+            ->assertOk()
+            ->assertJsonFragment(['id' => $this->customer->id, 'vat_registered' => true]);
+    }
+
     // ── Tax / Non-Tax price sets (same pair the invoice toggle switches) ────
 
     public function test_price_preview_from_price_list_strips_default_vat(): void

@@ -439,12 +439,13 @@ class InvoiceService
     }
 
     /**
-     * A customer registered for tax (Customer TIN entered) is billed a Tax invoice, anyone
-     * else a Non Tax one. Only a default — the caller may still send an explicit invoice_type.
+     * A VAT-registered customer (TIN ending in the VAT code 7000) is billed a Tax invoice,
+     * anyone else — plain TIN, other tax type, no TIN — a Non Tax one. Only a default — the
+     * caller may still send an explicit invoice_type.
      */
     private function defaultInvoiceType(SalesOrder $so): string
     {
-        return trim((string) $so->customer?->customer_tin) !== '' ? 'tax' : 'non_tax';
+        return $so->customer?->isVatRegistered() ? 'tax' : 'non_tax';
     }
 
     /**
@@ -525,8 +526,9 @@ class InvoiceService
             'transport_charge' => (float) $so->transport_charge,
             'delivery_address' => $so->delivery_address,
             'customer'         => $so->customer ? [
-                'id'   => $so->customer->id,
-                'name' => $so->customer->customer_name,
+                'id'             => $so->customer->id,
+                'name'           => $so->customer->customer_name,
+                'vat_registered' => $so->customer->isVatRegistered(),
             ] : null,
         ];
     }

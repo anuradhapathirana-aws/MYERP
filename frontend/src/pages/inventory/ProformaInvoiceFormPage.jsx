@@ -22,7 +22,8 @@ import FilterSearchSelect from '../../components/ui/FilterSearchSelect'
 import Money from '../../components/ui/Money'
 import KeyboardShortcuts from '../../components/ui/KeyboardShortcuts'
 import ProductSearchCell from '../../components/inventory/ProductSearchCell'
-import { confirmAction, showError, showSuccess } from '../../utils/alerts'
+import { confirmAction, showError, showSuccess, showWarning } from '../../utils/alerts'
+import { NOT_VAT_REGISTERED_WARNING } from '../../utils/tin'
 
 const INPUT_CLS =
   'block w-full rounded border border-slate-300 bg-slate-50 px-2 py-1 text-xs text-slate-800 placeholder-slate-400 outline-none transition-all focus:border-indigo-400 focus:bg-white focus:ring-1 focus:ring-indigo-500/20'
@@ -382,8 +383,11 @@ export default function ProformaInvoiceFormPage() {
   }
 
   /* Tax ↔ Non-Tax: swap every line onto that type's price set (total unchanged) */
-  const applyInvoiceType = (type) => {
+  const applyInvoiceType = (type, { silent = false } = {}) => {
     if (type === invoiceType) return
+    // Allowed, but a tax quote to a non-VAT customer needs a second look
+    const customer = customers.find((x) => String(x.id) === String(form.customer_id))
+    if (!silent && type === 'tax' && customer && !customer.vat_registered) showWarning(NOT_VAT_REGISTERED_WARNING)
     setInvoiceType(type)
     invoiceTypeRef.current = type
     setLines((prev) => prev.map((l) => (l.product_id ? { ...l, ...priceForType(l, type) } : l)))
@@ -394,7 +398,8 @@ export default function ProformaInvoiceFormPage() {
     setForm((f) => ({ ...f, customer_id: value, delivery_address: c?.shipping_address || f.delivery_address }))
     setErrors((e) => ({ ...e, customer_id: undefined }))
     // Same default as the invoice: customer has a TIN → Tax, otherwise Non Tax (still switchable)
-    if (c) applyInvoiceType(c.has_tin ? 'tax' : 'non_tax')
+    // Same default as the invoice: VAT registered (TIN …7000) → Tax, otherwise Non Tax
+    if (c) applyInvoiceType(c.vat_registered ? 'tax' : 'non_tax', { silent: true })
   }
 
   /* ── Totals ── */

@@ -136,6 +136,12 @@ export default function CustomerViewPage() {
               <Row label="NIC / Passport / DL"        value={fmt(c?.nic_passport_driving_licence)} mono />
               <Row label="BR Number"                  value={fmt(c?.br_no)} mono />
               <Row label="Customer TIN"               value={fmt(c?.customer_tin)} mono />
+              <Row
+                label="VAT Status"
+                value={c?.vat_registered
+                  ? <span className="rounded-full bg-green-100 px-1.5 py-px text-[10px] font-semibold text-green-700">VAT registered · Tax invoices</span>
+                  : <span className="rounded-full bg-slate-100 px-1.5 py-px text-[10px] font-semibold text-slate-500">Not VAT registered · Non Tax invoices</span>}
+              />
             </div>
           </SectionCard>
 

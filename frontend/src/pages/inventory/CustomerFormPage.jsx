@@ -6,6 +6,7 @@ import { createCustomer, getCustomer, getNextCustomerCode, updateCustomer } from
 import { deleteCustomerAttachment, getCustomerAttachments, uploadCustomerAttachments } from '../../api/customerAttachments'
 import Breadcrumb from '../../components/Breadcrumb'
 import { showError, showSuccess } from '../../utils/alerts'
+import { isVatRegisteredTin } from '../../utils/tin'
 
 const TITLES         = ['Mr.', 'Mrs.', 'Ms.', 'Dr.', 'Prof.', 'Rev.']
 const CUSTOMER_TYPES = ['Trade', 'Retail', 'Wholesale', 'Corporate']
@@ -453,8 +454,17 @@ export default function CustomerFormPage() {
                 </div>
                 <div>
                   <Label>Customer TIN</Label>
-                  <input type="text" placeholder="Tax identification no." maxLength={50} {...inp('customer_tin')} />
+                  <input type="text" placeholder="e.g. 123456789-7000" maxLength={50} {...inp('customer_tin')} />
                   <FieldError errors={errors} touched={touched} name="customer_tin" />
+                  {/* VAT registered = 9-digit TIN + VAT code 7000 → Tax invoices by default */}
+                  <div className="mt-0.5 flex items-center gap-1.5 text-[10px]">
+                    {isVatRegisteredTin(form.customer_tin) ? (
+                      <span className="rounded-full bg-green-100 px-1.5 py-px font-semibold text-green-700">VAT registered · Tax invoices</span>
+                    ) : (
+                      <span className="rounded-full bg-slate-100 px-1.5 py-px font-semibold text-slate-500">Not VAT registered · Non Tax invoices</span>
+                    )}
+                    <span className="text-slate-400">VAT no. = TIN + 7000</span>
+                  </div>
                 </div>
               </div>
             </SectionCard>

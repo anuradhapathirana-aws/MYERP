@@ -16,7 +16,8 @@ import { getDeliveryOrders } from '../../api/deliveryOrders'
 import Breadcrumb from '../../components/Breadcrumb'
 import FilterSearchSelect from '../../components/ui/FilterSearchSelect'
 import Money from '../../components/ui/Money'
-import { confirmTriState, showError, showSuccess } from '../../utils/alerts'
+import { confirmTriState, showError, showSuccess, showWarning } from '../../utils/alerts'
+import { NOT_VAT_REGISTERED_WARNING } from '../../utils/tin'
 import { fmtMoney } from '../../utils/currency'
 
 const INPUT_CLS =
@@ -212,6 +213,10 @@ export default function InvoiceFormPage() {
      source pricing isn't known (source failed to load) keep their price. */
   const applyInvoiceType = (type) => {
     if (type === invoiceType) return
+    // Allowed, but a tax invoice to a non-VAT customer needs a second look
+    if (type === 'tax' && source?.sales_order?.customer && !source.sales_order.customer.vat_registered) {
+      showWarning(NOT_VAT_REGISTERED_WARNING)
+    }
     setInvoiceType(type)
     setLines((prev) => prev.map((row) => {
       if (type === 'non_tax') {
@@ -421,9 +426,9 @@ export default function InvoiceFormPage() {
               {!isEdit && source?.default_invoice_type && (
                 <span
                   className="text-[9px] text-indigo-400"
-                  title="Auto-selected from the customer's TIN — you can still switch it"
+                  title="Auto-selected from the customer's TIN (VAT registered = TIN ending 7000) — you can still switch it"
                 >
-                  (Auto: {source.default_invoice_type === 'tax' ? 'customer has TIN' : 'no customer TIN'})
+                  (Auto: {source.default_invoice_type === 'tax' ? 'VAT registered' : 'not VAT registered'})
                 </span>
               )}
               <div className="flex overflow-hidden rounded-md border-2 border-indigo-200 text-[10px] font-bold">

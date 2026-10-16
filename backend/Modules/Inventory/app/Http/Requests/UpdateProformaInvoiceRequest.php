@@ -11,8 +11,8 @@ class UpdateProformaInvoiceRequest extends StoreProformaInvoiceRequest
     {
         $rules = parent::rules();
 
-        // The source sales order cannot change on update — ignored by the service.
-        $rules['so_id'] = ['nullable', 'integer'];
+        // The customer cannot change once the proforma exists — ignored by the service.
+        $rules['customer_id'] = ['nullable', 'integer'];
 
         return $rules;
     }

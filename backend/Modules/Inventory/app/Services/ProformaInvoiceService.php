@@ -10,25 +10,27 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\DTOs\ProformaInvoiceData;
-use Modules\Inventory\Enums\InvoiceStatus;
 use Modules\Inventory\Enums\ProformaInvoiceStatus;
-use Modules\Inventory\Enums\SalesOrderStatus;
+use Modules\Inventory\Models\CustomerMaster;
 use Modules\Inventory\Models\Invoice;
+use Modules\Inventory\Models\Product;
 use Modules\Inventory\Models\ProformaInvoice;
 use Modules\Inventory\Models\ProformaInvoiceItem;
-use Modules\Inventory\Models\SalesOrder;
-use Modules\Inventory\Models\SalesOrderItem;
 
 /**
- * Proforma invoices — a priced, non-binding offer raised from a confirmed sales
- * order before delivery, for the full SO quantity. No stock, receivable or
- * ledger effect.
+ * Proforma invoices — the quotation-stage document. Raised BEFORE any sales
+ * order, for any product (in stock or not; lines may mix both), with typed
+ * quantities and prices. A proforma never reserves stock and has no receivable
+ * or ledger effect; each line only records what stock was available when it
+ * was issued (informational).
  *
- * Lines are locked to the SO: quantity, price and discount come from the SO
- * line and the tax/non-tax pricing is the exact one a DO invoice would bill
- * (InvoiceService::linePricing). A draft re-syncs its lines from the SO on
- * every save; an issued proforma is a frozen quote that later DO invoices of
- * the SO auto-link to and bill (see InvoiceService::createFromDo).
+ * Fulfilment: "Create SO from Proforma" recalls the remaining lines into a
+ * sales order (rolls are picked there, as for any SO). SO lines keep a soft
+ * link to their proforma line, so one proforma can feed several SOs and the
+ * DO invoices bill the quoted prices (see InvoiceService::createFromDo).
+ *
+ * Proformas raised under the earlier SO-first flow (source_type sales_order)
+ * remain viewable and keep linking through the same per-line mechanism.
  */
 class ProformaInvoiceService
 {
@@ -37,9 +39,16 @@ class ProformaInvoiceService
 
     private const MONEY_SCALE = 2;
 
+    private const EPSILON = 0.0001;
+
+    /** VAT % assumed when a product carries no confirmed costing (same as InvoiceService). */
+    private const FALLBACK_VAT_PCT = 18.0;
+
     public function __construct(
-        private readonly InvoiceService $invoices,
         private readonly ProformaInvoicingTracker $tracker,
+        private readonly ProformaStockService $stock,
+        private readonly ProductPricingService $pricing,
+        private readonly UnitConversionService $units,
     ) {
     }
 
@@ -54,7 +63,6 @@ class ProformaInvoiceService
             $term = '%' . $filters['search'] . '%';
             $query->where(function ($q) use ($term): void {
                 $q->where('proforma_no', 'like', $term)
-                  ->orWhereHas('salesOrder', fn ($s) => $s->where('so_no', 'like', $term))
                   ->orWhereHas('customer', fn ($c) => $c->where('customer_name', 'like', $term));
             });
         }
@@ -65,10 +73,6 @@ class ProformaInvoiceService
 
         if (!empty($filters['customer_id'])) {
             $query->where('customer_id', (int) $filters['customer_id']);
-        }
-
-        if (!empty($filters['so_id'])) {
-            $query->where('so_id', (int) $filters['so_id']);
         }
 
         if (!empty($filters['date_from'])) {
@@ -82,7 +86,7 @@ class ProformaInvoiceService
         return $query->paginate($perPage);
     }
 
-    /** One proforma with its lines, linked DO invoices and the quantity each line has been invoiced. */
+    /** One proforma with its lines, recalled / invoiced quantities, linked SOs and invoices. */
     public function find(int $id): ProformaInvoice
     {
         $proforma = ProformaInvoice::with([
@@ -93,136 +97,145 @@ class ProformaInvoiceService
             'salesOrder',
             'customer',
             'company',
-            'invoices' => fn ($q) => $q->with('deliveryOrder:id,do_no')->orderBy('id'),
         ])->findOrFail($id);
 
         $invoiced = $this->tracker->invoicedQuantities($proforma->id);
+        $recalled = $this->tracker->recalledQuantities($proforma->id);
+
         foreach ($proforma->items as $item) {
             $item->setAttribute('invoiced_quantity', (float) ($invoiced[$item->id] ?? 0));
+            $item->setAttribute('recalled_quantity', (float) ($recalled[$item->id] ?? 0));
         }
+
+        // Invoices are found through their lines — one proforma can be billed by many DO invoices
+        $proforma->setRelation('invoices', Invoice::with('deliveryOrder:id,do_no')
+            ->whereHas('items', fn ($q) => $q->whereIn('proforma_item_id', $proforma->items->pluck('id')))
+            ->orderBy('id')
+            ->get());
+
+        $proforma->setAttribute('linked_sales_orders', $this->tracker->linkedSalesOrders($proforma->id));
 
         return $proforma;
     }
 
     /** Lock-free preview; the real number is generated inside the create transaction. */
-    public function nextProformaNo(?int $soId, ?string $proformaDate): ?string
+    public function nextProformaNo(?int $customerId, ?string $proformaDate): ?string
     {
-        if ($soId === null) {
+        $customer = $customerId !== null ? CustomerMaster::find($customerId) : null;
+        if ($customer === null) {
             return null;
         }
 
-        $so = SalesOrder::with('customer')->find($soId);
-        if (!$so) {
-            return null;
-        }
-
-        return $this->buildProformaNo(
-            lock: false,
-            customerCode: $so->customer?->customer_code ?? 'CUST',
-            proformaDate: $proformaDate,
-        );
+        return $this->buildProformaNo(lock: false, customerCode: $customer->customer_code ?? 'CUST', proformaDate: $proformaDate);
     }
 
     /**
-     * Preview of what a proforma for this SO will quote, for both invoice types.
+     * Live stock situation of form lines (the badge next to each line).
      *
-     * @return array<string, mixed>
+     * @param  array<int, array{product_id:int, attribute_id:?int, unit_id:?int, quantity:?float}> $lines
+     * @return array<int, array{available_qty: float, stock_status: string}>
      */
-    public function sourceForSo(int $soId): array
+    public function stockCheck(array $lines): array
     {
-        $so = SalesOrder::with(['items.product', 'items.unit', 'items.priceUnit', 'items.attribute', 'customer'])
-            ->findOrFail($soId);
+        return array_map(fn (array $l) => $this->stock->check(
+            (int) $l['product_id'],
+            !empty($l['attribute_id']) ? (int) $l['attribute_id'] : null,
+            !empty($l['unit_id']) ? (int) $l['unit_id'] : null,
+            (float) ($l['quantity'] ?? 0),
+        ), array_values($lines));
+    }
 
-        $live = $this->liveProformaForSo($so->id);
+    /**
+     * Both price sets of a quote line, per the line's unit — the same pair a DO
+     * invoice switches between with its Tax / Non-Tax toggle:
+     *
+     *   unit_price               Non-Tax: the after-tax price, VAT inside (what an SO line holds)
+     *   tax_unit_price + tax_vat_pct  Tax: before-tax price, VAT added per line
+     *
+     * Source: the product's newest confirmed costing (selling + before-tax price and
+     * its VAT %); without one, the price-list selling price with the default VAT
+     * stripped out — so before-tax + VAT always lands on the Non-Tax price.
+     *
+     * @param  array<int, array{product_id:int, attribute_id:?int, unit_id:?int}> $lines
+     * @return array<int, array{unit_price:?float, tax_unit_price:?float, tax_vat_pct:float, source:?string}>
+     */
+    public function pricePreview(array $lines): array
+    {
+        return array_map(function (array $l): array {
+            $productId   = (int) $l['product_id'];
+            $attributeId = !empty($l['attribute_id']) ? (int) $l['attribute_id'] : null;
+            $factor      = $this->lineUnitFactor($productId, !empty($l['unit_id']) ? (int) $l['unit_id'] : null);
 
-        return [
-            'sales_order' => [
-                'id'               => $so->id,
-                'so_no'            => $so->so_no,
-                'status'           => $so->status->value,
-                'transport_charge' => $this->money((float) $so->transport_charge),
-                'delivery_address' => $so->delivery_address,
-                'customer'         => $so->customer ? [
-                    'id'            => $so->customer->id,
-                    'customer_code' => $so->customer->customer_code,
-                    'name'          => $so->customer->customer_name,
-                ] : null,
-            ],
-            'guards' => [
-                'so_confirmed'     => $so->status === SalesOrderStatus::Confirmed,
-                'has_live_proforma' => $live !== null,
-                'live_proforma'    => $live ? ['id' => $live->id, 'proforma_no' => $live->proforma_no] : null,
-                'has_invoices'     => $this->soHasLiveInvoice($so->id),
-            ],
-            'default_invoice_type' => $this->defaultInvoiceType($so),
-            'items' => $so->items->map(function (SalesOrderItem $soItem): array {
-                $nonTax = $this->invoices->linePricing($soItem, 'non_tax');
-                $tax    = $this->invoices->linePricing($soItem, 'tax');
-
+            $costing = $this->pricing->latestCostingPricingFor($productId, $attributeId);
+            if ($costing !== null) {
                 return [
-                    'so_item_id' => $soItem->id,
-                    'product'    => $soItem->product ? [
-                        'id'           => $soItem->product->id,
-                        'name'         => $soItem->product->name,
-                        'product_code' => $soItem->product->product_code,
-                    ] : null,
-                    'unit'       => $soItem->unit ? ['id' => $soItem->unit->id, 'name' => $soItem->unit->name] : null,
-                    'price_unit' => $soItem->priceUnit ? ['id' => $soItem->priceUnit->id, 'name' => $soItem->priceUnit->name, 'symbol' => $soItem->priceUnit->symbol] : null,
-                    'attribute'  => $soItem->attribute ? ['id' => $soItem->attribute->id, 'name' => $soItem->attribute->attribute_name] : null,
-                    'quantity'   => (float) $soItem->quantity,
-                    'discount'   => (float) $soItem->discount,
-                    'unit_price'     => $nonTax['unit_price'],
-                    'tax_unit_price' => $tax['unit_price'],
-                    'tax_vat_pct'    => $tax['tax'],
+                    'unit_price'     => $this->money($costing['selling_price'] * $factor),
+                    'tax_unit_price' => $this->money($costing['before_tax_price'] * $factor),
+                    'tax_vat_pct'    => (float) $costing['vat_pct'],
+                    'source'         => 'costing',
                 ];
-            })->values()->all(),
-        ];
+            }
+
+            $list = $this->pricing->sellingPriceFor($productId);
+            if ($list === null) {
+                return ['unit_price' => null, 'tax_unit_price' => null, 'tax_vat_pct' => self::FALLBACK_VAT_PCT, 'source' => null];
+            }
+
+            $nonTax = $list * $factor;
+
+            return [
+                'unit_price'     => $this->money($nonTax),
+                'tax_unit_price' => $this->money($nonTax / (1 + self::FALLBACK_VAT_PCT / 100)),
+                'tax_vat_pct'    => self::FALLBACK_VAT_PCT,
+                'source'         => 'price_list',
+            ];
+        }, array_values($lines));
+    }
+
+    /** Stocking units per ONE line unit (prices are filed per the stocking UOM). */
+    private function lineUnitFactor(int $productId, ?int $unitId): float
+    {
+        $baseUnitId = Product::whereKey($productId)->value('base_unit_type_id');
+        if ($unitId === null || $baseUnitId === null || $unitId === (int) $baseUnitId) {
+            return 1.0;
+        }
+
+        $rate = $this->units->tryFactor($unitId, (int) $baseUnitId);
+
+        return ($rate !== null && $rate > 0.0) ? $rate : 1.0;
     }
 
     public function create(ProformaInvoiceData $data): ProformaInvoice
     {
         return DB::transaction(function () use ($data): ProformaInvoice {
-            $so = SalesOrder::with('customer')->whereKey($data->soId)->lockForUpdate()->firstOrFail();
-
-            if ($so->status !== SalesOrderStatus::Confirmed) {
-                abort(422, 'A proforma invoice can only be raised from a confirmed sales order.');
-            }
-
-            if ($live = $this->liveProformaForSo($so->id)) {
-                abort(422, "Sales order {$so->so_no} already has proforma {$live->proforma_no}. Cancel it to raise a new one.");
-            }
-
-            // A proforma quotes before billing — DO invoices raised earlier could never link to it.
-            if ($this->soHasLiveInvoice($so->id)) {
-                abort(422, "Sales order {$so->so_no} is already invoiced — a proforma must be raised before invoicing.");
-            }
+            $customer = CustomerMaster::findOrFail($data->customerId);
 
             $proforma = ProformaInvoice::create([
                 'proforma_no'      => $this->buildProformaNo(
                     lock: true,
-                    customerCode: $so->customer?->customer_code ?? 'CUST',
+                    customerCode: $customer->customer_code ?? 'CUST',
                     proformaDate: $data->proformaDate,
                 ),
-                'source_type'      => ProformaInvoice::SOURCE_SALES_ORDER,
-                'source_id'        => $so->id,
-                'so_id'            => $so->id,
-                'customer_id'      => $so->customer_id,
+                'source_type'      => ProformaInvoice::SOURCE_DIRECT,
+                'source_id'        => null,
+                'so_id'            => null,
+                'customer_id'      => $customer->id,
                 'company_id'       => $data->companyId ?? $this->defaultCompanyId(),
                 'proforma_date'    => $data->proformaDate,
                 'valid_until'      => $data->validUntil
                     ?? Carbon::parse($data->proformaDate)->addDays(self::DEFAULT_VALID_DAYS)->toDateString(),
                 'payment_terms'    => $data->paymentTerms,
-                'invoice_type'     => $data->invoiceType ?? $this->defaultInvoiceType($so),
+                'invoice_type'     => $data->invoiceType ?? $this->defaultInvoiceType($customer),
                 'status'           => ProformaInvoiceStatus::Draft,
-                'transport_charge' => $this->money((float) $so->transport_charge),
-                'delivery_address' => $data->deliveryAddress ?? $so->delivery_address,
+                'transport_charge' => $this->money($data->transportCharge ?? 0),
+                'delivery_address' => $data->deliveryAddress ?? $this->shippingAddress($customer),
                 'remarks'          => $data->remarks,
                 'created_by'       => Auth::id(),
                 'subtotal'         => 0,
                 'grand_total'      => 0,
             ]);
 
-            $this->syncLinesFromSo($proforma, $so);
+            $this->syncLines($proforma, $data->items);
 
             return $this->find($proforma->id);
         });
@@ -237,7 +250,9 @@ class ProformaInvoiceService
                 abort(422, 'Only draft proforma invoices can be edited.');
             }
 
-            $so = SalesOrder::findOrFail($proforma->so_id);
+            if ($proforma->source_type !== ProformaInvoice::SOURCE_DIRECT) {
+                abort(422, 'This proforma was raised from a sales order and cannot be edited — cancel it and raise a new one.');
+            }
 
             $proforma->update([
                 'proforma_date'    => $data->proformaDate,
@@ -245,13 +260,12 @@ class ProformaInvoiceService
                 'payment_terms'    => $data->paymentTerms,
                 'invoice_type'     => $data->invoiceType ?? $proforma->invoice_type,
                 'company_id'       => $data->companyId ?? $proforma->company_id,
+                'transport_charge' => $this->money($data->transportCharge ?? (float) $proforma->transport_charge),
                 'delivery_address' => $data->deliveryAddress,
                 'remarks'          => $data->remarks,
-                'transport_charge' => $this->money((float) $so->transport_charge),
             ]);
 
-            // Prices are locked to the SO — a draft always re-quotes the SO as it is now.
-            $this->syncLinesFromSo($proforma, $so);
+            $this->syncLines($proforma, $data->items);
 
             return $this->find($proforma->id);
         });
@@ -273,20 +287,35 @@ class ProformaInvoiceService
             abort(422, "Cannot change proforma from {$proforma->status->label()} to {$newStatus->label()}.");
         }
 
-        if (
-            $newStatus === ProformaInvoiceStatus::Cancelled
-            && Invoice::where('proforma_id', $proforma->id)
-                ->where('status', '!=', InvoiceStatus::Cancelled->value)
-                ->exists()
-        ) {
-            abort(422, 'This proforma is linked to invoices and cannot be cancelled.');
+        if ($newStatus === ProformaInvoiceStatus::Cancelled) {
+            if ($this->tracker->recalledQuantities($proforma->id)->sum() > self::EPSILON) {
+                abort(422, 'This proforma has been recalled into sales orders and cannot be cancelled.');
+            }
+
+            if ($this->tracker->invoicedQuantities($proforma->id)->sum() > self::EPSILON) {
+                abort(422, 'This proforma is linked to invoices and cannot be cancelled.');
+            }
         }
 
-        $proforma->update([
-            'status'       => $newStatus,
-            'issued_at'    => $newStatus === ProformaInvoiceStatus::Issued ? now() : $proforma->issued_at,
-            'cancelled_at' => $newStatus === ProformaInvoiceStatus::Cancelled ? now() : $proforma->cancelled_at,
-        ]);
+        DB::transaction(function () use ($proforma, $newStatus): void {
+            // The quote states what could ship on the day it went out
+            if ($newStatus === ProformaInvoiceStatus::Issued) {
+                foreach ($proforma->items()->get() as $item) {
+                    $item->update($this->stock->check(
+                        (int) $item->product_id,
+                        $item->attribute_id,
+                        $item->unit_id,
+                        (float) $item->quantity,
+                    ));
+                }
+            }
+
+            $proforma->update([
+                'status'       => $newStatus,
+                'issued_at'    => $newStatus === ProformaInvoiceStatus::Issued ? now() : $proforma->issued_at,
+                'cancelled_at' => $newStatus === ProformaInvoiceStatus::Cancelled ? now() : $proforma->cancelled_at,
+            ]);
+        });
 
         return $this->find($proforma->id);
     }
@@ -303,41 +332,108 @@ class ProformaInvoiceService
         });
     }
 
-    /** Rebuilds every line from the SO — quantity, price, discount and the type's VAT. */
-    private function syncLinesFromSo(ProformaInvoice $proforma, SalesOrder $so): void
+    /**
+     * What "Create SO from Proforma" pre-fills: the customer, and every line with
+     * quantity still to recall, priced as an SO line (SO prices carry VAT inside,
+     * so a tax proforma's before-tax price + VAT becomes the SO price) and with
+     * today's stock so the form can hold back lines that cannot ship yet.
+     *
+     * @return array<string, mixed>
+     */
+    public function recallSource(int $id): array
+    {
+        $proforma = $this->find($id);
+
+        if (!in_array($proforma->status, [ProformaInvoiceStatus::Issued, ProformaInvoiceStatus::PartiallyInvoiced], true)) {
+            abort(422, "Only an issued proforma can be recalled into a sales order ({$proforma->proforma_no} is {$proforma->status->label()}).");
+        }
+
+        $alreadyRecalled = $proforma->items->sum(fn ($i) => (float) $i->getAttribute('recalled_quantity')) > self::EPSILON;
+
+        $lines = $proforma->items
+            ->map(function (ProformaInvoiceItem $item) use ($proforma): array {
+                $remaining = max(0.0, (float) $item->quantity - (float) $item->getAttribute('recalled_quantity'));
+                $stock     = $this->stock->check((int) $item->product_id, $item->attribute_id, $item->unit_id, $remaining);
+                $price     = (float) $item->unit_price;
+                $soPrice   = $proforma->invoice_type === 'tax' ? $price * (1 + (float) $item->tax / 100) : $price;
+
+                return [
+                    'proforma_item_id' => $item->id,
+                    'product'          => $item->product ? [
+                        'id'           => $item->product->id,
+                        'name'         => $item->product->name,
+                        'product_code' => $item->product->product_code,
+                    ] : null,
+                    'product_id'       => $item->product_id,
+                    'unit_id'          => $item->unit_id,
+                    'attribute_id'     => $item->attribute_id,
+                    'quantity'         => (float) $item->quantity,
+                    'recalled_quantity' => (float) $item->getAttribute('recalled_quantity'),
+                    'remaining_quantity' => round($remaining, 4),
+                    'so_unit_price'    => $this->money($soPrice),
+                    'discount'         => (float) $item->discount,
+                    'available_qty'    => $stock['available_qty'],
+                    'stock_status'     => $stock['stock_status'],
+                ];
+            })
+            ->filter(fn (array $l) => $l['remaining_quantity'] > self::EPSILON)
+            ->values();
+
+        return [
+            'proforma' => [
+                'id'               => $proforma->id,
+                'proforma_no'      => $proforma->proforma_no,
+                'invoice_type'     => $proforma->invoice_type,
+                'customer_id'      => $proforma->customer_id,
+                'customer_type'    => $proforma->customer?->customer_type,
+                'delivery_address' => $proforma->delivery_address,
+                // Transport is charged once — only the first SO recalls it
+                'transport_charge' => $alreadyRecalled ? 0.0 : (float) $proforma->transport_charge,
+                'remarks'          => $proforma->remarks,
+            ],
+            'lines' => $lines->all(),
+        ];
+    }
+
+    /**
+     * Replaces every line with the form's lines — typed quantity and price. A
+     * Non-Tax proforma never adds VAT (Tax % forced to 0).
+     *
+     * @param array<int, array<string, mixed>> $lines
+     */
+    private function syncLines(ProformaInvoice $proforma, array $lines): void
     {
         $proforma->items()->delete();
 
         $subtotal   = 0.0;
         $lineTotals = 0.0;
 
-        foreach ($so->items()->get() as $soItem) {
-            $pricing = $this->invoices->linePricing($soItem, $proforma->invoice_type);
-            $tax     = $proforma->invoice_type === 'non_tax' ? 0.0 : (float) $pricing['tax'];
-            $price   = $this->money((float) $pricing['unit_price']);
-            $gross   = (float) $soItem->quantity * $price;
+        foreach ($lines as $line) {
+            $qty      = (float) $line['quantity'];
+            $price    = $this->money((float) $line['unit_price']);
+            $discount = (float) ($line['discount'] ?? 0);
+            $tax      = $proforma->invoice_type === 'non_tax' ? 0.0 : (float) ($line['tax'] ?? 0);
+            $gross    = $qty * $price;
 
-            $lineTotal = $this->money(
-                $gross
-                    - ($gross * (float) $soItem->discount / 100)
-                    + ($gross * $tax / 100)
-            );
+            $lineTotal = $this->money($gross - ($gross * $discount / 100) + ($gross * $tax / 100));
+            $unitId    = !empty($line['unit_id']) ? (int) $line['unit_id'] : null;
 
             ProformaInvoiceItem::create([
                 'proforma_id'      => $proforma->id,
-                'source_item_type' => ProformaInvoiceItem::SOURCE_SALES_ORDER_ITEM,
-                'source_item_id'   => $soItem->id,
-                'so_item_id'       => $soItem->id,
-                'product_id'       => $soItem->product_id,
-                'unit_id'          => $soItem->unit_id,
-                'price_unit_id'    => $soItem->price_unit_id,
-                'attribute_id'     => $soItem->attribute_id,
-                'quantity'         => (float) $soItem->quantity,
+                'source_item_type' => ProformaInvoiceItem::SOURCE_DIRECT,
+                'source_item_id'   => null,
+                'so_item_id'       => null,
+                'product_id'       => (int) $line['product_id'],
+                'unit_id'          => $unitId,
+                // The price is quoted per the line's own unit
+                'price_unit_id'    => $unitId,
+                'attribute_id'     => !empty($line['attribute_id']) ? (int) $line['attribute_id'] : null,
+                'quantity'         => $qty,
                 'unit_price'       => $price,
-                'discount'         => (float) $soItem->discount,
+                'discount'         => $discount,
                 'tax'              => $tax,
                 'line_total'       => $lineTotal,
-                'remarks'          => $soItem->remarks,
+                'remarks'          => $line['remarks'] ?? null,
             ]);
 
             $subtotal   += $gross;
@@ -350,23 +446,8 @@ class ProformaInvoiceService
         ]);
     }
 
-    /** The SO's non-cancelled proforma — at most one exists. */
-    private function liveProformaForSo(int $soId): ?ProformaInvoice
-    {
-        return ProformaInvoice::where('so_id', $soId)
-            ->where('status', '!=', ProformaInvoiceStatus::Cancelled->value)
-            ->first();
-    }
-
-    private function soHasLiveInvoice(int $soId): bool
-    {
-        return Invoice::where('so_id', $soId)
-            ->where('status', '!=', InvoiceStatus::Cancelled->value)
-            ->exists();
-    }
-
     /**
-     * PI-YYMMM_QQQQ_XXXX — mirrors the invoice number: invoice month, the customer's
+     * PI-YYMMM_QQQQ_XXXX — mirrors the invoice number: proforma month, the customer's
      * code and one global running serial that never resets.
      */
     private function buildProformaNo(bool $lock, string $customerCode, ?string $proformaDate): string
@@ -391,10 +472,26 @@ class ProformaInvoiceService
         return ($last && preg_match('/(\d+)$/', $last, $m)) ? ((int) $m[1] + 1) : 1;
     }
 
-    /** Same default as the invoice: a customer with a TIN is quoted tax prices. */
-    private function defaultInvoiceType(SalesOrder $so): string
+    /** Same composition as the customer picker (CustomerController::all). */
+    private function shippingAddress(CustomerMaster $c): ?string
     {
-        return trim((string) $so->customer?->customer_tin) !== '' ? 'tax' : 'non_tax';
+        $address = implode(', ', array_filter([
+            $c->shipping_address_line1,
+            $c->shipping_address_line2,
+            $c->shipping_address_line3,
+            $c->shipping_city,
+            $c->shipping_state_province,
+            $c->shipping_zip_postal,
+            $c->shipping_country,
+        ]));
+
+        return $address !== '' ? $address : null;
+    }
+
+    /** Same default as the invoice: a customer with a TIN is quoted tax prices. */
+    private function defaultInvoiceType(CustomerMaster $customer): string
+    {
+        return trim((string) $customer->customer_tin) !== '' ? 'tax' : 'non_tax';
     }
 
     private function defaultCompanyId(): ?int

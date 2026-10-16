@@ -9,7 +9,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ProformaInvoiceItem extends Model
 {
-    public const SOURCE_SALES_ORDER_ITEM = 'sales_order_item';
+    public const SOURCE_SALES_ORDER_ITEM = 'sales_order_item'; // legacy SO-first lines
+    public const SOURCE_DIRECT           = 'direct';           // typed on a proforma-first quote
 
     protected $table = 'inv_proforma_invoice_items';
 
@@ -27,6 +28,8 @@ class ProformaInvoiceItem extends Model
         'discount',
         'tax',
         'line_total',
+        'stock_status',
+        'available_qty',
         'remarks',
     ];
 
@@ -43,11 +46,22 @@ class ProformaInvoiceItem extends Model
         'discount'       => 'decimal:4',
         'tax'            => 'decimal:4',
         'line_total'     => 'decimal:4',
+        'available_qty'  => 'decimal:4',
     ];
+
+    public const STOCK_IN      = 'in_stock';
+    public const STOCK_PARTIAL = 'partial';
+    public const STOCK_NONE    = 'non_stock';
 
     public function proforma(): BelongsTo
     {
         return $this->belongsTo(ProformaInvoice::class, 'proforma_id');
+    }
+
+    /** SO lines recalled from this proforma line (one proforma can feed many SOs). */
+    public function salesOrderItems(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(SalesOrderItem::class, 'proforma_item_id');
     }
 
     public function soItem(): BelongsTo

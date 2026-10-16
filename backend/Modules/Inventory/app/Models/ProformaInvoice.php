@@ -23,7 +23,8 @@ class ProformaInvoice extends Model
 {
     use SoftDeletes;
 
-    public const SOURCE_SALES_ORDER = 'sales_order';
+    public const SOURCE_SALES_ORDER = 'sales_order'; // legacy: raised from a confirmed SO
+    public const SOURCE_DIRECT      = 'direct';      // proforma-first: raised before any SO
 
     protected $table = 'inv_proforma_invoices';
 

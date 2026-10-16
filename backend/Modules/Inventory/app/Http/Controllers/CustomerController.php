@@ -93,6 +93,8 @@ class CustomerController extends Controller
                 'name'          => $c->customer_name,
                 'customer_code' => $c->customer_code,
                 'customer_type' => $c->customer_type,
+                // A TIN-registered customer is quoted/billed Tax by default (proforma form)
+                'has_tin'       => trim((string) $c->customer_tin) !== '',
                 'shipping_address' => implode(', ', array_filter([
                     $c->shipping_address_line1,
                     $c->shipping_address_line2,

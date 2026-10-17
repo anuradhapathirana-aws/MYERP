@@ -123,6 +123,8 @@ class CustomerService
                 'customer_name',
                 'customer_code',
                 'customer_type',
+                // vat_registered (TIN …7000) is derived from it
+                'customer_tin',
                 'shipping_address_line1',
                 'shipping_address_line2',
                 'shipping_address_line3',

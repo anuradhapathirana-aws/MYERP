@@ -26,6 +26,7 @@ import { getAllUnitTypesFlat } from '../../api/unitTypes'
 import { getAllAttributeTypes } from '../../api/attributeTypes'
 import { getAllAttributes } from '../../api/attributes'
 import Breadcrumb from '../../components/Breadcrumb'
+import KeyboardShortcuts from '../../components/ui/KeyboardShortcuts'
 import Money from '../../components/ui/Money'
 import { CURRENCY, fmtMoney, fmtMoneyWithSymbol } from '../../utils/currency'
 import BatchAssignModal from '../../components/inventory/BatchAssignModal'
@@ -2415,6 +2416,14 @@ export default function GoodsReceivedNoteFormPage() {
           onClose={() => setRollModalIdx(null)}
         />
       )}
+
+      {/* Keyboard Shortcuts Reference */}
+      <KeyboardShortcuts shortcuts={[
+        { keys: ['Alt', 'N'], desc: 'Add new item row' },
+        { keys: ['Enter'], desc: 'Qty: open rolls (roll items) or move to Price' },
+        { keys: ['↑', '↓'], desc: 'Navigate product search results' },
+        { keys: ['Esc'], desc: 'Close product search dropdown' },
+      ]} />
     </div>
   )
 }

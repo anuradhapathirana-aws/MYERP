@@ -1,7 +1,7 @@
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Ban, CheckCircle2, ChevronDown, ChevronRight, FileText, Pencil, QrCode, RefreshCw, Truck,
+  Ban, CheckCircle2, ChevronDown, ChevronRight, FileClock, FileText, Pencil, QrCode, RefreshCw, Truck,
 } from 'lucide-react'
 import { useState } from 'react'
 import { getSalesOrder, updateSalesOrderStatus } from '../../api/salesOrders'
@@ -91,6 +91,17 @@ export default function SalesOrderViewPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Proformas this order was recalled from (proforma-first flow) */}
+          {(so.proformas ?? []).map((pf) => (
+            <Link
+              key={pf.id}
+              to={`/inventory/proforma-invoices/${pf.id}`}
+              className="flex items-center gap-1 rounded border border-violet-300 bg-violet-50 px-3 py-1.5 text-xs font-bold text-violet-700 transition-all hover:bg-violet-100 active:scale-95"
+              title={`Recalled from proforma ${pf.proforma_no} (${pf.status_label})`}
+            >
+              <FileClock size={12} /> {pf.proforma_no}
+            </Link>
+          ))}
           {so.status === 'confirmed' && (
             <Link
               to={`/inventory/delivery-orders/create?so=${so.id}`}

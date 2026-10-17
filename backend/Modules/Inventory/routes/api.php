@@ -59,6 +59,8 @@ use Modules\Inventory\Http\Controllers\DeliveryOrderController;
 use Modules\Inventory\Http\Controllers\DeliveryOrderPdfController;
 use Modules\Inventory\Http\Controllers\InvoiceController;
 use Modules\Inventory\Http\Controllers\InvoicePdfController;
+use Modules\Inventory\Http\Controllers\ProformaInvoiceController;
+use Modules\Inventory\Http\Controllers\ProformaInvoicePdfController;
 use Modules\Inventory\Http\Controllers\StockReconciliationController;
 
 Route::middleware(['auth:sanctum', 'module:inventory'])->prefix('v1')->group(function (): void {
@@ -392,6 +394,22 @@ Route::middleware(['auth:sanctum', 'module:inventory'])->prefix('v1')->group(fun
         ->name('inventory.invoices.payment-history');
     Route::apiResource('invoices', InvoiceController::class)
         ->names('inventory.invoices');
+
+    // ── Proforma Invoices ────────────────────────────────────────────────────
+    Route::get('proforma-invoices/next-no', [ProformaInvoiceController::class, 'nextProformaNo'])
+        ->name('inventory.proforma-invoices.next-no');
+    Route::post('proforma-invoices/stock-check', [ProformaInvoiceController::class, 'stockCheck'])
+        ->name('inventory.proforma-invoices.stock-check');
+    Route::post('proforma-invoices/price-preview', [ProformaInvoiceController::class, 'pricePreview'])
+        ->name('inventory.proforma-invoices.price-preview');
+    Route::get('proforma-invoices/{proforma_invoice}/recall', [ProformaInvoiceController::class, 'recallSource'])
+        ->name('inventory.proforma-invoices.recall');
+    Route::patch('proforma-invoices/{proforma_invoice}/status', [ProformaInvoiceController::class, 'updateStatus'])
+        ->name('inventory.proforma-invoices.update-status');
+    Route::get('proforma-invoices/{proforma_invoice}/pdf', [ProformaInvoicePdfController::class, 'download'])
+        ->name('inventory.proforma-invoices.pdf');
+    Route::apiResource('proforma-invoices', ProformaInvoiceController::class)
+        ->names('inventory.proforma-invoices');
 
     // ── GRN Piece QR scan resolve ────────────────────────────────────────────
     Route::get('pieces/{pieceCode}', [GrnItemPieceController::class, 'show'])

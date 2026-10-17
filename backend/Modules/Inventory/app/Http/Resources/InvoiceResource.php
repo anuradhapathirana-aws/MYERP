@@ -17,6 +17,7 @@ class InvoiceResource extends JsonResource
             'invoice_no'       => $this->invoice_no,
             'so_id'            => $this->so_id,
             'do_id'            => $this->do_id,
+            'proforma_id'      => $this->proforma_id,
             'customer_id'      => $this->customer_id,
             'company_id'       => $this->company_id,
             'invoice_date'     => $this->invoice_date?->toDateString(),
@@ -44,6 +45,10 @@ class InvoiceResource extends JsonResource
             'delivery_order' => $this->whenLoaded('deliveryOrder', fn () => $this->deliveryOrder ? [
                 'id'    => $this->deliveryOrder->id,
                 'do_no' => $this->deliveryOrder->do_no,
+            ] : null),
+            'proforma' => $this->whenLoaded('proforma', fn () => $this->proforma ? [
+                'id'          => $this->proforma->id,
+                'proforma_no' => $this->proforma->proforma_no,
             ] : null),
             'company' => $this->whenLoaded('company', fn () => $this->company ? [
                 'id'   => $this->company->id,

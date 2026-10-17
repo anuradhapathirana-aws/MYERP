@@ -14,9 +14,11 @@ import {
 import { getAllCompanies } from '../../api/companies'
 import { getDeliveryOrders } from '../../api/deliveryOrders'
 import Breadcrumb from '../../components/Breadcrumb'
+import KeyboardShortcuts from '../../components/ui/KeyboardShortcuts'
 import FilterSearchSelect from '../../components/ui/FilterSearchSelect'
 import Money from '../../components/ui/Money'
-import { confirmTriState, showError, showSuccess } from '../../utils/alerts'
+import { confirmTriState, showError, showSuccess, showWarning } from '../../utils/alerts'
+import { NOT_VAT_REGISTERED_WARNING } from '../../utils/tin'
 import { fmtMoney } from '../../utils/currency'
 
 const INPUT_CLS =
@@ -212,6 +214,10 @@ export default function InvoiceFormPage() {
      source pricing isn't known (source failed to load) keep their price. */
   const applyInvoiceType = (type) => {
     if (type === invoiceType) return
+    // Allowed, but a tax invoice to a non-VAT customer needs a second look
+    if (type === 'tax' && source?.sales_order?.customer && !source.sales_order.customer.vat_registered) {
+      showWarning(NOT_VAT_REGISTERED_WARNING)
+    }
     setInvoiceType(type)
     setLines((prev) => prev.map((row) => {
       if (type === 'non_tax') {
@@ -411,6 +417,15 @@ export default function InvoiceFormPage() {
                     {' — '}{source.sales_order?.customer?.name}
                   </span>
                 )}
+                {/* The SO's issued proforma is auto-linked — its quoted prices are pre-filled */}
+                {source?.proforma && (
+                  <span
+                    className="ml-2 inline-flex items-center rounded-full bg-violet-100 px-2 py-0.5 font-mono text-[10px] font-semibold text-violet-700"
+                    title="This invoice links to the sales order's proforma and bills its quoted prices"
+                  >
+                    Proforma {source.proforma.proforma_no}
+                  </span>
+                )}
               </h2>
             </div>
             {/* Tax: Before-Tax prices + VAT per line · Non Tax: After-Tax prices, no VAT */}
@@ -421,9 +436,9 @@ export default function InvoiceFormPage() {
               {!isEdit && source?.default_invoice_type && (
                 <span
                   className="text-[9px] text-indigo-400"
-                  title="Auto-selected from the customer's TIN — you can still switch it"
+                  title="Auto-selected from the customer's TIN (VAT registered = TIN ending 7000) — you can still switch it"
                 >
-                  (Auto: {source.default_invoice_type === 'tax' ? 'customer has TIN' : 'no customer TIN'})
+                  (Auto: {source.default_invoice_type === 'tax' ? 'VAT registered' : 'not VAT registered'})
                 </span>
               )}
               <div className="flex overflow-hidden rounded-md border-2 border-indigo-200 text-[10px] font-bold">
@@ -637,6 +652,13 @@ export default function InvoiceFormPage() {
         </div>
 
       </div>
+
+      {/* Keyboard Shortcuts Reference */}
+      {!isEdit && (
+        <KeyboardShortcuts shortcuts={[
+          { keys: ['Ctrl', 'Enter'], desc: 'Create & issue invoice (asks to generate a receipt)' },
+        ]} />
+      )}
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { CalendarDays, CheckCircle2, Layers, MapPin, Package, RefreshCw, Save, Scissors, Truck } from 'lucide-react'
@@ -13,6 +13,7 @@ import { getSalesOrders } from '../../api/salesOrders'
 import { getAllLocations } from '../../api/locations'
 import { getAllStores } from '../../api/stores'
 import Breadcrumb from '../../components/Breadcrumb'
+import KeyboardShortcuts from '../../components/ui/KeyboardShortcuts'
 import FilterSearchSelect from '../../components/ui/FilterSearchSelect'
 import { showError, showSuccess } from '../../utils/alerts'
 
@@ -24,6 +25,8 @@ const INPUT_RO_CLS =
   'block w-full rounded border border-slate-200 bg-slate-100 px-2 py-1 text-xs font-mono text-slate-500 outline-none cursor-not-allowed'
 const SELECT_CLS =
   'block w-full rounded border border-slate-300 bg-slate-50 px-2 py-1 text-xs text-slate-800 outline-none transition-all focus:border-indigo-400 focus:bg-white focus:ring-1 focus:ring-indigo-500/20 cursor-pointer'
+const SELECT_ERR_CLS =
+  'block w-full rounded border border-red-300 bg-red-50/40 px-2 py-1 text-xs text-slate-800 outline-none transition-all focus:border-red-500 focus:bg-white focus:ring-1 focus:ring-red-500/20 cursor-pointer'
 const LABEL_CLS = 'block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-0.5'
 const ERR_CLS   = 'text-[10px] text-red-500 leading-tight'
 
@@ -380,11 +383,16 @@ export default function DeliveryOrderFormPage() {
   )
 
   /* ── Save ─────────────────────────────────────────────────── */
+  // Ship-from selects — opened for the user when Enter/Create finds them empty
+  const locationRef = useRef(null)
+  const storeRef    = useRef(null)
+
   const saveMutation = useMutation({
     mutationFn: (payload) => isEdit ? updateDeliveryOrder(id, payload) : createDeliveryOrder(payload),
-    onSuccess: () => {
+    onSuccess: (res) => {
       showSuccess(isEdit ? 'Delivery order updated.' : 'Delivery order created.')
-      navigate('/inventory/delivery-orders')
+      // A new DO opens on its view page, where it is confirmed (stock out).
+      navigate(isEdit ? '/inventory/delivery-orders' : `/inventory/delivery-orders/${res.data.id}`)
     },
     onError: (e) => {
       const data = e.response?.data
@@ -416,11 +424,21 @@ export default function DeliveryOrderFormPage() {
     if (items.length === 0)
       clientErrors.items = ['Select at least one roll or quantity to deliver.']
 
-    if (hasManualQty && (!storeId || !locationId))
-      clientErrors.store_id = ['Select the store and location manual lines ship from.']
+    if (hasManualQty && !locationId)
+      clientErrors.location_id = ['Select the location these quantities ship from.']
+    else if (hasManualQty && !storeId)
+      clientErrors.store_id = ['Select the store these quantities ship from.']
 
     if (Object.keys(clientErrors).length) {
       setErrors(clientErrors)
+      // Missing ship-from: drop the user straight into that dropdown.
+      const pick = clientErrors.location_id ? locationRef.current : (clientErrors.store_id ? storeRef.current : null)
+      if (pick) {
+        showError(clientErrors.location_id?.[0] ?? clientErrors.store_id[0])
+        pick.focus()
+        try { pick.showPicker?.() } catch { /* not supported — focus is enough */ }
+        return
+      }
       showError('Please complete the highlighted fields.')
       return
     }
@@ -440,6 +458,29 @@ export default function DeliveryOrderFormPage() {
       items,
     })
   }
+
+  /* ── Ctrl+Enter = Create DO (new DOs only) — works from any field;
+     an open SweetAlert dialog (not a toast) keeps the keystroke. ── */
+  const submitRef = useRef(null)
+  useEffect(() => {
+    submitRef.current = () => {
+      if (saveMutation.isPending || !soSource) return
+      handleSubmit()
+    }
+  })
+  useEffect(() => {
+    if (isEdit) return
+    const handler = (e) => {
+      if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return
+      if (e.repeat || e.isComposing) return
+      const popup = document.querySelector('.swal2-popup')
+      if (popup && !popup.classList.contains('swal2-toast')) return
+      e.preventDefault()
+      submitRef.current?.()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [isEdit])
 
   const err = (f) => errors[f]?.[0]
 
@@ -557,18 +598,35 @@ export default function DeliveryOrderFormPage() {
                 <>
                   <div>
                     <label className={LABEL_CLS}>Ship-From Location <span className="text-red-500 normal-case font-bold">*</span></label>
-                    <select className={SELECT_CLS} value={locationId} onChange={(e) => setForm((f) => ({ ...f, location_id: e.target.value, store_id: '' }))}>
+                    <select
+                      ref={locationRef}
+                      className={err('location_id') ? SELECT_ERR_CLS : SELECT_CLS}
+                      value={locationId}
+                      onChange={(e) => {
+                        setForm((f) => ({ ...f, location_id: e.target.value, store_id: '' }))
+                        setErrors((er) => ({ ...er, location_id: undefined }))
+                      }}
+                    >
                       <option value="">— Select —</option>
                       {locations.map((l) => <option key={l.id} value={l.id}>{l.location_name ?? l.name}</option>)}
                     </select>
-                    {err('store_id') && <p className={ERR_CLS}>{err('store_id')}</p>}
+                    {err('location_id') && <p className={ERR_CLS}>{err('location_id')}</p>}
                   </div>
                   <div>
                     <label className={LABEL_CLS}>Ship-From Store <span className="text-red-500 normal-case font-bold">*</span></label>
-                    <select className={SELECT_CLS} value={storeId} onChange={(e) => setForm((f) => ({ ...f, store_id: e.target.value }))}>
+                    <select
+                      ref={storeRef}
+                      className={err('store_id') ? SELECT_ERR_CLS : SELECT_CLS}
+                      value={storeId}
+                      onChange={(e) => {
+                        setForm((f) => ({ ...f, store_id: e.target.value }))
+                        setErrors((er) => ({ ...er, store_id: undefined }))
+                      }}
+                    >
                       <option value="">— Select —</option>
                       {filteredStores.map((s) => <option key={s.id} value={s.id}>{s.store_name}</option>)}
                     </select>
+                    {err('store_id') && <p className={ERR_CLS}>{err('store_id')}</p>}
                   </div>
                 </>
               )}
@@ -737,7 +795,10 @@ export default function DeliveryOrderFormPage() {
             >
               {saveMutation.isPending
                 ? <><RefreshCw size={11} className="animate-spin" /> Saving…</>
-                : <><Save size={11} /> {isEdit ? 'Update Delivery Order' : 'Create Delivery Order'}</>}
+                : <><Save size={11} /> {isEdit ? 'Update Delivery Order' : 'Create DO'}</>}
+              {!isEdit && (
+                <kbd className="ml-1 rounded border border-indigo-300 bg-indigo-500 px-1 text-[9px] font-semibold text-indigo-50">Ctrl+Enter</kbd>
+              )}
             </button>
           </div>
         </div>
@@ -748,6 +809,13 @@ export default function DeliveryOrderFormPage() {
         </div>
 
       </div>
+
+      {/* Keyboard Shortcuts Reference */}
+      {!isEdit && (
+        <KeyboardShortcuts shortcuts={[
+          { keys: ['Ctrl', 'Enter'], desc: 'Create DO (opens it to confirm)' },
+        ]} />
+      )}
     </div>
   )
 }

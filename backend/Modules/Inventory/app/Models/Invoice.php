@@ -27,6 +27,7 @@ class Invoice extends Model
         'invoice_no',
         'so_id',
         'do_id',
+        'proforma_id',
         'customer_id',
         'company_id',
         'invoice_date',
@@ -54,6 +55,7 @@ class Invoice extends Model
         'grand_total'      => 'decimal:4',
         'so_id'            => 'integer',
         'do_id'            => 'integer',
+        'proforma_id'      => 'integer',
         'customer_id'      => 'integer',
         'company_id'       => 'integer',
         'created_by'       => 'integer',
@@ -74,6 +76,12 @@ class Invoice extends Model
     public function deliveryOrder(): BelongsTo
     {
         return $this->belongsTo(DeliveryOrder::class, 'do_id');
+    }
+
+    /** The SO's proforma this DO invoice was auto-linked to (soft link, nullable). */
+    public function proforma(): BelongsTo
+    {
+        return $this->belongsTo(ProformaInvoice::class, 'proforma_id');
     }
 
     public function customer(): BelongsTo

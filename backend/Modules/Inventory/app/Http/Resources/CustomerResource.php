@@ -21,6 +21,7 @@ class CustomerResource extends JsonResource
             'nic_passport_driving_licence' => $this->nic_passport_driving_licence,
             'br_no'                        => $this->br_no,
             'customer_tin'                 => $this->customer_tin,
+            'vat_registered'               => $this->resource->isVatRegistered(),
 
             'customer_mobile'              => $this->customer_mobile,
             'customer_land_line'           => $this->customer_land_line,

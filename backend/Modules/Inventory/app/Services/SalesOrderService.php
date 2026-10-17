@@ -80,6 +80,7 @@ class SalesOrderService
             'items.priceUnit',
             'items.attribute',
             'items.pieces.piece',
+            'items.proformaItem.proforma',
             'customer',
             'salesPerson',
             'orderTakenBy',
@@ -420,6 +421,7 @@ class SalesOrderService
 
             $item = SalesOrderItem::create([
                 'so_id'      => $so->id,
+                'proforma_item_id' => !empty($row['proforma_item_id']) ? (int) $row['proforma_item_id'] : null,
                 'product_id' => (int) $row['product_id'],
                 'unit_id'    => $unitId,
                 'price_unit_id' => $priceUnitId,

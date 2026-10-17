@@ -7,11 +7,13 @@ namespace Modules\Inventory\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
+use Modules\Inventory\Enums\ProformaInvoiceStatus;
 use Modules\Inventory\Enums\SalesOrderSource;
 use Modules\Inventory\Models\GrnItemPiece;
 use Modules\Inventory\Models\Product;
 use Modules\Inventory\Models\ProductAttribute;
 use Modules\Inventory\Models\ProductLocationStore;
+use Modules\Inventory\Models\ProformaInvoiceItem;
 use Modules\Inventory\Services\ColourStockService;
 
 class StoreSalesOrderRequest extends FormRequest
@@ -58,6 +60,8 @@ class StoreSalesOrderRequest extends FormRequest
             // own UOM. Omitted = spread the line quantity across the rolls (oldest first).
             'items.*.piece_takes'   => ['nullable', 'array'],
             'items.*.piece_takes.*' => ['numeric', 'gt:0'],
+            // Line recalled from a proforma ("Create SO from Proforma") — soft link
+            'items.*.proforma_item_id' => ['nullable', 'integer', 'exists:inv_proforma_invoice_items,id'],
         ];
     }
 
@@ -65,6 +69,9 @@ class StoreSalesOrderRequest extends FormRequest
     {
         $validator->after(function (Validator $v): void {
             $items      = (array) $this->input('items', []);
+
+            $this->validateProformaLinks($v, $items);
+
             $productIds = array_values(array_unique(array_filter(array_column($items, 'product_id'))));
 
             if ($productIds === []) {
@@ -152,6 +159,45 @@ class StoreSalesOrderRequest extends FormRequest
                 }
             }
         });
+    }
+
+    /**
+     * A line recalled from a proforma must come from an issued proforma of the same
+     * customer, for the same product and in the same UOM — the quantity tracking
+     * (recalled / invoiced vs quoted) compares quantities in that UOM.
+     *
+     * @param array<int, array<string, mixed>> $items
+     */
+    private function validateProformaLinks(Validator $v, array $items): void
+    {
+        $ids = collect($items)->pluck('proforma_item_id')->filter()->map(fn ($id) => (int) $id)->unique();
+        if ($ids->isEmpty()) {
+            return;
+        }
+
+        $proformaItems = ProformaInvoiceItem::with('proforma')->whereIn('id', $ids)->get()->keyBy('id');
+        $customerId    = (int) $this->input('customer_id');
+
+        foreach ($items as $index => $item) {
+            if (empty($item['proforma_item_id'])) {
+                continue;
+            }
+
+            $pfItem = $proformaItems->get((int) $item['proforma_item_id']);
+            $field  = "items.{$index}.proforma_item_id";
+
+            if ($pfItem === null || $pfItem->proforma === null) {
+                $v->errors()->add($field, 'The proforma line no longer exists.');
+            } elseif (!in_array($pfItem->proforma->status->value, ProformaInvoiceStatus::linkable(), true)) {
+                $v->errors()->add($field, "Proforma {$pfItem->proforma->proforma_no} is not issued.");
+            } elseif ((int) $pfItem->proforma->customer_id !== $customerId) {
+                $v->errors()->add($field, "Proforma {$pfItem->proforma->proforma_no} belongs to another customer.");
+            } elseif ((int) $pfItem->product_id !== (int) ($item['product_id'] ?? 0)) {
+                $v->errors()->add($field, 'The line product differs from the proforma line.');
+            } elseif ($pfItem->unit_id !== null && (int) $pfItem->unit_id !== (int) ($item['unit_id'] ?? 0)) {
+                $v->errors()->add("items.{$index}.unit_id", "Keep the proforma's unit of measure on a recalled line.");
+            }
+        }
     }
 
     /** @return array<string, string> */

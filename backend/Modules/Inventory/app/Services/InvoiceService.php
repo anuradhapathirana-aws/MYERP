@@ -157,8 +157,9 @@ class InvoiceService
             ->findOrFail($doId);
 
         $so       = $do->salesOrder;
-        $proforma = $this->proformas->linkableProformaForSo($so->id);
-        $pfItems  = $proforma ? $proforma->items->keyBy('so_item_id') : collect();
+        // Proforma lines behind this DO's SO lines (recalled from a proforma)
+        $pfItems  = $this->proformas->proformaItemsForSoItems($do->items->pluck('so_item_id'));
+        $proforma = $pfItems->first()?->proforma;
 
         return [
             'source'         => 'do',
@@ -179,7 +180,6 @@ class InvoiceService
             'items'       => $do->items
                 ->map(fn ($doItem) => $this->withProformaPricing(
                     $this->itemPreview($doItem->soItem, (float) $doItem->quantity, $doItem->id),
-                    $proforma?->invoice_type,
                     $pfItems->get($doItem->so_item_id),
                 ))
                 ->values()
@@ -258,7 +258,9 @@ class InvoiceService
         ]);
 
         if ($newStatus === InvoiceStatus::Cancelled && $invoice->proforma_id !== null) {
-            DB::transaction(fn () => $this->proformas->refreshInvoicingStatus($invoice->proforma_id));
+            DB::transaction(fn () => $this->proformas->refreshForProformaItems(
+                $invoice->items()->pluck('proforma_item_id'),
+            ));
         }
 
         return $invoice;
@@ -271,12 +273,12 @@ class InvoiceService
         }
 
         DB::transaction(function () use ($invoice): void {
+            $proformaItemIds = $invoice->items()->pluck('proforma_item_id');
+
             $invoice->items()->delete();
             $invoice->delete();
 
-            if ($invoice->proforma_id !== null) {
-                $this->proformas->refreshInvoicingStatus($invoice->proforma_id);
-            }
+            $this->proformas->refreshForProformaItems($proformaItemIds);
         });
     }
 
@@ -302,10 +304,10 @@ class InvoiceService
                 abort(422, "Sales order {$so->so_no} is billed directly — per-delivery invoices are not allowed.");
             }
 
-            // An issued proforma on the SO is auto-linked: its invoice type is the
-            // default and its quoted line prices are billed (see below).
-            $proforma = $this->proformas->linkableProformaForSo($so->id);
-            $pfItems  = $proforma ? $proforma->items->keyBy('so_item_id') : collect();
+            // SO lines recalled from an issued proforma are billed at the quoted price;
+            // that proforma's invoice type is the default (see below).
+            $pfItems  = $this->proformas->proformaItemsForSoItems($do->items->pluck('so_item_id'));
+            $proforma = $pfItems->first()?->proforma;
 
             $invoice = Invoice::create([
                 'invoice_no'       => $this->buildInvoiceNo(
@@ -337,7 +339,7 @@ class InvoiceService
                 $pfItem  = $pfItems->get($doItem->so_item_id);
                 // The customer pays what the proforma quoted — when the invoice type
                 // matches it; a switched type is re-priced the normal way.
-                $pricing = $pfItem && $proforma->invoice_type === $invoice->invoice_type
+                $pricing = $pfItem && $pfItem->proforma->invoice_type === $invoice->invoice_type
                     ? ['unit_price' => (float) $pfItem->unit_price, 'tax' => (float) $pfItem->tax, 'discount' => (float) $pfItem->discount]
                     : $this->linePricing($soItem, $invoice->invoice_type) + ['discount' => (float) ($soItem?->discount ?? 0)];
                 $item    = new InvoiceItem([
@@ -361,9 +363,7 @@ class InvoiceService
             $this->enforceInvoiceType($invoice);
             $this->recalculateTotals($invoice);
 
-            if ($proforma) {
-                $this->proformas->refreshInvoicingStatus($proforma->id);
-            }
+            $this->proformas->refreshForProformaItems($pfItems->pluck('id'));
 
             return $this->find($invoice->id);
         });
@@ -376,8 +376,9 @@ class InvoiceService
      * @param array<string, mixed> $preview
      * @return array<string, mixed>
      */
-    private function withProformaPricing(array $preview, ?string $proformaType, ?ProformaInvoiceItem $pfItem): array
+    private function withProformaPricing(array $preview, ?ProformaInvoiceItem $pfItem): array
     {
+        $proformaType = $pfItem?->proforma?->invoice_type;
         if ($pfItem === null || $proformaType === null) {
             return $preview + ['proforma_item_id' => null];
         }
@@ -438,12 +439,13 @@ class InvoiceService
     }
 
     /**
-     * A customer registered for tax (Customer TIN entered) is billed a Tax invoice, anyone
-     * else a Non Tax one. Only a default — the caller may still send an explicit invoice_type.
+     * A VAT-registered customer (TIN ending in the VAT code 7000) is billed a Tax invoice,
+     * anyone else — plain TIN, other tax type, no TIN — a Non Tax one. Only a default — the
+     * caller may still send an explicit invoice_type.
      */
     private function defaultInvoiceType(SalesOrder $so): string
     {
-        return trim((string) $so->customer?->customer_tin) !== '' ? 'tax' : 'non_tax';
+        return $so->customer?->isVatRegistered() ? 'tax' : 'non_tax';
     }
 
     /**
@@ -524,8 +526,9 @@ class InvoiceService
             'transport_charge' => (float) $so->transport_charge,
             'delivery_address' => $so->delivery_address,
             'customer'         => $so->customer ? [
-                'id'   => $so->customer->id,
-                'name' => $so->customer->customer_name,
+                'id'             => $so->customer->id,
+                'name'           => $so->customer->customer_name,
+                'vat_registered' => $so->customer->isVatRegistered(),
             ] : null,
         ];
     }

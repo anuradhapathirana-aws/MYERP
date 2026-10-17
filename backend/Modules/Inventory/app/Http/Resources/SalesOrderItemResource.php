@@ -15,6 +15,7 @@ class SalesOrderItemResource extends JsonResource
         return [
             'id'           => $this->id,
             'so_id'        => $this->so_id,
+            'proforma_item_id' => $this->proforma_item_id,
             'product_id'   => $this->product_id,
             'unit_id'      => $this->unit_id,
             'price_unit_id' => $this->price_unit_id,

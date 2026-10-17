@@ -51,4 +51,22 @@ class CustomerMaster extends Model
     {
         return $this->hasMany(CustomerAttachment::class, 'customer_master_id');
     }
+
+    /**
+     * Sri Lanka IRD: a VAT registration number is the 9-digit TIN followed by the
+     * VAT tax-type code 7000 (e.g. 123456789-7000). Only such a purchaser is billed
+     * a Tax invoice by default; a plain TIN, another tax type, or no TIN is Non Tax.
+     * Spaces and dashes are ignored; the check is strict (exactly 9 + 4 digits).
+     */
+    public static function isVatRegisteredTin(?string $tin): bool
+    {
+        $digits = preg_replace('/[\s\-]/', '', (string) $tin);
+
+        return (bool) preg_match('/^\d{9}7000$/', $digits);
+    }
+
+    public function isVatRegistered(): bool
+    {
+        return self::isVatRegisteredTin($this->customer_tin);
+    }
 }

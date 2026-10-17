@@ -312,6 +312,41 @@ class InvoiceTest extends TestCase
             ->assertJsonPath('data.invoice_type', 'tax');
     }
 
+    /** VAT registered = 9-digit TIN + VAT code 7000; any other TIN is Non Tax. */
+    public function test_only_a_vat_registered_tin_defaults_to_tax(): void
+    {
+        $cases = [
+            '114567890'       => 'non_tax', // plain TIN — income tax only
+            '114567890-1000'  => 'non_tax', // another tax type
+            '12-7000'         => 'non_tax', // too short — not a VAT number
+            '114567890 7000'  => 'tax',     // spaces ignored
+            '1145678907000'   => 'tax',     // no separator
+        ];
+
+        foreach ($cases as $tin => $expected) {
+            $this->customer->update(['customer_tin' => $tin]);
+            ['so' => $so, 'pieces' => $pieces] = $this->makeConfirmedSoWithRolls([10.0]);
+            $doId = $this->makeConfirmedDo($so, $pieces);
+
+            $this->actingAs($this->user)
+                ->getJson("/api/v1/invoices/billing-source/do/{$doId}")
+                ->assertOk()
+                ->assertJsonPath('data.default_invoice_type', $expected)
+                ->assertJsonPath('data.sales_order.customer.vat_registered', $expected === 'tax');
+        }
+    }
+
+    public function test_vat_registration_rule_helper(): void
+    {
+        $this->assertTrue(CustomerMaster::isVatRegisteredTin('123456789-7000'));
+        $this->assertTrue(CustomerMaster::isVatRegisteredTin(' 123456789 7000 '));
+        $this->assertFalse(CustomerMaster::isVatRegisteredTin('123456789'));
+        $this->assertFalse(CustomerMaster::isVatRegisteredTin('123456789-7001'));
+        $this->assertFalse(CustomerMaster::isVatRegisteredTin('7000'));
+        $this->assertFalse(CustomerMaster::isVatRegisteredTin(null));
+        $this->assertFalse(CustomerMaster::isVatRegisteredTin(''));
+    }
+
     public function test_explicit_invoice_type_overrides_customer_tin_default(): void
     {
         // Customer has a TIN (default Tax), but the user switched the toggle to Non Tax

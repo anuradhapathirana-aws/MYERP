@@ -14,6 +14,7 @@ class SalesOrderItem extends Model
 
     protected $fillable = [
         'so_id',
+        'proforma_item_id',
         'product_id',
         'unit_id',
         'price_unit_id',
@@ -33,6 +34,7 @@ class SalesOrderItem extends Model
 
     protected $casts = [
         'so_id'        => 'integer',
+        'proforma_item_id' => 'integer',
         'product_id'   => 'integer',
         'unit_id'      => 'integer',
         'price_unit_id' => 'integer',
@@ -52,6 +54,12 @@ class SalesOrderItem extends Model
     public function salesOrder(): BelongsTo
     {
         return $this->belongsTo(SalesOrder::class, 'so_id');
+    }
+
+    /** The proforma line this SO line was recalled from (soft link, nullable). */
+    public function proformaItem(): BelongsTo
+    {
+        return $this->belongsTo(ProformaInvoiceItem::class, 'proforma_item_id');
     }
 
     public function product(): BelongsTo

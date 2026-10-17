@@ -398,8 +398,12 @@ Route::middleware(['auth:sanctum', 'module:inventory'])->prefix('v1')->group(fun
     // ── Proforma Invoices ────────────────────────────────────────────────────
     Route::get('proforma-invoices/next-no', [ProformaInvoiceController::class, 'nextProformaNo'])
         ->name('inventory.proforma-invoices.next-no');
-    Route::get('proforma-invoices/source/so/{soId}', [ProformaInvoiceController::class, 'sourceForSo'])
-        ->name('inventory.proforma-invoices.source-so');
+    Route::post('proforma-invoices/stock-check', [ProformaInvoiceController::class, 'stockCheck'])
+        ->name('inventory.proforma-invoices.stock-check');
+    Route::post('proforma-invoices/price-preview', [ProformaInvoiceController::class, 'pricePreview'])
+        ->name('inventory.proforma-invoices.price-preview');
+    Route::get('proforma-invoices/{proforma_invoice}/recall', [ProformaInvoiceController::class, 'recallSource'])
+        ->name('inventory.proforma-invoices.recall');
     Route::patch('proforma-invoices/{proforma_invoice}/status', [ProformaInvoiceController::class, 'updateStatus'])
         ->name('inventory.proforma-invoices.update-status');
     Route::get('proforma-invoices/{proforma_invoice}/pdf', [ProformaInvoicePdfController::class, 'download'])

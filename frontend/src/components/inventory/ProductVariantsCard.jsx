@@ -132,7 +132,7 @@ export default function ProductVariantsCard({ variants, onChange, productAttribu
                 className="rounded-md border-2 border-slate-200 bg-white px-1.5 py-0.5 text-xs font-normal normal-case text-slate-800 outline-none focus:border-indigo-500"
               >
                 {channelOptions.map((c) => (
-                  <option key={c.id} value={String(c.id)}>{c.sales_channel_name}</option>
+                  <option key={c.id} value={String(c.id)}>{c.name ?? c.sales_channel_name}</option>
                 ))}
               </select>
             </label>

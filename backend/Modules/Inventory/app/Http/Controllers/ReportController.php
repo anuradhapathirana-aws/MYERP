@@ -18,6 +18,7 @@ use Modules\Inventory\Services\SalesByItemSummaryService;
 use Modules\Inventory\Services\SalesSummaryReportService;
 use Modules\Inventory\Services\StockMovementSummaryService;
 use Modules\Inventory\Services\SupplierWiseGrnDetailsService;
+use Modules\Inventory\Support\VariantReportFilters;
 
 class ReportController extends Controller
 {
@@ -116,6 +117,7 @@ class ReportController extends Controller
             // Colour is on the ledger row itself — reference_id names the document, not the
             // line, so it could never have been joined back to reliably.
             ->leftJoin('inv_attributes as a', 'a.id', '=', 'st.attribute_id')
+            ->leftJoin('inv_product_variants as v', 'v.id', '=', 'st.variant_id')
             // qty_in/qty_out speak the stocking UOM; entered_* speak the UOM transacted in.
             ->leftJoin('inv_unit_types as u', 'u.id', '=', 'st.unit_id')
             ->leftJoin('inv_unit_types as eu', 'eu.id', '=', 'st.entered_unit_id')
@@ -125,7 +127,10 @@ class ReportController extends Controller
                 'p.product_code',
                 'p.name as product_name',
                 'st.attribute_id',
-                'a.attribute_name as color',
+                'st.variant_id',
+                // The variant label (Red / Floral / M) where there is one, else the colour.
+                DB::raw('COALESCE(v.variant_label, a.attribute_name) as color'),
+                'v.sku as variant_sku',
                 'st.reference_type',
                 'st.reference_id',
                 'st.batch_no',
@@ -146,6 +151,8 @@ class ReportController extends Controller
                 $q->where('p.name', 'like', $search)
                   ->orWhere('p.product_code', 'like', $search)
                   ->orWhere('a.attribute_name', 'like', $search)
+                  ->orWhere('v.variant_label', 'like', $search)
+                  ->orWhere('v.sku', 'like', $search)
                   ->orWhere('st.batch_no', 'like', $search);
             });
         }
@@ -177,6 +184,8 @@ class ReportController extends Controller
         if ($request->filled('date_to')) {
             $query->whereDate('st.transaction_date', '<=', $request->input('date_to'));
         }
+
+        VariantReportFilters::apply($query, VariantReportFilters::fromRequest($request), 'p', 'st.variant_id', 'st.attribute_id');
 
         $paginator = $query->orderByDesc('st.transaction_date')->orderByDesc('st.id')->paginate($perPage);
 
@@ -932,14 +941,17 @@ class ReportController extends Controller
         $request->validate([
             'product_id'   => ['required', 'integer', 'exists:inv_products,id'],
             'attribute_id' => ['nullable', 'integer', 'exists:inv_attributes,id'],
+            'variant_id'   => ['nullable', 'integer', 'exists:inv_product_variants,id'],
             'location_id'  => ['nullable', 'integer', 'exists:inv_locations,id'],
             'store_id'     => ['nullable', 'integer', 'exists:inv_stores,id'],
             'date_from'    => ['nullable', 'date'],
             'date_to'      => ['nullable', 'date', 'after_or_equal:date_from'],
+            ...VariantReportFilters::rules(),
         ]);
 
         return response()->json($service->build(
-            $request->only(['product_id', 'attribute_id', 'location_id', 'store_id', 'date_from', 'date_to'])
+            $request->only(['product_id', 'attribute_id', 'variant_id', 'location_id', 'store_id', 'date_from', 'date_to'])
+                + VariantReportFilters::fromRequest($request)
         ));
     }
 
@@ -974,7 +986,7 @@ class ReportController extends Controller
         ]);
 
         return response()->json($service->build(
-            $request->only(['location_id', 'category_id', 'date_from', 'date_to'])
+            $request->only(['location_id', 'category_id', 'date_from', 'date_to']) + VariantReportFilters::fromRequest($request)
         ));
     }
 
@@ -992,7 +1004,7 @@ class ReportController extends Controller
         ]);
 
         return response()->json($service->build(
-            $request->only(['date_from', 'date_to', 'category_id', 'product_id'])
+            $request->only(['date_from', 'date_to', 'category_id', 'product_id']) + VariantReportFilters::fromRequest($request)
         ));
     }
 
@@ -1011,7 +1023,7 @@ class ReportController extends Controller
         ]);
 
         return response()->json($service->build(
-            $request->only(['date_from', 'date_to', 'location_id', 'customer_id', 'product_id'])
+            $request->only(['date_from', 'date_to', 'location_id', 'customer_id', 'product_id']) + VariantReportFilters::fromRequest($request)
         ));
     }
 
@@ -1030,7 +1042,7 @@ class ReportController extends Controller
         ]);
 
         return response()->json($service->build(
-            $request->only(['date_from', 'date_to', 'supplier_id', 'product_id'])
+            $request->only(['date_from', 'date_to', 'supplier_id', 'product_id']) + VariantReportFilters::fromRequest($request)
         ));
     }
 
@@ -1047,10 +1059,11 @@ class ReportController extends Controller
             'category_id'  => ['nullable', 'integer', 'exists:inv_categories,id'],
             'supplier_id'  => ['nullable', 'integer', 'exists:inv_supplier_masters,id'],
             'grn_id'       => ['nullable', 'integer', 'exists:inv_goods_received_notes,id'],
+            ...VariantReportFilters::rules(),
         ]);
 
         return response()->json($service->build(
-            $request->only(['product_code', 'product_id', 'category_id', 'supplier_id', 'grn_id']),
+            $request->only(['product_code', 'product_id', 'category_id', 'supplier_id', 'grn_id']) + VariantReportFilters::fromRequest($request),
             (int) $request->integer('page', 1)
         ));
     }
@@ -1102,6 +1115,7 @@ class ReportController extends Controller
             'attribute_id'          => ['nullable', 'integer', 'exists:inv_attributes,id'],
             'location_id'           => ['nullable', 'integer', 'exists:inv_locations,id'],
             'include_selling_price' => ['nullable', 'boolean'],
+            ...VariantReportFilters::rules(),
         ]);
 
         return response()->json($service->build([
@@ -1110,6 +1124,6 @@ class ReportController extends Controller
             'attribute_id'          => $request->integer('attribute_id') ?: null,
             'location_id'           => $request->integer('location_id') ?: null,
             'include_selling_price' => $request->boolean('include_selling_price'),
-        ]));
+        ] + VariantReportFilters::fromRequest($request)));
     }
 }

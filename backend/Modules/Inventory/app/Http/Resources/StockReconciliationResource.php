@@ -20,6 +20,7 @@ class StockReconciliationResource extends JsonResource
             'reconciliation_no'  => $this->reconciliation_no,
             'product_id'         => $this->product_id,
             'attribute_id'       => $this->attribute_id,
+            'variant_id'         => $this->variant_id,
             'store_id'           => $this->store_id,
             'location_id'        => $this->location_id,
             'batch_id'           => $this->batch_id,
@@ -64,6 +65,12 @@ class StockReconciliationResource extends JsonResource
             'attribute' => $this->whenLoaded('attribute', fn () => $this->attribute ? [
                 'id'   => $this->attribute->id,
                 'name' => $this->attribute->attribute_name,
+            ] : null),
+            // Product variant (Red / Floral / M) — null for roll products / products without variants.
+            'variant' => $this->whenLoaded('variant', fn () => $this->variant ? [
+                'id'   => $this->variant->id,
+                'sku'  => $this->variant->sku,
+                'name' => $this->variant->variant_label,
             ] : null),
             'store' => $this->whenLoaded('store', fn () => [
                 'id'   => $this->store->id,

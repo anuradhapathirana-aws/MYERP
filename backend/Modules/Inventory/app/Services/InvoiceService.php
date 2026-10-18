@@ -95,6 +95,7 @@ class InvoiceService
             'items.unit',
             'items.priceUnit',
             'items.attribute',
+            'items.variant',
             'salesOrder',
             'deliveryOrder',
             'proforma',
@@ -133,7 +134,7 @@ class InvoiceService
      */
     public function billingSourceForSo(int $soId): array
     {
-        $so = SalesOrder::with(['items.product', 'items.unit', 'items.attribute', 'customer'])
+        $so = SalesOrder::with(['items.product', 'items.unit', 'items.attribute', 'items.variant', 'customer'])
             ->findOrFail($soId);
 
         return [
@@ -153,7 +154,7 @@ class InvoiceService
      */
     public function billingSourceForDo(int $doId): array
     {
-        $do = DeliveryOrder::with(['items.soItem', 'salesOrder.customer', 'salesOrder.items'])
+        $do = DeliveryOrder::with(['items.soItem.variant', 'salesOrder.customer', 'salesOrder.items'])
             ->findOrFail($doId);
 
         $so       = $do->salesOrder;
@@ -375,6 +376,7 @@ class InvoiceService
                     'unit_id'      => $doItem->unit_id,
                     'price_unit_id' => $soItem?->price_unit_id,
                     'attribute_id' => $doItem->attribute_id,
+                    'variant_id'   => $doItem->variant_id,
                     'quantity'     => (float) $doItem->quantity,
                     'unit_price'   => $pricing['unit_price'],
                     'discount'     => $pricing['discount'],
@@ -587,6 +589,7 @@ class InvoiceService
             ] : null,
             'unit'       => $soItem?->unit ? ['id' => $soItem->unit->id, 'name' => $soItem->unit->name] : null,
             'attribute'  => $soItem?->attribute ? ['id' => $soItem->attribute->id, 'name' => $soItem->attribute->attribute_name] : null,
+            'variant'    => $soItem?->variant ? ['id' => $soItem->variant->id, 'sku' => $soItem->variant->sku, 'name' => $soItem->variant->variant_label] : null,
             'quantity'   => $quantity,
             // Non-Tax invoice price: the SO price as-is (costing AFTER-tax, VAT inside)
             'unit_price' => $this->money((float) ($soItem?->unit_price ?? 0)),
@@ -653,7 +656,11 @@ class InvoiceService
             && Product::whereKey($soItem->product_id)->first(['id', 'stock_tracking'])?->isRollTracked() === false;
 
         $pairs = $isQtyLine
-            ? collect([$this->pricing->latestCostingPricingFor((int) $soItem->product_id, $soItem->attribute_id !== null ? (int) $soItem->attribute_id : null)])->filter()->values()
+            ? collect([$this->pricing->latestCostingPricingFor(
+                (int) $soItem->product_id,
+                $soItem->attribute_id !== null ? (int) $soItem->attribute_id : null,
+                $soItem->variant_id !== null ? (int) $soItem->variant_id : null,
+            )])->filter()->values()
             : $grnItemIds
                 ->map(fn ($id) => $this->pricing->costingPricingForGrnItem((int) $id))
                 ->filter()

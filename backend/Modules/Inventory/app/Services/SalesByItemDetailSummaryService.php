@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Services;
 
+use Modules\Inventory\Support\VariantReportFilters;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -47,6 +48,7 @@ class SalesByItemDetailSummaryService
             ->join('inv_products as p', 'p.id', '=', 'ii.product_id')
             ->join('inv_categories as c', 'c.id', '=', 'p.category_id')
             ->leftJoin('inv_attributes as a', 'a.id', '=', 'ii.attribute_id')
+            ->leftJoin('inv_product_variants as v', 'v.id', '=', 'ii.variant_id')
             ->leftJoin('inv_unit_types as u', 'u.id', '=', 'ii.unit_id')
             ->leftJoin('inv_customer_masters as cu', 'cu.id', '=', 'i.customer_id')
             ->where('i.status', InvoiceStatus::Paid->value)
@@ -54,10 +56,11 @@ class SalesByItemDetailSummaryService
             ->where('i.invoice_date', '<=', $toDate)
             ->when($categoryId, fn ($q) => $q->where('p.category_id', $categoryId))
             ->when($productId, fn ($q) => $q->where('p.id', $productId))
+            ->tap(fn ($q) => VariantReportFilters::apply($q, $filters, 'p', 'ii.variant_id', 'ii.attribute_id'))
             ->select([
                 'c.id as category_id', 'c.category_name',
                 'p.id as product_id', 'p.name as product_name',
-                'a.attribute_name',
+                DB::raw('COALESCE(v.variant_label, a.attribute_name) as attribute_name'),
                 DB::raw('COALESCE(u.symbol, u.name) as unit_label'),
                 'i.invoice_no', 'i.invoice_date',
                 'cu.customer_name',

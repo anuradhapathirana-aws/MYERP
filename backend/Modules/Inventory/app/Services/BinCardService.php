@@ -11,6 +11,7 @@ use App\Models\Location;
 use Modules\Inventory\Models\ProductLocationStore;
 use Modules\Inventory\Models\StockReferenceType;
 use Modules\Inventory\Support\Money;
+use Modules\Inventory\Support\VariantReportFilters;
 
 class BinCardService
 {
@@ -51,18 +52,24 @@ class BinCardService
         // Narrowing to one colour must narrow the OPENING balance too, or the running
         // balance opens with every colour's stock and then only ever moves by one of them.
         $attributeId = !empty($filters['attribute_id']) ? (int) $filters['attribute_id'] : null;
+        // Same for one variant (Red / M) or a set of attribute values (Size = M).
+        $variantId   = !empty($filters['variant_id']) ? (int) $filters['variant_id'] : null;
+        $valueFilter = ['attribute_values' => VariantReportFilters::attributeValueIds($filters)];
 
         $openingBalance = $dateFrom
-            ? $this->openingBalance($productId, $locationId, $storeId, $attributeId, $dateFrom)
+            ? $this->openingBalance($productId, $locationId, $storeId, $attributeId, $dateFrom, $variantId, $valueFilter)
             : 0.0;
 
         $query = DB::table('inv_stock_transactions')
             ->where('product_id', $productId)
             ->when($attributeId, fn ($q) => $q->where('attribute_id', $attributeId))
+            ->when($variantId, fn ($q) => $q->where('variant_id', $variantId))
             ->when($locationId, fn ($q) => $q->where('location_id', $locationId))
             ->when($storeId, fn ($q) => $q->where('store_id', $storeId))
             ->when($dateFrom, fn ($q) => $q->whereDate('transaction_date', '>=', $dateFrom))
             ->when($dateTo, fn ($q) => $q->whereDate('transaction_date', '<=', $dateTo));
+
+        VariantReportFilters::apply($query, $valueFilter, 'inv_products', 'inv_stock_transactions.variant_id', 'inv_stock_transactions.attribute_id');
 
         if ((clone $query)->count() > self::MAX_ROWS) {
             abort(422, 'The selected filters return too many transactions — narrow the date range.');
@@ -73,7 +80,7 @@ class BinCardService
             ->orderBy('id')
             ->get([
                 'id', 'transaction_date', 'reference_type', 'reference_id', 'batch_no',
-                'qty_in', 'qty_out', 'attribute_id', 'entered_qty', 'entered_unit_id', 'unit_price',
+                'qty_in', 'qty_out', 'attribute_id', 'variant_id', 'entered_qty', 'entered_unit_id', 'unit_price',
             ]);
 
         $labels     = DB::table('inv_stock_reference_types')->pluck('label', 'code');
@@ -81,6 +88,9 @@ class BinCardService
         $colours    = DB::table('inv_attributes')
             ->whereIn('id', $transactions->pluck('attribute_id')->filter()->unique()->all())
             ->pluck('attribute_name', 'id');
+        $variantLabels = DB::table('inv_product_variants')
+            ->whereIn('id', $transactions->pluck('variant_id')->filter()->unique()->all())
+            ->pluck('variant_label', 'id');
         $unitSymbols = DB::table('inv_unit_types')
             ->whereIn('id', $transactions->pluck('entered_unit_id')->filter()->unique()->all())
             ->pluck('symbol', 'id');
@@ -104,7 +114,10 @@ class BinCardService
                 'description' => $labels[$t->reference_type] ?? Str::headline($t->reference_type),
                 'document_no' => $docNumbers[$t->reference_type][$t->reference_id] ?? (string) $t->reference_id,
                 'batch_no'    => $t->batch_no,
-                'color'       => $t->attribute_id !== null ? ($colours[$t->attribute_id] ?? null) : null,
+                // The variant label (Red / Floral / M) where there is one, else the colour.
+                'color'       => $t->variant_id !== null
+                    ? ($variantLabels[$t->variant_id] ?? null)
+                    : ($t->attribute_id !== null ? ($colours[$t->attribute_id] ?? null) : null),
                 'qty_in'      => $qtyIn,
                 'qty_out'     => $qtyOut,
                 // What the document said, before it was rebased into the stocking UOM.
@@ -116,7 +129,10 @@ class BinCardService
         }
 
         return [
-            'header'  => $this->buildHeader($productId, $locationId, $storeId, $dateFrom, $dateTo),
+            'header'  => $this->buildHeader($productId, $locationId, $storeId, $dateFrom, $dateTo) + [
+                'variant_label'          => $variantId ? DB::table('inv_product_variants')->where('id', $variantId)->value('variant_label') : null,
+                'attribute_values_label' => VariantReportFilters::attributeValuesLabel($valueFilter),
+            ],
             'opening' => [
                 'show'    => (bool) $dateFrom,
                 'balance' => $openingBalance,
@@ -131,14 +147,19 @@ class BinCardService
     }
 
     /** Balance brought forward: every movement strictly before the report period. */
-    private function openingBalance(int $productId, ?int $locationId, ?int $storeId, ?int $attributeId, string $dateFrom): float
+    private function openingBalance(int $productId, ?int $locationId, ?int $storeId, ?int $attributeId, string $dateFrom, ?int $variantId = null, array $valueFilter = []): float
     {
-        return (float) DB::table('inv_stock_transactions')
+        $query = DB::table('inv_stock_transactions')
             ->where('product_id', $productId)
             ->when($attributeId, fn ($q) => $q->where('attribute_id', $attributeId))
+            ->when($variantId, fn ($q) => $q->where('variant_id', $variantId))
             ->when($locationId, fn ($q) => $q->where('location_id', $locationId))
             ->when($storeId, fn ($q) => $q->where('store_id', $storeId))
-            ->whereDate('transaction_date', '<', $dateFrom)
+            ->whereDate('transaction_date', '<', $dateFrom);
+
+        VariantReportFilters::apply($query, $valueFilter, 'inv_products', 'inv_stock_transactions.variant_id', 'inv_stock_transactions.attribute_id');
+
+        return (float) $query
             ->selectRaw('COALESCE(SUM(qty_in - qty_out), 0) as bal')
             ->value('bal');
     }

@@ -145,6 +145,7 @@ class CostingService
             'costingGrns.grn.items',
             'items.product:id,name,product_code',
             'items.attribute:id,attribute_name',
+            'items.variant:id,sku,variant_label',
             'items.unit:id,symbol,unit_position',
             'items.baseUnit:id,symbol,unit_position',
             'items.grn:id,grn_no',
@@ -240,15 +241,25 @@ class CostingService
             // The *_base figures go over, not the receiving-unit ones: the price list
             // and every sales document speak the stocking UOM, and these were computed
             // with the GRN line's frozen factor.
+            //
+            // A variant line (Red / M) writes its own variant price instead — otherwise
+            // the last variant costed would reprice every variant of the product.
             CostingItem::where('costing_id', $locked->id)
                 ->orderBy('id')
                 ->get()
-                ->each(fn (CostingItem $item) => $this->pricing->syncFromCosting(
-                    (int) $item->product_id,
-                    $item->base_unit_id !== null ? (int) $item->base_unit_id : null,
-                    (float) $item->landed_unit_cost_base,
-                    (float) $item->selling_price_base,
-                ));
+                ->each(fn (CostingItem $item) => $item->variant_id !== null
+                    ? $this->pricing->syncVariantFromCosting(
+                        (int) $item->product_id,
+                        (int) $item->variant_id,
+                        $item->base_unit_id !== null ? (int) $item->base_unit_id : null,
+                        (float) $item->selling_price_base,
+                    )
+                    : $this->pricing->syncFromCosting(
+                        (int) $item->product_id,
+                        $item->base_unit_id !== null ? (int) $item->base_unit_id : null,
+                        (float) $item->landed_unit_cost_base,
+                        (float) $item->selling_price_base,
+                    ));
 
             return $this->find($locked->id);
         });
@@ -311,6 +322,7 @@ class CostingService
             'items.product:id,name,product_code,base_unit_type_id',
             'items.product.baseUnit:id,symbol,unit_position',
             'items.attribute:id,attribute_name',
+            'items.variant:id,sku,variant_label',
             'items.unit:id,symbol,unit_position',
             'purchaseOrder',
         ])
@@ -335,7 +347,7 @@ class CostingService
                 'product_id'         => $item->product_id,
                 'product_name'       => $item->product?->name,
                 'product_code'       => $item->product?->product_code,
-                'color'              => $item->attribute?->attribute_name,
+                'color'              => $item->variant?->variant_label ?? $item->attribute?->attribute_name,
                 'quantity'           => (float) $item->quantity_received,
                 'unit_price'         => (float) $item->unit_price,
                 'unit_symbol'        => $item->unit?->symbol,
@@ -476,6 +488,7 @@ class CostingService
                 'grn_item_id'           => (int) $item->id,
                 'product_id'            => (int) $item->product_id,
                 'attribute_id'          => $item->attribute_id !== null ? (int) $item->attribute_id : null,
+                'variant_id'            => $item->variant_id !== null ? (int) $item->variant_id : null,
                 'unit_id'               => $item->unit_id !== null ? (int) $item->unit_id : null,
                 'base_unit_id'          => $item->product?->base_unit_type_id !== null ? (int) $item->product->base_unit_type_id : null,
                 'quantity'              => $qty,
@@ -505,7 +518,7 @@ class CostingService
                 // Display-only extras (preview payload; stripped before insert)
                 'product_name'          => $item->product?->name,
                 'product_code'          => $item->product?->product_code,
-                'color'                 => $item->attribute?->attribute_name,
+                'color'                 => $item->variant?->variant_label ?? $item->attribute?->attribute_name,
                 'grn_no'                => $item->grn?->grn_no,
                 'unit_symbol'           => $item->unit?->symbol,
                 'unit_position'         => $item->unit?->unit_position,
@@ -605,6 +618,7 @@ class CostingService
             'items.product:id,name,product_code,base_unit_type_id',
             'items.product.baseUnit:id,symbol,unit_position',
             'items.attribute:id,attribute_name',
+            'items.variant:id,sku,variant_label',
             'items.unit:id,symbol,unit_position',
         ])
             ->whereIn('id', $grnIds)
@@ -643,7 +657,7 @@ class CostingService
         CostingExpense::where('costing_id', $costing->id)->delete();
 
         $columns = [
-            'grn_id', 'grn_item_id', 'product_id', 'attribute_id', 'unit_id', 'base_unit_id',
+            'grn_id', 'grn_item_id', 'product_id', 'attribute_id', 'variant_id', 'unit_id', 'base_unit_id',
             'quantity', 'conversion_factor', 'base_quantity',
             'unit_price', 'charge_portion', 'landed_unit_cost', 'landed_unit_cost_base',
             'expense_total_base',

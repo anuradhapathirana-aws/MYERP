@@ -11,6 +11,7 @@ import Pagination from '../../../components/ui/Pagination'
 import Money from '../../../components/ui/Money'
 import Breadcrumb from '../../../components/Breadcrumb'
 import TableFilter, { FilterField } from '../../../components/TableFilter'
+import ReportVariantFilters from '../../../components/inventory/ReportVariantFilters'
 import FilterSearchSelect from '../../../components/ui/FilterSearchSelect'
 import { useTableFilter } from '../../../hooks/useTableFilter'
 import { FILTER_INPUT_CLS, FILTER_SELECT_CLS } from '../../../utils/fieldStyles'
@@ -22,6 +23,8 @@ const CRUMBS = [
 ]
 
 const INITIAL_FILTERS = {
+  item_type: '',
+  attribute_values: '',
   search: '',
   product_id: '',
   attribute_id: '',
@@ -152,6 +155,7 @@ export default function StockMovementsReport() {
         <FilterField label="Date To">
           <input type="date" className={FILTER_INPUT_CLS} value={draft.date_to} onChange={(e) => setDraft((d) => ({ ...d, date_to: e.target.value }))} />
         </FilterField>
+        <ReportVariantFilters draft={draft} setDraft={setDraft} />
       </TableFilter>
 
       <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -168,7 +172,7 @@ export default function StockMovementsReport() {
                     <th className="w-36 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Date</th>
                     <th className="w-28 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Code</th>
                     <th className="px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Product</th>
-                    <th className="w-24 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Colour</th>
+                    <th className="w-36 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Colour / Variant</th>
                     <th className="w-32 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Reference Type</th>
                     <th className="w-24 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Ref ID</th>
                     <th className="w-28 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Batch No</th>
@@ -206,7 +210,7 @@ export default function StockMovementsReport() {
                           <td className="px-3 py-2 font-medium text-slate-800">{row.product_name}</td>
                           <td className="px-3 py-2">
                             {row.color
-                              ? <span className="rounded-full bg-slate-100 px-1.5 py-px text-[10px] font-semibold text-slate-600">{row.color}</span>
+                              ? <span className="rounded-full bg-slate-100 px-1.5 py-px text-[10px] font-semibold text-slate-600" title={row.variant_sku || undefined}>{row.color}</span>
                               : <span className="italic text-slate-300">—</span>}
                           </td>
                           <td className="px-3 py-2 text-slate-500">{refTypeLabels[row.reference_type] ?? row.reference_type}</td>

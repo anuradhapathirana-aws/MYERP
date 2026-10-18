@@ -22,6 +22,7 @@ class GrnPdfController extends Controller
             'items.product',
             'items.unit',
             'items.attribute',
+            'items.variant',
             'purchaseOrder',
             'supplier',
             'store',

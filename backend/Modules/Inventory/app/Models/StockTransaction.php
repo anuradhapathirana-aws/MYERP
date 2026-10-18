@@ -18,6 +18,7 @@ class StockTransaction extends Model
         'reference_id',
         'product_id',
         'attribute_id',
+        'variant_id',
         'store_id',
         'location_id',
         'batch_no',
@@ -44,6 +45,7 @@ class StockTransaction extends Model
         'reference_id'     => 'integer',
         'product_id'       => 'integer',
         'attribute_id'     => 'integer',
+        'variant_id'       => 'integer',
         'store_id'         => 'integer',
         'location_id'      => 'integer',
         'batch_id'         => 'integer',
@@ -76,6 +78,12 @@ class StockTransaction extends Model
     public function attribute(): BelongsTo
     {
         return $this->belongsTo(Attribute::class, 'attribute_id');
+    }
+
+    /** The product variant (Red / Floral / M) — null for roll products and products without variants. */
+    public function variant(): BelongsTo
+    {
+        return $this->belongsTo(ProductVariant::class, 'variant_id');
     }
 
     /** The stocking UOM qty_in/qty_out are denominated in. */

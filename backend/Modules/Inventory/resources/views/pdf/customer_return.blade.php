@@ -123,7 +123,7 @@
         <td>{{ $i + 1 }}</td>
         <td>
           {{ $item->product?->product_code }} — {{ $item->product?->name }}
-          @if($item->attribute?->attribute_name) <span style="color:#6b7280;">({{ $item->attribute->attribute_name }})</span>@endif
+          @if($item->variant?->variant_label ?? $item->attribute?->attribute_name) <span style="color:#6b7280;">({{ $item->variant?->variant_label ?? $item->attribute->attribute_name }})</span>@endif
         </td>
         <td class="r nw">{{ $qty($item->quantity) }} {{ $item->unit?->symbol ?: $item->unit?->name }}</td>
         <td class="r nw">{{ $money($item->unit_price) }}</td>

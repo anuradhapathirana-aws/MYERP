@@ -22,6 +22,7 @@ class DeliveryOrderPdfController extends Controller
             'items.product',
             'items.unit',
             'items.attribute',
+            'items.variant',
             'items.pieces.piece',
             'salesOrder',
             'customer',

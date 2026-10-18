@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Enums\CostingStatus;
 use App\Models\Location;
 use Modules\Inventory\Support\Quantity;
+use Modules\Inventory\Support\VariantReportFilters;
 
 /**
  * Available Stock Report — what is on the shelf right now, one row per product+colour.
@@ -61,8 +62,10 @@ class AvailableStockReportService
     /** Memoised unit-conversion factors, keyed "from|to" — a report touches only a handful of unit pairs. */
     private array $factorCache = [];
 
-    public function __construct(private readonly UnitConversionService $units)
-    {
+    public function __construct(
+        private readonly UnitConversionService $units,
+        private readonly ProductPricingService $pricing,
+    ) {
     }
 
     /**
@@ -80,10 +83,12 @@ class AvailableStockReportService
         $locationId  = !empty($filters['location_id']) ? (int) $filters['location_id'] : null;
         $withPrice   = (bool) ($filters['include_selling_price'] ?? false);
 
-        $aggregates = DB::table('inv_stock_transactions as st')
+        $query = DB::table('inv_stock_transactions as st')
             ->join('inv_products as p', 'p.id', '=', 'st.product_id')
             ->leftJoin('inv_categories as c', 'c.id', '=', 'p.category_id')
             ->leftJoin('inv_attributes as a', 'a.id', '=', 'st.attribute_id')
+            // Variants (Red / Floral / M) are their own rows — NULL for rolls / no-variant products
+            ->leftJoin('inv_product_variants as v', 'v.id', '=', 'st.variant_id')
             // Balances are denominated in the product's stocking UOM, so the label comes
             // from the product, never from the individual movement's entered unit.
             ->leftJoin('inv_unit_types as u', 'u.id', '=', 'p.base_unit_type_id')
@@ -92,10 +97,18 @@ class AvailableStockReportService
             ->when($attributeId, fn ($q) => $q->where('st.attribute_id', $attributeId))
             // No location filter = balance across every location, which is what
             // "available" means to someone deciding whether an order can be met at all.
-            ->when($locationId, fn ($q) => $q->where('st.location_id', $locationId))
+            ->when($locationId, fn ($q) => $q->where('st.location_id', $locationId));
+
+        VariantReportFilters::apply($query, $filters, 'p', 'st.variant_id', 'st.attribute_id');
+
+        $aggregates = $query
             ->selectRaw(
                 'st.product_id,
                  st.attribute_id,
+                 st.variant_id,
+                 v.sku as variant_sku,
+                 v.variant_label,
+                 p.stock_tracking,
                  p.product_code,
                  p.name as product_name,
                  p.base_unit_type_id,
@@ -105,7 +118,7 @@ class AvailableStockReportService
                  SUM(st.qty_in - st.qty_out) as available_qty'
             )
             ->groupBy(
-                'st.product_id', 'st.attribute_id',
+                'st.product_id', 'st.attribute_id', 'st.variant_id', 'v.sku', 'v.variant_label', 'p.stock_tracking',
                 'p.product_code', 'p.name', 'p.base_unit_type_id',
                 'c.category_name', 'a.attribute_name', 'u.symbol', 'u.name'
             )
@@ -115,6 +128,7 @@ class AvailableStockReportService
             ->havingRaw('SUM(st.qty_in - st.qty_out) > ' . sprintf('%.8F', Quantity::EPSILON))
             ->orderBy('p.name')
             ->orderBy('a.attribute_name')
+            ->orderBy('v.variant_label')
             ->limit(self::MAX_ROWS + 1)
             ->get();
 
@@ -128,6 +142,10 @@ class AvailableStockReportService
             $row = [
                 'product_id'     => (int) $agg->product_id,
                 'attribute_id'   => $agg->attribute_id !== null ? (int) $agg->attribute_id : null,
+                'variant_id'     => $agg->variant_id !== null ? (int) $agg->variant_id : null,
+                'variant_sku'    => $agg->variant_sku,
+                'variant_label'  => $agg->variant_label,
+                'stock_tracking' => $agg->stock_tracking,
                 'product_code'   => $agg->product_code,
                 'product_name'   => $agg->product_name,
                 'category_name'  => $agg->category_name,
@@ -137,14 +155,17 @@ class AvailableStockReportService
             ];
 
             if ($withPrice) {
-                $row['selling_price'] = $prices[$this->key((int) $agg->product_id, $agg->attribute_id)] ?? null;
+                $row['selling_price'] = $prices[$this->key((int) $agg->product_id, $agg->attribute_id, $agg->variant_id)] ?? null;
             }
 
             return $row;
         })->all();
 
         return [
-            'header'  => $this->buildHeader($productId, $categoryId, $attributeId, $locationId, $withPrice, count($rows)),
+            'header'  => $this->buildHeader($productId, $categoryId, $attributeId, $locationId, $withPrice, count($rows)) + [
+                'item_type_label'        => VariantReportFilters::itemTypeLabel($filters['item_type'] ?? null),
+                'attribute_values_label' => VariantReportFilters::attributeValuesLabel($filters),
+            ],
             'rows'    => $rows,
             'summary' => [
                 'row_count'             => count($rows),
@@ -178,18 +199,25 @@ class AvailableStockReportService
             ->whereNull('co.deleted_at')
             ->whereIn('ci.product_id', $productIds)
             ->selectRaw('MAX(ci.id) as id')
-            ->groupBy('ci.product_id', 'ci.attribute_id');
+            ->groupBy('ci.product_id', 'ci.attribute_id', 'ci.variant_id');
 
         $costed = [];
 
         DB::table('inv_costing_items as ci')
             ->joinSub($latestCostingIds, 'lci', 'lci.id', '=', 'ci.id')
-            ->get(['ci.product_id', 'ci.attribute_id', 'ci.selling_price_base'])
+            ->get(['ci.product_id', 'ci.attribute_id', 'ci.variant_id', 'ci.selling_price_base'])
             ->each(function ($row) use (&$costed): void {
                 if ($row->selling_price_base !== null) {
-                    $costed[$this->key((int) $row->product_id, $row->attribute_id)] = (float) $row->selling_price_base;
+                    $costed[$this->key((int) $row->product_id, $row->attribute_id, $row->variant_id)] = (float) $row->selling_price_base;
                 }
             });
+
+        // Variant rows fall back to the variant's own list price (else the product's) —
+        // one batched lookup per product that has variant rows.
+        $variantListed = [];
+        $aggregates->whereNotNull('variant_id')->groupBy('product_id')->each(function (Collection $rows, $productId) use (&$variantListed): void {
+            $variantListed += $this->pricing->variantSellingPrices((int) $productId, $rows->pluck('variant_id')->map('intval')->unique()->values()->all());
+        });
 
         // ── 2. Price-list fallback, one row per product ──────────────────────────
         // MIN(id) mirrors ProductPricingService::sellingPriceFor's orderBy('id') — the
@@ -208,10 +236,15 @@ class AvailableStockReportService
         $prices = [];
 
         foreach ($aggregates as $agg) {
-            $key = $this->key((int) $agg->product_id, $agg->attribute_id);
+            $key = $this->key((int) $agg->product_id, $agg->attribute_id, $agg->variant_id);
 
             if (array_key_exists($key, $costed)) {
                 $prices[$key] = $costed[$key];
+                continue;
+            }
+
+            if ($agg->variant_id !== null) {
+                $prices[$key] = $variantListed[(int) $agg->variant_id] ?? null;
                 continue;
             }
 
@@ -253,10 +286,10 @@ class AvailableStockReportService
         return $factor !== null ? $this->units->priceToBase($price, $factor) : null;
     }
 
-    /** Colourless rows key on 0 — NULL is not a usable array key, and 0 is not a valid attribute id. */
-    private function key(int $productId, mixed $attributeId): string
+    /** Colourless / variant-less rows key on 0 — NULL is not a usable array key, and 0 is not a valid id. */
+    private function key(int $productId, mixed $attributeId, mixed $variantId = null): string
     {
-        return $productId . '|' . ($attributeId === null ? '0' : (int) $attributeId);
+        return $productId . '|' . ($attributeId === null ? '0' : (int) $attributeId) . '|' . ($variantId === null ? '0' : (int) $variantId);
     }
 
     /** @return array<string, mixed> */

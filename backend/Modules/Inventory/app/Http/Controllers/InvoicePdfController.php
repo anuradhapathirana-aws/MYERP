@@ -22,6 +22,7 @@ class InvoicePdfController extends Controller
             'items.product',
             'items.unit',
             'items.attribute',
+            'items.variant',
             'salesOrder',
             'deliveryOrder',
             'customer',

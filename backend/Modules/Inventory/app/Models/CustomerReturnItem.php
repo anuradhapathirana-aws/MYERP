@@ -20,6 +20,7 @@ class CustomerReturnItem extends Model
         'do_item_id',
         'product_id',
         'attribute_id',
+        'variant_id',
         'unit_id',
         'quantity',
         'base_quantity',
@@ -40,6 +41,7 @@ class CustomerReturnItem extends Model
         'do_item_id'      => 'integer',
         'product_id'      => 'integer',
         'attribute_id'    => 'integer',
+        'variant_id'      => 'integer',
         'unit_id'         => 'integer',
         'store_id'        => 'integer',
         'location_id'     => 'integer',
@@ -76,6 +78,12 @@ class CustomerReturnItem extends Model
     public function attribute(): BelongsTo
     {
         return $this->belongsTo(Attribute::class, 'attribute_id');
+    }
+
+    /** The product variant (Red / Floral / M) — null for roll products and products without variants. */
+    public function variant(): BelongsTo
+    {
+        return $this->belongsTo(ProductVariant::class, 'variant_id');
     }
 
     public function unit(): BelongsTo

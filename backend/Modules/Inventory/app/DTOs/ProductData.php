@@ -46,6 +46,8 @@ final class ProductData
         public readonly array   $productAttributes,
         public readonly array   $locationStores,
         public readonly ?StockTracking $stockTracking = null,
+        // Null = not sent: the product's variants are left untouched.
+        public readonly ?array  $variants = null,
     ) {}
 
     public static function fromRequest(StoreProductRequest|UpdateProductRequest $request): self
@@ -89,6 +91,7 @@ final class ProductData
             productAttributes:       (array) ($request->validated('product_attributes')      ?? []),
             locationStores:          (array) ($request->validated('location_stores')          ?? []),
             stockTracking:           StockTracking::tryFrom((string) $request->validated('stock_tracking')),
+            variants:                $request->has('variants') ? (array) ($request->validated('variants') ?? []) : null,
         );
     }
 }

@@ -19,6 +19,7 @@ class SalesOrderItem extends Model
         'unit_id',
         'price_unit_id',
         'attribute_id',
+        'variant_id',
         'is_scanned',
         'quantity',
         'quantity_delivered',
@@ -38,6 +39,7 @@ class SalesOrderItem extends Model
         'unit_id'      => 'integer',
         'price_unit_id' => 'integer',
         'attribute_id' => 'integer',
+        'variant_id'   => 'integer',
         'is_scanned'   => 'boolean',
         'quantity'     => 'decimal:4',
         'quantity_delivered' => 'decimal:4',
@@ -79,6 +81,12 @@ class SalesOrderItem extends Model
     public function attribute(): BelongsTo
     {
         return $this->belongsTo(Attribute::class, 'attribute_id');
+    }
+
+    /** The product variant (Red / Floral / M) — null for roll products and products without variants. */
+    public function variant(): BelongsTo
+    {
+        return $this->belongsTo(ProductVariant::class, 'variant_id');
     }
 
     public function pieces(): HasMany

@@ -3,6 +3,7 @@
 namespace Modules\Inventory\Providers;
 
 use Modules\Inventory\Console\Commands\RecalculateStockBalances;
+use Modules\Inventory\Console\Commands\VerifyVariantBackfill;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
 class InventoryServiceProvider extends ModuleServiceProvider
@@ -13,6 +14,7 @@ class InventoryServiceProvider extends ModuleServiceProvider
     /** @var string[] */
     protected array $commands = [
         RecalculateStockBalances::class,
+        VerifyVariantBackfill::class,
     ];
 
     /** @var string[] */

@@ -39,6 +39,7 @@ class StockReconciliationService
         private readonly ProductPricingService $pricing,
         private readonly GoodsReceivedNoteService $grn,
         private readonly ColourStockService $colourStock,
+        private readonly VariantStockService $variantStock,
     ) {
     }
 
@@ -79,7 +80,7 @@ class StockReconciliationService
     public function find(int $id): StockReconciliation
     {
         return StockReconciliation::with([
-            'product.baseUnit', 'attribute', 'store', 'location', 'batch', 'unit',
+            'product.baseUnit', 'attribute', 'variant', 'store', 'location', 'batch', 'unit',
             'createdBy', 'approvedBy',
             'pieces.piece.grn', 'pieces.piece.grnItem.attribute',
         ])->findOrFail($id);
@@ -91,7 +92,7 @@ class StockReconciliationService
             $product = Product::findOrFail($data->productId);
 
             $systemQtyBase = empty($data->pieces)
-                ? $this->systemQtyFor($product, $data->attributeId, $data->storeId, $data->locationId)
+                ? $this->systemQtyFor($product, $data->attributeId, $data->storeId, $data->locationId, $data->variantId)
                 : $this->liveStockBase($data->productId, $data->storeId, $data->locationId);
 
             [$countedQtyBase, $varianceQtyBase, $pieceRows, $attributeId] = $this->computeCorrection($product, $data, $systemQtyBase);
@@ -100,6 +101,8 @@ class StockReconciliationService
                 'reconciliation_no' => $this->generateReconciliationNo(),
                 'product_id'        => $data->productId,
                 'attribute_id'      => $attributeId,
+                // Roll corrections carry no variant (roll products have none)
+                'variant_id'        => empty($data->pieces) ? $data->variantId : null,
                 'store_id'          => $data->storeId,
                 'location_id'       => $data->locationId,
                 'batch_id'          => $data->batchId,
@@ -132,7 +135,7 @@ class StockReconciliationService
             $product = Product::findOrFail($data->productId);
 
             $systemQtyBase = empty($data->pieces)
-                ? $this->systemQtyFor($product, $data->attributeId, $data->storeId, $data->locationId)
+                ? $this->systemQtyFor($product, $data->attributeId, $data->storeId, $data->locationId, $data->variantId)
                 : $this->liveStockBase($data->productId, $data->storeId, $data->locationId);
 
             [$countedQtyBase, $varianceQtyBase, $pieceRows, $attributeId] = $this->computeCorrection($product, $data, $systemQtyBase);
@@ -140,6 +143,8 @@ class StockReconciliationService
             $reconciliation->update([
                 'product_id'        => $data->productId,
                 'attribute_id'      => $attributeId,
+                // Roll corrections carry no variant (roll products have none)
+                'variant_id'        => empty($data->pieces) ? $data->variantId : null,
                 'store_id'          => $data->storeId,
                 'location_id'       => $data->locationId,
                 'batch_id'          => $data->batchId,
@@ -242,6 +247,7 @@ class StockReconciliationService
                         $locked->attribute_id !== null ? (int) $locked->attribute_id : null,
                         (int) $locked->store_id,
                         (int) $locked->location_id,
+                        $locked->variant_id !== null ? (int) $locked->variant_id : null,
                     );
                 }
                 $varianceBase = (float) $locked->counted_qty_base - $liveSystemQtyBase;
@@ -254,6 +260,7 @@ class StockReconciliationService
                     'reference_id'     => $locked->id,
                     'product_id'       => $locked->product_id,
                     'attribute_id'     => $locked->attribute_id,
+                    'variant_id'       => $locked->variant_id,
                     'store_id'         => $locked->store_id,
                     'location_id'      => $locked->location_id,
                     'batch_id'         => $locked->batch_id,
@@ -275,7 +282,7 @@ class StockReconciliationService
             }
 
             if ($locked->also_adjust_po && $locked->source_type === 'grn' && $locked->source_id) {
-                $this->adjustLinkedPo((int) $locked->source_id, (int) $locked->product_id, $locked->attribute_id, $varianceBase);
+                $this->adjustLinkedPo((int) $locked->source_id, (int) $locked->product_id, $locked->attribute_id, $varianceBase, $locked->variant_id);
             }
 
             $locked->update([
@@ -353,8 +360,13 @@ class StockReconciliationService
      * own balance for a quantity-tracked product counted per colour (its colours
      * share one pivot row), else the product's pivot balance.
      */
-    public function systemQtyFor(Product $product, ?int $attributeId, int $storeId, int $locationId): float
+    public function systemQtyFor(Product $product, ?int $attributeId, int $storeId, int $locationId, ?int $variantId = null): float
     {
+        // A variant is counted against its own balance (Red / M), not the colour's.
+        if ($variantId !== null && ! $product->isRollTracked()) {
+            return $this->variantStock->available($product->id, $variantId, $storeId, $locationId);
+        }
+
         if ($attributeId !== null && ! $product->isRollTracked()) {
             return $this->colourStock->available($product->id, $attributeId, $storeId, $locationId);
         }
@@ -458,11 +470,12 @@ class StockReconciliationService
     }
 
     /** Mirrors the increment GoodsReceivedNoteService::confirm() applies, in reverse when negative. */
-    private function adjustLinkedPo(int $grnId, int $productId, ?int $attributeId, float $deltaBase): void
+    private function adjustLinkedPo(int $grnId, int $productId, ?int $attributeId, float $deltaBase, ?int $variantId = null): void
     {
         $grnItem = GoodsReceivedNoteItem::where('grn_id', $grnId)
             ->where('product_id', $productId)
-            ->when($attributeId !== null, fn ($q) => $q->where('attribute_id', $attributeId))
+            ->when($variantId !== null, fn ($q) => $q->where('variant_id', $variantId))
+            ->when($variantId === null && $attributeId !== null, fn ($q) => $q->where('attribute_id', $attributeId))
             ->whereNotNull('po_item_id')
             ->first();
 

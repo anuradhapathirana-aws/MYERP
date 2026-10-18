@@ -48,6 +48,20 @@ export const downloadGrnPdf = (id) =>
   api.get(`/api/v1/goods-received-notes/${id}/pdf`, { responseType: 'blob' }).then((r) => r.data)
 
 /** Download GRN piece QR labels as PDF — returns a Blob */
+/** Variant lines of a GRN with their default label count (one per unit received). */
+export const getGrnVariantLabelLines = (id) =>
+  api.get(`/api/v1/goods-received-notes/${id}/variant-labels`).then((r) => r.data.data)
+
+/** Labels per PDF file — must match GrnVariantLabelController::BATCH_SIZE. */
+export const VARIANT_LABEL_BATCH = 500
+
+/**
+ * counts: { [grn_item_id]: number } — omitted lines print one label per unit.
+ * offset: first label of this batch (0, 2000, 4000 …) — big prints come in several files.
+ */
+export const downloadGrnVariantLabelsPdf = (id, counts = {}, offset = 0) =>
+  api.get(`/api/v1/goods-received-notes/${id}/variant-labels/pdf`, { params: { counts, offset }, responseType: 'blob' }).then((r) => r.data)
+
 export const downloadGrnPieceLabelsPdf = (id) =>
   api.get(`/api/v1/goods-received-notes/${id}/piece-labels/pdf`, { responseType: 'blob' }).then((r) => r.data)
 

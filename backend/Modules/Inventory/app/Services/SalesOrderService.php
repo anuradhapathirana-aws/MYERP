@@ -79,6 +79,7 @@ class SalesOrderService
             'items.unit',
             'items.priceUnit',
             'items.attribute',
+            'items.variant',
             'items.pieces.piece',
             'items.proformaItem.proforma',
             'customer',
@@ -426,6 +427,8 @@ class SalesOrderService
                 'unit_id'    => $unitId,
                 'price_unit_id' => $priceUnitId,
                 'attribute_id' => !empty($row['attribute_id']) ? (int) $row['attribute_id'] : null,
+                // Roll lines never carry a variant (roll products have none).
+                'variant_id' => !$isScanned && !empty($row['variant_id']) ? (int) $row['variant_id'] : null,
                 'is_scanned' => $isScanned,
                 'quantity'   => $qty,
                 'conversion_factor' => $converted['factor'],

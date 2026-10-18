@@ -18,6 +18,7 @@ class DeliveryOrderItem extends Model
         'product_id',
         'unit_id',
         'attribute_id',
+        'variant_id',
         'is_scanned',
         'quantity',
         'conversion_factor',
@@ -31,6 +32,7 @@ class DeliveryOrderItem extends Model
         'product_id'   => 'integer',
         'unit_id'      => 'integer',
         'attribute_id' => 'integer',
+        'variant_id'   => 'integer',
         'is_scanned'   => 'boolean',
         'quantity'     => 'decimal:4',
         'conversion_factor' => 'decimal:10',
@@ -60,6 +62,12 @@ class DeliveryOrderItem extends Model
     public function attribute(): BelongsTo
     {
         return $this->belongsTo(Attribute::class, 'attribute_id');
+    }
+
+    /** The product variant (Red / Floral / M) — null for roll products and products without variants. */
+    public function variant(): BelongsTo
+    {
+        return $this->belongsTo(ProductVariant::class, 'variant_id');
     }
 
     public function pieces(): HasMany

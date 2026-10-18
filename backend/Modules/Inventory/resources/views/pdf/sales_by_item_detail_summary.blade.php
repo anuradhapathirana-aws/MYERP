@@ -102,7 +102,7 @@
     <thead>
       <tr>
         <th>Description</th>
-        <th style="width:70px;">Colour</th>
+        <th style="width:90px;">Colour / Variant</th>
         <th style="width:55px;">Type</th>
         <th style="width:60px;">Date</th>
         <th style="width:70px;">Number</th>

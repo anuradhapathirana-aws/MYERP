@@ -607,7 +607,7 @@ function ReturnLineRows({ line, disabled, stores, headerStoreName, over, pieceOv
             <span className="font-mono text-slate-400">{l.product_code}</span> {l.product_name}
           </div>
           <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
-            {l.attribute_name && <span>{l.attribute_name}</span>}
+            {(l.variant_label || l.attribute_name) && <span>{l.variant_label || l.attribute_name}</span>}
             {l.is_scanned && <span className="inline-flex items-center gap-0.5 rounded bg-indigo-50 px-1 font-semibold text-indigo-500"><Layers size={9} /> Rolls</span>}
           </div>
         </td>
@@ -716,7 +716,7 @@ function ConfirmedReturnItems({ saved }) {
                 <td className="px-2 py-1 text-slate-400">{i + 1}</td>
                 <td className="px-2 py-1">
                   <div className="font-medium text-slate-700"><span className="font-mono text-slate-400">{it.product_code}</span> {it.product_name}</div>
-                  {it.attribute_name && <div className="text-[10px] text-slate-400">{it.attribute_name}</div>}
+                  {(it.variant_label || it.attribute_name) && <div className="text-[10px] text-slate-400">{it.variant_label || it.attribute_name}</div>}
                   {it.pieces?.length > 0 && (
                     <div className="mt-0.5 flex flex-wrap gap-1">
                       {it.pieces.map((p) => (

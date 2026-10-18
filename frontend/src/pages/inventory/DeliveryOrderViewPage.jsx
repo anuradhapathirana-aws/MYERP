@@ -254,7 +254,7 @@ export default function DeliveryOrderViewPage() {
                   <th className="w-7 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">#</th>
                   <th className="w-24 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Code</th>
                   <th className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Product</th>
-                  <th className="w-20 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Colour</th>
+                  <th className="w-32 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Colour / Variant</th>
                   <th className="w-16 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">UOM</th>
                   <th className="w-16 px-2 py-1.5 text-right text-[10px] font-bold uppercase tracking-wider text-slate-500">Rolls</th>
                   <th className="w-24 px-2 py-1.5 text-right text-[10px] font-bold uppercase tracking-wider text-slate-700">Quantity</th>
@@ -267,7 +267,7 @@ export default function DeliveryOrderViewPage() {
                       <td className="px-2 py-1.5 text-slate-400 tabular-nums">{idx + 1}</td>
                       <td className="px-2 py-1.5 font-mono text-slate-500">{it.product?.product_code}</td>
                       <td className="px-2 py-1.5 font-medium text-slate-700">{it.product?.name}</td>
-                      <td className="px-2 py-1.5 text-slate-600">{it.attribute?.name || <span className="italic text-slate-300">—</span>}</td>
+                      <td className="px-2 py-1.5 text-slate-600">{it.variant?.name || it.attribute?.name || <span className="italic text-slate-300">—</span>}</td>
                       <td className="px-2 py-1.5 text-slate-500">{it.unit?.name}</td>
                       <td className="px-2 py-1.5 text-right text-slate-600 tabular-nums">{it.pieces?.length || '—'}</td>
                       <td className="px-2 py-1.5 text-right font-bold text-slate-800 tabular-nums">{Number(it.quantity).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>

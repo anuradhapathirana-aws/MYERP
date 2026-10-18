@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\Inventory\Services;
 
 use Illuminate\Support\Facades\DB;
+use Modules\Inventory\Support\VariantReportFilters;
 use Modules\Inventory\Models\GrnItemPiece;
 use Modules\Inventory\Models\StockReferenceType;
 
@@ -83,17 +84,17 @@ class ItemSearchReportService
         // location (oldest first). Windowing over the collapsed lots, not raw ledger
         // rows, so a duplicate line item can't inflate its own position in the queue.
         $lotBase = DB::table('inv_stock_transactions')
-            ->selectRaw('reference_id as grn_id, product_id, attribute_id, location_id')
+            ->selectRaw('reference_id as grn_id, product_id, attribute_id, variant_id, location_id')
             ->selectRaw('MIN(transaction_date) as lot_date, MIN(id) as lot_id, SUM(qty_in) as lot_qty_in')
             ->where('reference_type', StockReferenceType::CODE_GRN)
             ->whereNull('batch_id')
-            ->groupBy('reference_id', 'product_id', 'attribute_id', 'location_id');
+            ->groupBy('reference_id', 'product_id', 'attribute_id', 'variant_id', 'location_id');
 
         $lotCumSub = DB::query()->fromSub($lotBase, 'lb')
-            ->select('grn_id', 'product_id', 'attribute_id', 'location_id', 'lot_qty_in')
+            ->select('grn_id', 'product_id', 'attribute_id', 'variant_id', 'location_id', 'lot_qty_in')
             ->selectRaw(
                 'SUM(lot_qty_in) OVER (
-                    PARTITION BY product_id, attribute_id, location_id
+                    PARTITION BY product_id, attribute_id, variant_id, location_id
                     ORDER BY lot_date, lot_id
                 ) as cum_in'
             );
@@ -103,11 +104,11 @@ class ItemSearchReportService
         // balance/adjustment-in tops it back up (oldest lot first).
         $netConsumptionSub = DB::table('inv_stock_transactions')
             ->selectRaw(
-                'product_id, attribute_id, location_id,
+                'product_id, attribute_id, variant_id, location_id,
                  SUM(qty_out) - SUM(CASE WHEN reference_type <> ? THEN qty_in ELSE 0 END) as net_consumption',
                 [StockReferenceType::CODE_GRN]
             )
-            ->groupBy('product_id', 'attribute_id', 'location_id');
+            ->groupBy('product_id', 'attribute_id', 'variant_id', 'location_id');
 
         // Piece/roll remaining weight per (grn_id, product_id, attribute_id) — grouped
         // over EVERY piece regardless of status, so the group still exists (summing to
@@ -128,11 +129,11 @@ class ItemSearchReportService
         // risking a duplicate row per costing.
         $latestCostingIds = DB::table('inv_costing_items')
             ->selectRaw('MAX(id) as id')
-            ->groupBy('grn_id', 'product_id', 'attribute_id');
+            ->groupBy('grn_id', 'product_id', 'attribute_id', 'variant_id');
 
         $latestCosting = DB::table('inv_costing_items as ci')
             ->joinSub($latestCostingIds, 'lci', 'lci.id', '=', 'ci.id')
-            ->select('ci.grn_id', 'ci.product_id', 'ci.attribute_id', 'ci.selling_price_base');
+            ->select('ci.grn_id', 'ci.product_id', 'ci.attribute_id', 'ci.variant_id', 'ci.selling_price_base');
 
         $query = DB::table('inv_stock_transactions as st')
             ->join('inv_goods_received_notes as g', 'g.id', '=', 'st.reference_id')
@@ -140,23 +141,27 @@ class ItemSearchReportService
             ->leftJoin('inv_categories as c', 'c.id', '=', 'p.category_id')
             ->leftJoin('inv_supplier_masters as sm', 'sm.id', '=', 'g.supplier_id')
             ->leftJoin('inv_attributes as a', 'a.id', '=', 'st.attribute_id')
+            ->leftJoin('inv_product_variants as v', 'v.id', '=', 'st.variant_id')
             ->leftJoin('inv_unit_types as u', 'u.id', '=', 'st.unit_id')
             ->leftJoin('inv_batches as b', 'b.id', '=', 'st.batch_id')
             ->leftJoinSub($latestCosting, 'ci', function ($join) {
                 $join->on('ci.grn_id', '=', 'g.id')
                     ->on('ci.product_id', '=', 'st.product_id')
-                    ->whereRaw('ci.attribute_id <=> st.attribute_id');
+                    ->whereRaw('ci.attribute_id <=> st.attribute_id')
+                    ->whereRaw('ci.variant_id <=> st.variant_id');
             })
             ->leftJoinSub($lotCumSub, 'lot', function ($join) {
                 $join->on('lot.grn_id', '=', 'g.id')
                     ->on('lot.product_id', '=', 'st.product_id')
                     ->on('lot.location_id', '=', 'st.location_id')
-                    ->whereRaw('lot.attribute_id <=> st.attribute_id');
+                    ->whereRaw('lot.attribute_id <=> st.attribute_id')
+                    ->whereRaw('lot.variant_id <=> st.variant_id');
             })
             ->leftJoinSub($netConsumptionSub, 'nc', function ($join) {
                 $join->on('nc.product_id', '=', 'st.product_id')
                     ->on('nc.location_id', '=', 'st.location_id')
-                    ->whereRaw('nc.attribute_id <=> st.attribute_id');
+                    ->whereRaw('nc.attribute_id <=> st.attribute_id')
+                    ->whereRaw('nc.variant_id <=> st.variant_id');
             })
             ->leftJoinSub($pieceStockSub, 'ps', function ($join) {
                 $join->on('ps.grn_id', '=', 'g.id')
@@ -174,13 +179,16 @@ class ItemSearchReportService
             // look-alike duplicates. Every non-grouped select column is wrapped in an
             // aggregate — required under MySQL's ONLY_FULL_GROUP_BY, and correct here
             // since each is single-valued per group anyway (joined on the same keys).
-            ->groupBy('g.id', 'st.product_id', 'st.attribute_id', 'st.batch_id', 'st.location_id')
+            ->groupBy('g.id', 'st.product_id', 'st.attribute_id', 'st.variant_id', 'st.batch_id', 'st.location_id')
             ->select([
                 DB::raw('MIN(st.id) as row_id'),
                 DB::raw('MAX(c.category_name) as category_name'),
                 DB::raw('MAX(p.product_code) as product_code'),
                 DB::raw('MAX(p.name) as product_name'),
                 DB::raw('MAX(a.attribute_name) as attribute_name'),
+                DB::raw('MAX(v.variant_label) as variant_label'),
+                DB::raw('MAX(v.sku) as variant_sku'),
+                DB::raw('MAX(p.stock_tracking) as stock_tracking'),
                 DB::raw('MAX(sm.supplier_name) as supplier_name'),
                 DB::raw('MAX(g.grn_no) as grn_no'),
                 DB::raw('MAX(g.grn_date) as grn_date'),
@@ -188,6 +196,9 @@ class ItemSearchReportService
                 DB::raw('MAX(COALESCE(u.symbol, u.name)) as uom'),
                 DB::raw('COALESCE(
                     MAX(ci.selling_price_base),
+                    (SELECT vp.selling_price FROM inv_product_variant_prices vp
+                        JOIN inv_product_sales_channels vpsc ON vpsc.product_id = st.product_id AND vpsc.sales_channel_id = vp.sales_channel_id
+                        WHERE vp.variant_id = st.variant_id AND vp.selling_price IS NOT NULL ORDER BY vpsc.id ASC LIMIT 1),
                     (SELECT psc.selling_price FROM inv_product_sales_channels psc WHERE psc.product_id = st.product_id ORDER BY psc.id ASC LIMIT 1),
                     0
                 ) as selling_price'),
@@ -200,7 +211,10 @@ class ItemSearchReportService
             ->orderBy('category_name')
             ->orderBy('product_name')
             ->orderBy('attribute_name')
+            ->orderBy('variant_label')
             ->orderByDesc('grn_date');
+
+        VariantReportFilters::apply($query, $filters, 'p', 'st.variant_id', 'st.attribute_id');
 
         $paginator = $query->paginate(self::PER_PAGE, ['*'], 'page', $page);
 

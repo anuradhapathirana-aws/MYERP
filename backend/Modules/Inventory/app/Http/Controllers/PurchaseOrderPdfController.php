@@ -22,6 +22,7 @@ class PurchaseOrderPdfController extends Controller
             'items.product',
             'items.unit',
             'items.attribute',
+            'items.variant',
             'supplier',
             'store',
             'location.company',

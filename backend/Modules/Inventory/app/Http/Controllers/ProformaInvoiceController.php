@@ -94,6 +94,7 @@ class ProformaInvoiceController extends Controller
             'lines'                => ['required', 'array', 'max:200'],
             'lines.*.product_id'   => ['required', 'integer', 'exists:inv_products,id'],
             'lines.*.attribute_id' => ['nullable', 'integer'],
+            'lines.*.variant_id'   => ['nullable', 'integer'],
             'lines.*.unit_id'      => ['nullable', 'integer'],
             'lines.*.quantity'     => ['nullable', 'numeric', 'min:0'],
         ]);
@@ -108,6 +109,7 @@ class ProformaInvoiceController extends Controller
             'lines'                => ['required', 'array', 'max:200'],
             'lines.*.product_id'   => ['required', 'integer', 'exists:inv_products,id'],
             'lines.*.attribute_id' => ['nullable', 'integer'],
+            'lines.*.variant_id'   => ['nullable', 'integer'],
             'lines.*.unit_id'      => ['nullable', 'integer'],
         ]);
 

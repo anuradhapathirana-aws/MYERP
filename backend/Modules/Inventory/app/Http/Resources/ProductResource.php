@@ -84,6 +84,41 @@ class ProductResource extends JsonResource
                 ->all()
             ),
 
+            // Variants (quantity-tracked products). in_use = stock/documents reference it:
+            // the form locks its combination and can only deactivate it.
+            'variants' => $this->whenLoaded('variants', fn () => $this->variants
+                ->sortBy('id')
+                ->map(fn ($v) => [
+                    'id'            => $v->id,
+                    'sku'           => $v->sku,
+                    'barcode'       => $v->barcode,
+                    'variant_label' => $v->variant_label,
+                    'is_active'     => $v->is_active,
+                    'in_use'        => (bool) ($v->getAttribute('in_use') ?? false),
+                    'attribute_ids' => $v->relationLoaded('values')
+                        ? $v->values->pluck('attribute_id')->map('intval')->values()->all()
+                        : [],
+                    'values' => $v->relationLoaded('values')
+                        ? $v->values->map(fn ($val) => [
+                            'attribute_type_id' => $val->attribute_type_id,
+                            'attribute_id'      => $val->attribute_id,
+                            'attribute_name'    => $val->relationLoaded('attribute') ? $val->attribute?->attribute_name : null,
+                        ])->values()->all()
+                        : [],
+                    'prices' => $v->relationLoaded('prices')
+                        ? $v->prices->map(fn ($p) => [
+                            'sales_channel_id' => $p->sales_channel_id,
+                            'selling_price'    => $p->selling_price   !== null ? (float) $p->selling_price   : null,
+                            'wholesale_price'  => $p->wholesale_price !== null ? (float) $p->wholesale_price : null,
+                            'min_price'        => $p->min_price       !== null ? (float) $p->min_price       : null,
+                            'max_price'        => $p->max_price       !== null ? (float) $p->max_price       : null,
+                        ])->values()->all()
+                        : [],
+                ])
+                ->values()
+                ->all()
+            ),
+
             'suppliers' => $this->whenLoaded('suppliers', fn () => $this->suppliers
                 ->map(fn ($s) => ['id' => $s->id, 'name' => $s->supplier_name])
                 ->values()

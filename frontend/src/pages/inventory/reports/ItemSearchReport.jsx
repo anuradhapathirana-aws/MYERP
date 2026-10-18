@@ -9,6 +9,7 @@ import { getAllProducts } from '../../../api/products'
 import Pagination from '../../../components/ui/Pagination'
 import Breadcrumb from '../../../components/Breadcrumb'
 import TableFilter, { FilterField } from '../../../components/TableFilter'
+import ReportVariantFilters from '../../../components/inventory/ReportVariantFilters'
 import FilterSearchSelect from '../../../components/ui/FilterSearchSelect'
 import Money from '../../../components/ui/Money'
 import { useTableFilter } from '../../../hooks/useTableFilter'
@@ -21,6 +22,8 @@ const CRUMBS = [
 ]
 
 const INITIAL_FILTERS = {
+  item_type: '',
+  attribute_values: '',
   product_code: '',
   product_id: '',
   category_id: '',
@@ -124,6 +127,7 @@ export default function ItemSearchReport() {
             placeholder="All GRNs"
           />
         </FilterField>
+        <ReportVariantFilters draft={draft} setDraft={setDraft} />
       </TableFilter>
 
       <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -139,7 +143,7 @@ export default function ItemSearchReport() {
                     <th className="w-28 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Category</th>
                     <th className="w-24 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Code</th>
                     <th className="px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Name</th>
-                    <th className="w-28 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Color</th>
+                    <th className="w-40 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Colour / Variant</th>
                     <th className="w-36 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Supplier</th>
                     <th className="w-28 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">GRN</th>
                     <th className="w-24 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Batch</th>
@@ -159,7 +163,7 @@ export default function ItemSearchReport() {
                         <td className="px-3 py-2 text-slate-500">{row.category_name || <span className="italic text-slate-300">—</span>}</td>
                         <td className="px-3 py-2 font-mono text-slate-600">{row.product_code}</td>
                         <td className="px-3 py-2 font-medium text-slate-800">{row.product_name}</td>
-                        <td className="px-3 py-2 text-slate-500">{row.attribute_name || <span className="italic text-slate-300">—</span>}</td>
+                        <td className="px-3 py-2 text-slate-500" title={row.variant_sku || undefined}>{row.variant_label || row.attribute_name || <span className="italic text-slate-300">—</span>}</td>
                         <td className="px-3 py-2 text-slate-500">{row.supplier_name || <span className="italic text-slate-300">—</span>}</td>
                         <td className="px-3 py-2 text-slate-500">{row.grn_no}</td>
                         <td className="px-3 py-2 text-slate-500">{row.batch_no || <span className="italic text-slate-300">—</span>}</td>

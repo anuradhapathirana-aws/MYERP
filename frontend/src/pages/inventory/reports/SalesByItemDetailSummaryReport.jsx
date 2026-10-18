@@ -10,6 +10,7 @@ import { getAllCategories } from '../../../api/categories'
 import { getAllProducts } from '../../../api/products'
 import Breadcrumb from '../../../components/Breadcrumb'
 import TableFilter, { FilterField } from '../../../components/TableFilter'
+import ReportVariantFilters from '../../../components/inventory/ReportVariantFilters'
 import FilterSearchSelect from '../../../components/ui/FilterSearchSelect'
 import { ExcelBtn, PdfBtn, PrintBtn } from '../../../components/ui/ActionButtons'
 import Money from '../../../components/ui/Money'
@@ -30,6 +31,8 @@ const toYmd = (d) => d.toISOString().slice(0, 10)
 const todayYmd = toYmd(new Date())
 
 const INITIAL_FILTERS = {
+  item_type: '',
+  attribute_values: '',
   date_from: todayYmd,
   date_to: todayYmd,
   category_id: '',
@@ -146,6 +149,7 @@ export default function SalesByItemDetailSummaryReport() {
             wide
           />
         </FilterField>
+        <ReportVariantFilters draft={draft} setDraft={setDraft} />
       </TableFilter>
 
       {/* ── Category > Product > Transaction table ── */}
@@ -162,7 +166,7 @@ export default function SalesByItemDetailSummaryReport() {
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-left">
                   <th className="px-3 py-1.5 font-semibold uppercase tracking-wider text-slate-500">Description</th>
-                  <th className="w-24 px-3 py-1.5 font-semibold uppercase tracking-wider text-slate-500">Colour</th>
+                  <th className="w-24 px-3 py-1.5 font-semibold uppercase tracking-wider text-slate-500">Colour / Variant</th>
                   <th className="w-20 px-3 py-1.5 font-semibold uppercase tracking-wider text-slate-500">Type</th>
                   <th className="w-24 px-3 py-1.5 font-semibold uppercase tracking-wider text-slate-500">Date</th>
                   <th className="w-24 px-3 py-1.5 font-semibold uppercase tracking-wider text-slate-500">Number</th>

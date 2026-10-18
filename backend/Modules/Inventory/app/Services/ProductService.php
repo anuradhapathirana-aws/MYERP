@@ -10,9 +10,25 @@ use Modules\Inventory\DTOs\ProductData;
 use Modules\Inventory\Models\Product;
 use Modules\Inventory\Models\ProductAttribute;
 use Modules\Inventory\Models\ProductLocationStore;
+use Modules\Inventory\Models\ProductVariant;
 
 class ProductService
 {
+    /** Relations the Product form needs back after a load / save. */
+    private const DETAIL_RELATIONS = [
+        'suppliers',
+        'salesChannels',
+        'productAttributes',
+        'locationStores',
+        'baseUnit',
+        'variants.values.attribute',
+        'variants.prices',
+    ];
+
+    public function __construct(private readonly ProductVariantService $variants)
+    {
+    }
+
     /** @param array<string, mixed> $filters */
     public function paginate(int $perPage = 50, array $filters = []): LengthAwarePaginator
     {
@@ -51,9 +67,26 @@ class ProductService
 
     public function find(int $id): Product
     {
-        return Product::with(['suppliers', 'salesChannels', 'category', 'location', 'productAttributes', 'locationStores', 'baseUnit'])
+        $product = Product::with([...self::DETAIL_RELATIONS, 'category', 'location'])
             ->withExists('stockTransactions')
             ->findOrFail($id);
+
+        $this->flagVariantsInUse($product);
+
+        return $product;
+    }
+
+    /**
+     * Mark which variants stock or documents already reference — the form
+     * locks their combination and can only deactivate them.
+     */
+    private function flagVariantsInUse(Product $product): void
+    {
+        $inUse = ProductVariant::referencedIds($product->variants->pluck('id')->map('intval')->all());
+
+        foreach ($product->variants as $variant) {
+            $variant->setAttribute('in_use', in_array((int) $variant->id, $inUse, true));
+        }
     }
 
     public function create(ProductData $data): Product
@@ -68,22 +101,47 @@ class ProductService
             $this->syncCostDetails($product, $data->costDetails);
             $this->syncProductAttributes($product, $data->productAttributes);
             $this->syncLocationStores($product, $data->locationStores);
+            $this->syncVariants($product, $data->variants);
 
-            return $product->load(['suppliers', 'salesChannels', 'productAttributes', 'locationStores', 'baseUnit']);
+            $product->load(self::DETAIL_RELATIONS);
+            $this->flagVariantsInUse($product);
+
+            return $product;
         });
     }
 
     public function update(Product $product, ProductData $data): Product
     {
-        // product_code is immutable once assigned — never overwritten on update.
-        $product->update($this->toAttributes($data));
+        return DB::transaction(function () use ($product, $data): Product {
+            // product_code is immutable once assigned — never overwritten on update.
+            $product->update($this->toAttributes($data));
 
-        $this->syncSuppliers($product, $data->supplierIds);
-        $this->syncCostDetails($product, $data->costDetails);
-        $this->syncProductAttributes($product, $data->productAttributes);
-        $this->syncLocationStores($product, $data->locationStores);
+            $this->syncSuppliers($product, $data->supplierIds);
+            $this->syncCostDetails($product, $data->costDetails);
+            $this->syncProductAttributes($product, $data->productAttributes);
+            $this->syncLocationStores($product, $data->locationStores);
+            $this->syncVariants($product, $data->variants);
 
-        return $product->load(['suppliers', 'salesChannels', 'productAttributes', 'locationStores', 'baseUnit']);
+            $product->load(self::DETAIL_RELATIONS);
+            $this->flagVariantsInUse($product);
+
+            return $product;
+        });
+    }
+
+    /**
+     * Null = the request did not send variants: leave them exactly as they are.
+     * Roll products never carry variants (the request rejects them).
+     *
+     * @param array<int, array<string, mixed>>|null $variants
+     */
+    private function syncVariants(Product $product, ?array $variants): void
+    {
+        if ($variants === null || $product->isRollTracked()) {
+            return;
+        }
+
+        $this->variants->sync($product, $variants);
     }
 
     public function delete(Product $product): void

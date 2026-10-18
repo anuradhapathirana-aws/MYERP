@@ -20,6 +20,7 @@ class SalesOrderItemResource extends JsonResource
             'unit_id'      => $this->unit_id,
             'price_unit_id' => $this->price_unit_id,
             'attribute_id' => $this->attribute_id,
+            'variant_id'   => $this->variant_id,
             'is_scanned'   => $this->is_scanned,
             'quantity'     => (float) $this->quantity,
             'quantity_delivered' => (float) $this->quantity_delivered,
@@ -56,6 +57,12 @@ class SalesOrderItemResource extends JsonResource
             'attribute' => $this->whenLoaded('attribute', fn () => $this->attribute ? [
                 'id'   => $this->attribute->id,
                 'name' => $this->attribute->attribute_name,
+            ] : null),
+            // Product variant (Red / Floral / M) — null for roll products / products without variants.
+            'variant' => $this->whenLoaded('variant', fn () => $this->variant ? [
+                'id'   => $this->variant->id,
+                'sku'  => $this->variant->sku,
+                'name' => $this->variant->variant_label,
             ] : null),
 
             'pieces' => $this->when(

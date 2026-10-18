@@ -162,7 +162,7 @@
         <th style="width:22px;">#</th>
         <th style="width:104px;">Code</th>
         <th>Product</th>
-        <th style="width:136px;">Colour</th>
+        <th style="width:136px;">Colour / Variant</th>
         <th style="width:42px;">UOM</th>
         @if($showRolls)<th style="width:44px;" class="ta-r">Rolls</th>@endif
         <th style="width:68px;" class="ta-r">Quantity</th>
@@ -174,7 +174,7 @@
           <td>{{ $i + 1 }}</td>
           <td class="mono">{{ $trim($item->product?->product_code, 15) }}</td>
           <td>{{ $trim($item->product?->name, 48) }}</td>
-          <td class="col-colour">{{ $trim($item->attribute?->attribute_name, 17) }}</td>
+          <td class="col-colour">{{ $trim($item->variant?->variant_label ?? $item->attribute?->attribute_name, 17) }}</td>
           {{-- UOM prints the unit's short symbol (Kg, g, m) and only falls back
                to the full name when a unit has no symbol configured. --}}
           <td>{{ $item->unit?->symbol ?: ($item->unit?->name ?? '—') }}</td>

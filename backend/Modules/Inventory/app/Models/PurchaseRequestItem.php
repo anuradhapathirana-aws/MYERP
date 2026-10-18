@@ -16,6 +16,7 @@ class PurchaseRequestItem extends Model
         'product_id',
         'unit_id',
         'attribute_id',
+        'variant_id',
         'quantity',
         'estimated_unit_price',
         'remarks',
@@ -26,6 +27,7 @@ class PurchaseRequestItem extends Model
         'product_id'           => 'integer',
         'unit_id'              => 'integer',
         'attribute_id'         => 'integer',
+        'variant_id'           => 'integer',
         'quantity'             => 'decimal:4',
         'estimated_unit_price' => 'decimal:4',
     ];
@@ -48,5 +50,11 @@ class PurchaseRequestItem extends Model
     public function attribute(): BelongsTo
     {
         return $this->belongsTo(Attribute::class, 'attribute_id');
+    }
+
+    /** The product variant (Red / Floral / M) — null for roll products and products without variants. */
+    public function variant(): BelongsTo
+    {
+        return $this->belongsTo(ProductVariant::class, 'variant_id');
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Services;
 
+use Modules\Inventory\Support\VariantReportFilters;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -46,6 +47,7 @@ class SupplierWiseGrnDetailsService
             ->join('inv_supplier_masters as sm', 'sm.id', '=', 'g.supplier_id')
             ->leftJoin('inv_purchase_orders as po', 'po.id', '=', 'g.po_id')
             ->leftJoin('inv_attributes as a', 'a.id', '=', 'gi.attribute_id')
+            ->leftJoin('inv_product_variants as v', 'v.id', '=', 'gi.variant_id')
             ->leftJoin('inv_unit_types as u', 'u.id', '=', 'gi.unit_id')
             ->where('g.status', GrnStatus::Confirmed->value)
             ->whereNull('g.deleted_at')
@@ -53,12 +55,13 @@ class SupplierWiseGrnDetailsService
             ->where('g.grn_date', '<=', $toDate)
             ->when($supplierId, fn ($q) => $q->where('g.supplier_id', $supplierId))
             ->when($productId, fn ($q) => $q->where('p.id', $productId))
+            ->tap(fn ($q) => VariantReportFilters::apply($q, $filters, 'p', 'gi.variant_id', 'gi.attribute_id'))
             ->select([
                 'sm.id as supplier_id', 'sm.supplier_name',
                 'g.id as grn_id', 'g.grn_no', 'g.grn_date',
                 'po.po_no',
                 'p.product_code', 'p.name as product_name',
-                'a.attribute_name',
+                DB::raw('COALESCE(v.variant_label, a.attribute_name) as attribute_name'),
                 DB::raw('COALESCE(u.symbol, u.name) as unit_label'),
                 'gi.quantity_received', 'gi.unit_price', 'gi.discount', 'gi.tax', 'gi.line_total',
             ])

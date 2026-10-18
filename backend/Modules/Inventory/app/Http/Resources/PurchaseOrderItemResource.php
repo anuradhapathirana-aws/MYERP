@@ -18,6 +18,7 @@ class PurchaseOrderItemResource extends JsonResource
             'product_id'        => $this->product_id,
             'unit_id'           => $this->unit_id,
             'attribute_id'      => $this->attribute_id,
+            'variant_id'        => $this->variant_id,
             'pr_item_id'        => $this->pr_item_id,
             'quantity_ordered'  => (float) $this->quantity_ordered,
             'quantity_received' => (float) $this->quantity_received,
@@ -42,6 +43,12 @@ class PurchaseOrderItemResource extends JsonResource
             'attribute' => $this->whenLoaded('attribute', fn () => $this->attribute ? [
                 'id'   => $this->attribute->id,
                 'name' => $this->attribute->attribute_name,
+            ] : null),
+            // Product variant (Red / Floral / M) — null for roll products / products without variants.
+            'variant' => $this->whenLoaded('variant', fn () => $this->variant ? [
+                'id'   => $this->variant->id,
+                'sku'  => $this->variant->sku,
+                'name' => $this->variant->variant_label,
             ] : null),
         ];
     }

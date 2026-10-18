@@ -21,6 +21,8 @@ import { getAllAttributes } from '../../api/attributes'
 import Breadcrumb from '../../components/Breadcrumb'
 import KeyboardShortcuts from '../../components/ui/KeyboardShortcuts'
 import { showError, showSuccess } from '../../utils/alerts'
+import VariantSelect from '../../components/inventory/VariantSelect'
+import { getProductVariants } from '../../api/variants'
 import api from '../../api/axios'
 
 const TRANSPORT_MODES = ['Road', 'Rail', 'Air', 'Sea', 'Courier']
@@ -292,6 +294,9 @@ function emptyRow() {
     unit_id:       '',
     attribute_id:  '',
     color_options: [],
+    variant_id:    '',
+    variant_label: '',
+    variant_options: [],
     quantity:      '',
     stock_in_hand: null,
   }
@@ -397,13 +402,32 @@ export default function PurchaseRequestFormPage() {
     return promise
   }
 
+  // Variants of a product (Red / Floral / M …). A product with variants is
+  // requested by variant — its colour comes from the variant, so the plain
+  // Color picker is replaced by the Variant picker on that row.
+  const variantOptionsCache = useRef({})
+  const loadVariantOptions = (productId) => {
+    if (!productId) return Promise.resolve([])
+    if (!variantOptionsCache.current[productId]) {
+      variantOptionsCache.current[productId] = getProductVariants(productId).catch(() => [])
+    }
+    return variantOptionsCache.current[productId]
+  }
+
+  // Patch a row's colour + variant options; resolves true when the row has a picker to focus.
+  const patchLineOptions = (rowKey, productId, colours) =>
+    loadVariantOptions(productId).then((variants) => {
+      setItems((prev) => prev.map((r) => r._key === rowKey
+        ? { ...r, variant_options: variants, color_options: variants.length > 0 ? [] : colours }
+        : r))
+      return variants.length > 0 || colours.length > 0
+    })
+
   // Populate color_options for already-loaded rows (edit mode) without blocking the initial render
   const hydrateColorOptions = (rows) => {
     rows.forEach((row) => {
       if (!row.product_id) return
-      loadColorOptions(row.product_id).then((options) => {
-        setItems((prev) => prev.map((r) => r._key === row._key ? { ...r, color_options: options } : r))
-      })
+      loadColorOptions(row.product_id).then((options) => patchLineOptions(row._key, row.product_id, options))
     })
   }
 
@@ -415,9 +439,7 @@ export default function PurchaseRequestFormPage() {
     attrRehydratedRef.current = true
     colorOptionsCache.current = {}
     itemsRef.current.filter((r) => r.product_id).forEach((row) => {
-      loadColorOptions(row.product_id).then((options) => {
-        setItems((prev) => prev.map((r) => r._key === row._key ? { ...r, color_options: options } : r))
-      })
+      loadColorOptions(row.product_id).then((options) => patchLineOptions(row._key, row.product_id, options))
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attributeTypes.length, allAttributes.length])
@@ -521,6 +543,9 @@ export default function PurchaseRequestFormPage() {
         unit_id:       it.unit_id               ?? '',
         attribute_id:  it.attribute_id != null ? String(it.attribute_id) : '',
         color_options: [],
+        variant_id:    it.variant_id != null ? String(it.variant_id) : '',
+        variant_label: it.variant?.name ?? '',
+        variant_options: [],
         quantity:      it.quantity,
         stock_in_hand: null,
       }))
@@ -568,24 +593,26 @@ export default function PurchaseRequestFormPage() {
             unit_id:       defaultUnitTypeId != null ? String(defaultUnitTypeId) : '',
             attribute_id:  '',
             color_options: [],
+            variant_id:    '',
+            variant_label: '',
+            variant_options: [],
             stock_in_hand: stock,
           }
         : row
     ))
     setProductSearch({ key: null, query: '', results: [], open: false })
 
-    loadColorOptions(product.id).then((options) => {
-      setItems((prev) => prev.map((row) => row._key === rowKey ? { ...row, color_options: options } : row))
-      // Auto-focus Color once its options are ready — skip straight to UOM if this
-      // product has none, since a disabled Color select can't receive focus.
-      setTimeout(() => focusCell(rowKey, options.length > 0 ? 'color' : 'uom'), 50)
-    })
+    loadColorOptions(product.id)
+      .then((options) => patchLineOptions(rowKey, product.id, options))
+      // Auto-focus Variant/Color once its options are ready — skip straight to UOM if
+      // this product has none, since a disabled picker can't receive focus.
+      .then((hasPicker) => setTimeout(() => focusCell(rowKey, hasPicker ? 'color' : 'uom'), 50))
   }
 
   const clearProductSelection = (rowKey) => {
     setItems((prev) => prev.map((row) =>
       row._key === rowKey
-        ? { ...row, product_id: '', product_code: '', product_name: '', attribute_id: '', color_options: [], stock_in_hand: null }
+        ? { ...row, product_id: '', product_code: '', product_name: '', attribute_id: '', color_options: [], variant_id: '', variant_label: '', variant_options: [], stock_in_hand: null }
         : row
     ))
     setProductSearch({ key: rowKey, query: '', results: [], open: false })
@@ -655,7 +682,9 @@ export default function PurchaseRequestFormPage() {
       return
     }
 
-    const itemsMissingColor = validItems.filter((r) => r.color_options?.length > 0 && !r.attribute_id)
+    const itemsMissingColor = validItems.filter((r) =>
+      r.variant_options?.length > 0 ? !r.variant_id : (r.color_options?.length > 0 && !r.attribute_id)
+    )
     if (itemsMissingColor.length) {
       setItemTouched((t) => {
         const next = { ...t }
@@ -678,6 +707,7 @@ export default function PurchaseRequestFormPage() {
         product_id:   parseInt(r.product_id),
         unit_id:      r.unit_id ? parseInt(r.unit_id) : null,
         attribute_id: r.attribute_id ? parseInt(r.attribute_id) : null,
+        variant_id:   r.variant_id ? parseInt(r.variant_id) : null,
         quantity:     parseFloat(r.quantity),
       })),
     })
@@ -706,7 +736,10 @@ export default function PurchaseRequestFormPage() {
     if (!itemTouched[rowKey]?.[field]) return null
     const row = items.find((r) => r._key === rowKey)
     if (!row) return null
-    if (field === 'color') return (row.color_options?.length > 0 && !row.attribute_id) ? 'Required' : null
+    if (field === 'color') {
+      if (row.variant_options?.length > 0) return row.variant_id ? null : 'Required'
+      return (row.color_options?.length > 0 && !row.attribute_id) ? 'Required' : null
+    }
     if (field === 'uom') return row.unit_id ? null : 'Required'
     return null
   }
@@ -716,13 +749,13 @@ export default function PurchaseRequestFormPage() {
     const groups = {}
     items.forEach((row, idx) => {
       if (!row.product_id) return
-      const key = `${row.product_id}|${row.attribute_id || ''}`
+      const key = `${row.product_id}|${row.variant_id || row.attribute_id || ''}`
       ;(groups[key] ??= []).push(idx + 1)
     })
     const result = {}
     items.forEach((row) => {
       if (!row.product_id) return
-      const key = `${row.product_id}|${row.attribute_id || ''}`
+      const key = `${row.product_id}|${row.variant_id || row.attribute_id || ''}`
       const rowNumbers = groups[key]
       if (rowNumbers.length > 1) result[row._key] = rowNumbers
     })
@@ -793,7 +826,7 @@ export default function PurchaseRequestFormPage() {
                     <th className="w-9 px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">#</th>
                     <th className="w-28 px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">Code</th>
                     <th className="px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">Product Name</th>
-                    <th className="w-24 px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">Color</th>
+                    <th className="w-24 px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">Color / Variant</th>
                     <th className="w-24 px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">UOM</th>
                     <th className="w-28 px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">Qty</th>
                     <th className="w-32 px-3 py-1.5 text-center text-[10px] font-bold uppercase tracking-wider text-slate-500">Stock in Hand</th>
@@ -832,6 +865,23 @@ export default function PurchaseRequestFormPage() {
                       </td>
                       <td className="px-1.5 py-1">
                         <div className="flex flex-col gap-0.5">
+                          {row.variant_options?.length > 0 ? (
+                          <VariantSelect
+                            cellRef={setCellRef(row._key, 'color')}
+                            options={row.variant_options}
+                            value={row.variant_id}
+                            onChange={(v) => {
+                              setItems((prev) => prev.map((r) => r._key === row._key
+                                ? { ...r, variant_id: v ? String(v.id) : '', variant_label: v?.variant_label ?? '', attribute_id: v?.attribute_id != null ? String(v.attribute_id) : '' }
+                                : r))
+                              touchItemField(row._key, 'color')
+                            }}
+                            onNext={() => focusCell(row._key, 'uom')}
+                            onBlur={() => touchItemField(row._key, 'color')}
+                            error={!!getItemErr(row._key, 'color')}
+                            showStock
+                          />
+                          ) : (
                           <DropdownSelectCell
                             cellRef={setCellRef(row._key, 'color')}
                             value={row.attribute_id}
@@ -843,6 +893,7 @@ export default function PurchaseRequestFormPage() {
                             disabled={!row.product_id || row.color_options.length === 0}
                             error={!!getItemErr(row._key, 'color')}
                           />
+                          )}
                           {getItemErr(row._key, 'color') && (
                             <span className="text-[9px] text-red-500 leading-none">Required</span>
                           )}

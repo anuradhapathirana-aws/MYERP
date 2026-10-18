@@ -4,10 +4,25 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Http\Requests;
 
+use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
+use Modules\Inventory\Http\Requests\Concerns\ResolvesLineVariants;
 
 class StoreProformaInvoiceRequest extends FormRequest
 {
+    use ResolvesLineVariants;
+
+    protected function prepareForValidation(): void
+    {
+        $this->prepareLineVariants();
+    }
+
+    /** A product with variants is quoted by exact variant (Red / Floral / M). */
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(fn (Validator $v) => $this->validateLineVariants($v));
+    }
+
     public function authorize(): bool
     {
         return true;
@@ -32,6 +47,7 @@ class StoreProformaInvoiceRequest extends FormRequest
             'items'                => ['required', 'array', 'min:1'],
             'items.*.product_id'   => ['required', 'integer', 'exists:inv_products,id'],
             'items.*.attribute_id' => ['nullable', 'integer', 'exists:inv_attributes,id'],
+            'items.*.variant_id'   => ['nullable', 'integer'],
             'items.*.unit_id'      => ['nullable', 'integer', 'exists:inv_unit_types,id'],
             'items.*.quantity'     => ['required', 'numeric', 'gt:0'],
             'items.*.unit_price'   => ['required', 'numeric', 'min:0'],

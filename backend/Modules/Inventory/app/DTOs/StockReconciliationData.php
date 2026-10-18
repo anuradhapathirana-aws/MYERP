@@ -24,6 +24,7 @@ final class StockReconciliationData
         public readonly string  $reason,
         public readonly ?string $remarks,
         public readonly array   $pieces,
+        public readonly ?int    $variantId = null,
     ) {}
 
     public static function fromRequest(
@@ -43,6 +44,7 @@ final class StockReconciliationData
             reason:       $request->validated('reason'),
             remarks:      $request->validated('remarks'),
             pieces:       (array) ($request->validated('pieces') ?? []),
+            variantId:    $request->validated('variant_id') !== null ? (int) $request->validated('variant_id') : null,
         );
     }
 }

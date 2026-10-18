@@ -1297,7 +1297,7 @@ function GroupCostingPanel({ group, lc, baseSym, typeLabel, expenseTypes, form, 
           <table className="w-full text-[10px]">
             <thead className="sticky top-0 z-10">
               <tr className="border-b border-slate-200 bg-slate-50 text-left">
-                <th className="px-2 py-1 font-semibold uppercase tracking-wider text-slate-400">Colour</th>
+                <th className="px-2 py-1 font-semibold uppercase tracking-wider text-slate-400">Colour / Variant</th>
                 <th className="px-2 py-1 text-right font-semibold uppercase tracking-wider text-slate-400">Received</th>
                 <th className="px-2 py-1 text-right font-semibold uppercase tracking-wider text-slate-400">{typeLabel}</th>
                 <th className="px-2 py-1 text-right font-semibold uppercase tracking-wider text-slate-400">Before-Tax</th>

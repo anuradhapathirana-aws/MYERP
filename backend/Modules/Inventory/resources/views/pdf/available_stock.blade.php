@@ -96,6 +96,14 @@
       <td class="info-label">Generated Time :</td>
       <td class="info-value">{{ $header['generated_at'] }}</td>
     </tr>
+    @if(!empty($header['item_type_label']) || !empty($header['attribute_values_label']))
+    <tr>
+      <td class="info-label">Item Type :</td>
+      <td class="info-value">{{ $header['item_type_label'] ?? 'All' }}</td>
+      <td class="info-label">Attributes :</td>
+      <td class="info-value" colspan="3">{{ $header['attribute_values_label'] ?? 'All' }}</td>
+    </tr>
+    @endif
   </table>
 
   {{-- ══ ITEMS TABLE ═════════════════════════════════════════ --}}
@@ -104,7 +112,7 @@
       <tr>
         <th style="width:26px;">#</th>
         <th>Product</th>
-        <th class="nowrap" style="width:105px;">Colour</th>
+        <th class="nowrap" style="width:130px;">Colour / Variant</th>
         <th class="ta-r nowrap" style="width:110px;">Available Qty</th>
         @if($withPrice)
         <th class="ta-r nowrap" style="width:100px;">Selling Price ({{ $cur }})</th>
@@ -116,7 +124,7 @@
       <tr>
         <td class="muted">{{ $i + 1 }}</td>
         <td>{{ $row['product_name'] }}</td>
-        <td class="nowrap">{{ $row['attribute_name'] ?? '—' }}</td>
+        <td class="nowrap">{{ $row['variant_label'] ?? $row['attribute_name'] ?? '—' }}@if(!empty($row['variant_sku']))<br><span class="muted">{{ $row['variant_sku'] }}</span>@endif</td>
         <td class="ta-r bold nowrap">{{ $qty($row['available_qty']) }} <span class="muted">{{ $row['unit'] ?? '' }}</span></td>
         @if($withPrice)
         {{-- A dash, not 0.00 — this product+colour has neither a confirmed costing nor a price list. --}}

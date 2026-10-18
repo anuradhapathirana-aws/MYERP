@@ -211,8 +211,11 @@
     $rows = [];
     foreach ($invoice->items as $item) {
         $isColor = $item->attribute && $colorTypeIds->contains($item->attribute->attribute_type_id);
+        // A variant line is tagged with its own label (Red / Floral / M) — same merge
+        // rule as a colour line: one row per product + unit + price.
+        $tag = $item->variant?->variant_label ?? ($isColor ? $item->attribute->attribute_name : null);
 
-        if (! $isColor) {
+        if ($tag === null) {
             // Not a color line (or has no attribute at all) — never merges with
             // another line, so key it by the item's own id.
             $rows['item-' . $item->id] = [
@@ -235,8 +238,8 @@
             if ($isProforma && $item->stock_status && $item->stock_status !== 'in_stock') {
                 $rows[$key]['stock'] = $rows[$key]['stock'] === 'non_stock' ? 'non_stock' : $item->stock_status;
             }
-            if (! in_array($item->attribute->attribute_name, $rows[$key]['colors'], true)) {
-                $rows[$key]['colors'][] = $item->attribute->attribute_name;
+            if (! in_array($tag, $rows[$key]['colors'], true)) {
+                $rows[$key]['colors'][] = $tag;
             }
             continue;
         }
@@ -246,7 +249,7 @@
             'unit'       => $item->unit,
             'quantity'   => (float) $item->quantity,
             'unit_price' => (float) $item->unit_price,
-            'colors'     => [$item->attribute->attribute_name],
+            'colors'     => [$tag],
             'suffix'     => null,
             'stock'      => $isProforma ? $item->stock_status : null,
         ];

@@ -9,15 +9,29 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 use Modules\Inventory\Enums\ProformaInvoiceStatus;
 use Modules\Inventory\Enums\SalesOrderSource;
+use Modules\Inventory\Http\Requests\Concerns\ResolvesLineVariants;
 use Modules\Inventory\Models\GrnItemPiece;
 use Modules\Inventory\Models\Product;
 use Modules\Inventory\Models\ProductAttribute;
 use Modules\Inventory\Models\ProductLocationStore;
 use Modules\Inventory\Models\ProformaInvoiceItem;
 use Modules\Inventory\Services\ColourStockService;
+use Modules\Inventory\Services\VariantStockService;
 
 class StoreSalesOrderRequest extends FormRequest
 {
+    use ResolvesLineVariants;
+
+    /**
+     * A line recalled from a proforma takes the proforma line's variant when it
+     * sends none; every variant line's colour is derived from its variant.
+     */
+    protected function prepareForValidation(): void
+    {
+        $this->inheritLineVariants('proforma_item_id', 'inv_proforma_invoice_items');
+        $this->prepareLineVariants();
+    }
+
     public function authorize(): bool
     {
         return true;
@@ -49,6 +63,7 @@ class StoreSalesOrderRequest extends FormRequest
             // the price is per the quantity's unit (legacy behaviour).
             'items.*.price_unit_id' => ['nullable', 'integer', 'exists:inv_unit_types,id'],
             'items.*.attribute_id'  => ['nullable', 'integer', 'exists:inv_attributes,id'],
+            'items.*.variant_id'    => ['nullable', 'integer'],
             'items.*.quantity'      => ['required_without:items.*.piece_codes', 'nullable', 'numeric', 'gt:0'],
             'items.*.unit_price'    => ['required', 'numeric', 'min:0'],
             'items.*.discount'      => ['nullable', 'numeric', 'min:0', 'max:100'],
@@ -67,6 +82,8 @@ class StoreSalesOrderRequest extends FormRequest
 
     public function withValidator(Validator $validator): void
     {
+        $validator->after(fn (Validator $v) => $this->validateLineVariants($v));
+
         $validator->after(function (Validator $v): void {
             $items      = (array) $this->input('items', []);
 
@@ -109,6 +126,7 @@ class StoreSalesOrderRequest extends FormRequest
             $rollProductIds     = Product::rollTrackedIds(array_map('intval', $productIds));
             $colourProductIds   = ProductAttribute::colourProductIds(array_map('intval', $productIds));
             $colourStock        = app(ColourStockService::class);
+            $variantStock       = app(VariantStockService::class);
 
             $stockByProduct = $checkableProducts->isEmpty()
                 ? collect()
@@ -132,13 +150,27 @@ class StoreSalesOrderRequest extends FormRequest
                 $qty         = (float) ($item['quantity'] ?? 0);
                 $isQtyTracked = ! in_array($productId, $rollProductIds, true);
                 $attributeId  = !empty($item['attribute_id']) ? (int) $item['attribute_id'] : null;
+                $variantId    = !empty($item['variant_id']) ? (int) $item['variant_id'] : null;
 
-                if ($isQtyTracked && $attributeId === null && in_array($productId, $colourProductIds, true)) {
+                // A variant line's colour comes from the variant (validateLineVariants
+                // already demands the variant), so the colour rule is for the rest.
+                if ($isQtyTracked && $variantId === null && $attributeId === null && in_array($productId, $colourProductIds, true)) {
                     $v->errors()->add("items.{$index}.attribute_id", 'Colour is required for this item.');
                     continue;
                 }
 
                 if (!$checkableProducts->has($productId)) {
+                    continue;
+                }
+
+                // Variant products are stocked per variant: Red / M is its own balance.
+                if ($isQtyTracked && $variantId !== null) {
+                    if ($qty > 0 && $variantStock->available($productId, $variantId) <= 0) {
+                        $v->errors()->add(
+                            "items.{$index}.variant_id",
+                            "{$checkableProducts->get($productId)} has no available stock in this variant.",
+                        );
+                    }
                     continue;
                 }
 
@@ -194,6 +226,8 @@ class StoreSalesOrderRequest extends FormRequest
                 $v->errors()->add($field, "Proforma {$pfItem->proforma->proforma_no} belongs to another customer.");
             } elseif ((int) $pfItem->product_id !== (int) ($item['product_id'] ?? 0)) {
                 $v->errors()->add($field, 'The line product differs from the proforma line.');
+            } elseif ($pfItem->variant_id !== null && (int) $pfItem->variant_id !== (int) ($item['variant_id'] ?? 0)) {
+                $v->errors()->add("items.{$index}.variant_id", 'Keep the proforma\'s variant on a recalled line.');
             } elseif ($pfItem->unit_id !== null && (int) $pfItem->unit_id !== (int) ($item['unit_id'] ?? 0)) {
                 $v->errors()->add("items.{$index}.unit_id", "Keep the proforma's unit of measure on a recalled line.");
             }

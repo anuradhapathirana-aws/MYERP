@@ -163,6 +163,12 @@ class Product extends Model
         return $this->hasMany(ProductAttribute::class, 'product_id');
     }
 
+    /** Sellable combinations of attribute values — quantity-tracked products only. */
+    public function variants(): HasMany
+    {
+        return $this->hasMany(ProductVariant::class, 'product_id');
+    }
+
     public function salesChannels(): BelongsToMany
     {
         return $this->belongsToMany(SalesChannel::class, 'inv_product_sales_channels')

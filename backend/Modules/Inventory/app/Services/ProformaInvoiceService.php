@@ -94,6 +94,7 @@ class ProformaInvoiceService
             'items.unit',
             'items.priceUnit',
             'items.attribute',
+            'items.variant',
             'salesOrder',
             'customer',
             'company',
@@ -142,6 +143,7 @@ class ProformaInvoiceService
             !empty($l['attribute_id']) ? (int) $l['attribute_id'] : null,
             !empty($l['unit_id']) ? (int) $l['unit_id'] : null,
             (float) ($l['quantity'] ?? 0),
+            !empty($l['variant_id']) ? (int) $l['variant_id'] : null,
         ), array_values($lines));
     }
 
@@ -164,9 +166,10 @@ class ProformaInvoiceService
         return array_map(function (array $l): array {
             $productId   = (int) $l['product_id'];
             $attributeId = !empty($l['attribute_id']) ? (int) $l['attribute_id'] : null;
+            $variantId   = !empty($l['variant_id']) ? (int) $l['variant_id'] : null;
             $factor      = $this->lineUnitFactor($productId, !empty($l['unit_id']) ? (int) $l['unit_id'] : null);
 
-            $costing = $this->pricing->latestCostingPricingFor($productId, $attributeId);
+            $costing = $this->pricing->latestCostingPricingFor($productId, $attributeId, $variantId);
             if ($costing !== null) {
                 return [
                     'unit_price'     => $this->money($costing['selling_price'] * $factor),
@@ -176,7 +179,7 @@ class ProformaInvoiceService
                 ];
             }
 
-            $list = $this->pricing->sellingPriceFor($productId);
+            $list = $this->pricing->sellingPriceFor($productId, $variantId);
             if ($list === null) {
                 return ['unit_price' => null, 'tax_unit_price' => null, 'tax_vat_pct' => self::FALLBACK_VAT_PCT, 'source' => null];
             }
@@ -306,6 +309,7 @@ class ProformaInvoiceService
                         $item->attribute_id,
                         $item->unit_id,
                         (float) $item->quantity,
+                        $item->variant_id,
                     ));
                 }
             }
@@ -353,7 +357,7 @@ class ProformaInvoiceService
         $lines = $proforma->items
             ->map(function (ProformaInvoiceItem $item) use ($proforma): array {
                 $remaining = max(0.0, (float) $item->quantity - (float) $item->getAttribute('recalled_quantity'));
-                $stock     = $this->stock->check((int) $item->product_id, $item->attribute_id, $item->unit_id, $remaining);
+                $stock     = $this->stock->check((int) $item->product_id, $item->attribute_id, $item->unit_id, $remaining, $item->variant_id);
                 $price     = (float) $item->unit_price;
                 $soPrice   = $proforma->invoice_type === 'tax' ? $price * (1 + (float) $item->tax / 100) : $price;
 
@@ -367,6 +371,8 @@ class ProformaInvoiceService
                     'product_id'       => $item->product_id,
                     'unit_id'          => $item->unit_id,
                     'attribute_id'     => $item->attribute_id,
+                    'variant_id'       => $item->variant_id,
+                    'variant'          => $item->variant ? ['id' => $item->variant->id, 'sku' => $item->variant->sku, 'name' => $item->variant->variant_label] : null,
                     'quantity'         => (float) $item->quantity,
                     'recalled_quantity' => (float) $item->getAttribute('recalled_quantity'),
                     'remaining_quantity' => round($remaining, 4),
@@ -428,6 +434,7 @@ class ProformaInvoiceService
                 // The price is quoted per the line's own unit
                 'price_unit_id'    => $unitId,
                 'attribute_id'     => !empty($line['attribute_id']) ? (int) $line['attribute_id'] : null,
+                'variant_id'       => !empty($line['variant_id']) ? (int) $line['variant_id'] : null,
                 'quantity'         => $qty,
                 'unit_price'       => $price,
                 'discount'         => $discount,

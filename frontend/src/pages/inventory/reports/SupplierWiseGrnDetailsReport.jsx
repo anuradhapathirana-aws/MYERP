@@ -10,6 +10,7 @@ import { getAllSuppliers } from '../../../api/suppliers'
 import { getAllProducts } from '../../../api/products'
 import Breadcrumb from '../../../components/Breadcrumb'
 import TableFilter, { FilterField } from '../../../components/TableFilter'
+import ReportVariantFilters from '../../../components/inventory/ReportVariantFilters'
 import FilterSearchSelect from '../../../components/ui/FilterSearchSelect'
 import { ExcelBtn, PdfBtn, PrintBtn } from '../../../components/ui/ActionButtons'
 import Money from '../../../components/ui/Money'
@@ -30,6 +31,8 @@ const toYmd = (d) => d.toISOString().slice(0, 10)
 const todayYmd = toYmd(new Date())
 
 const INITIAL_FILTERS = {
+  item_type: '',
+  attribute_values: '',
   date_from: todayYmd,
   date_to: todayYmd,
   supplier_id: '',
@@ -141,6 +144,7 @@ export default function SupplierWiseGrnDetailsReport() {
             wide
           />
         </FilterField>
+        <ReportVariantFilters draft={draft} setDraft={setDraft} />
       </TableFilter>
 
       {/* ── Supplier > GRN > Item table ── */}

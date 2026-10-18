@@ -95,7 +95,7 @@ class SupplierWiseGrnDetailsExportController extends Controller
             'product_id'  => ['nullable', 'integer', 'exists:inv_products,id'],
         ]);
 
-        return $request->only(['date_from', 'date_to', 'supplier_id', 'product_id']);
+        return $request->only(['date_from', 'date_to', 'supplier_id', 'product_id']) + \Modules\Inventory\Support\VariantReportFilters::fromRequest($request);
     }
 
     private function filename(string $extension): string

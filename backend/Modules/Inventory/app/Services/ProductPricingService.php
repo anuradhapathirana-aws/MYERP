@@ -40,8 +40,12 @@ class ProductPricingService
      * without its unit: a list price of 400 filed against "m" is not 400 per yard, and
      * handing that number to a yard-denominated sales line overcharges by 9%.
      */
-    public function sellingPriceFor(int $productId): ?float
+    public function sellingPriceFor(int $productId, ?int $variantId = null): ?float
     {
+        if ($variantId !== null) {
+            return $this->variantSellingPrices($productId, [$variantId])[$variantId] ?? null;
+        }
+
         $row = DB::table(self::PIVOT_TABLE)
             ->where('product_id', $productId)
             ->orderBy('id')
@@ -52,6 +56,43 @@ class ProductPricingService
             $row?->unit_type_id !== null ? (int) $row->unit_type_id : null,
             $row?->selling_price !== null ? (float) $row->selling_price : null,
         );
+    }
+
+    /**
+     * Default selling price of each variant, per the stocking UOM: the variant's
+     * own price on the product's primary price-list channel, else that channel's
+     * product price. A variant price is filed in the same unit as the channel's
+     * product row, so it converts the same way.
+     *
+     * @param  array<int, int>  $variantIds
+     * @return array<int, ?float> variant id => price
+     */
+    public function variantSellingPrices(int $productId, array $variantIds): array
+    {
+        if ($variantIds === []) {
+            return [];
+        }
+
+        $row = DB::table(self::PIVOT_TABLE)
+            ->where('product_id', $productId)
+            ->orderBy('id')
+            ->first(['sales_channel_id', 'selling_price', 'unit_type_id']);
+
+        $own = $row === null ? collect() : DB::table('inv_product_variant_prices')
+            ->whereIn('variant_id', $variantIds)
+            ->where('sales_channel_id', $row->sales_channel_id)
+            ->whereNotNull('selling_price')
+            ->pluck('selling_price', 'variant_id');
+
+        $unitId = $row?->unit_type_id !== null ? (int) $row->unit_type_id : null;
+        $result = [];
+
+        foreach ($variantIds as $variantId) {
+            $price = $own[$variantId] ?? $row?->selling_price;
+            $result[$variantId] = $this->toBasePrice($productId, $unitId, $price !== null ? (float) $price : null);
+        }
+
+        return $result;
     }
 
     /** Latest confirmed-GRN purchase cost (last-cost method), per the stocking UOM. */
@@ -170,21 +211,26 @@ class ProductPricingService
     }
 
     /**
-     * The newest confirmed-costing price of a product + colour, regardless of
-     * which GRN line it costed — the quantity-tracked counterpart of
-     * costingPricingForGrnItem (those products have no rolls to trace back).
+     * The newest confirmed-costing price of a product + colour (or + variant,
+     * when given — Red / M and Red / L are costed apart), regardless of which GRN
+     * line it costed — the quantity-tracked counterpart of costingPricingForGrnItem
+     * (those products have no rolls to trace back).
      *
      * @return array{selling_price: float, before_tax_price: float, vat_pct: float}|null
      */
-    public function latestCostingPricingFor(int $productId, ?int $attributeId): ?array
+    public function latestCostingPricingFor(int $productId, ?int $attributeId, ?int $variantId = null): ?array
     {
         $grnItemId = DB::table('inv_costing_items')
             ->join('inv_costings', 'inv_costings.id', '=', 'inv_costing_items.costing_id')
             ->where('inv_costing_items.product_id', $productId)
             ->when(
-                $attributeId === null,
-                fn ($q) => $q->whereNull('inv_costing_items.attribute_id'),
-                fn ($q) => $q->where('inv_costing_items.attribute_id', $attributeId),
+                $variantId !== null,
+                fn ($q) => $q->where('inv_costing_items.variant_id', $variantId),
+                fn ($q) => $q->when(
+                    $attributeId === null,
+                    fn ($q) => $q->whereNull('inv_costing_items.attribute_id'),
+                    fn ($q) => $q->where('inv_costing_items.attribute_id', $attributeId),
+                ),
             )
             ->where('inv_costings.status', CostingStatus::Confirmed->value)
             ->whereNull('inv_costings.deleted_at')
@@ -277,6 +323,47 @@ class ProductPricingService
                 'selling_price' => Quantity::roundPrice($sellingPriceBase * $factor),
                 'updated_at'    => now(),
             ]);
+        }
+    }
+
+    /**
+     * Confirmed-costing write-back for a variant line: the variant's own selling
+     * price on every channel of the product, restated in that channel row's unit
+     * (the same conversion syncFromCosting applies to the product rows). The
+     * product's own price list is left alone — other variants still sell at it.
+     */
+    public function syncVariantFromCosting(int $productId, int $variantId, ?int $baseUnitId, float $sellingPriceBase): void
+    {
+        $rows = DB::table(self::PIVOT_TABLE)
+            ->where('product_id', $productId)
+            ->get(['sales_channel_id', 'unit_type_id']);
+
+        foreach ($rows as $row) {
+            $rowUnitId = $row->unit_type_id !== null ? (int) $row->unit_type_id : null;
+
+            $factor = ($rowUnitId === null || $baseUnitId === null || $rowUnitId === $baseUnitId)
+                ? 1.0
+                : $this->units->tryFactor($rowUnitId, $baseUnitId);
+
+            if ($factor === null || $factor <= 0.0) {
+                continue;
+            }
+
+            $price    = Quantity::roundPrice($sellingPriceBase * $factor);
+            $existing = DB::table('inv_product_variant_prices')
+                ->where('variant_id', $variantId)
+                ->where('sales_channel_id', $row->sales_channel_id)
+                ->first(['id']);
+
+            $existing !== null
+                ? DB::table('inv_product_variant_prices')->where('id', $existing->id)->update(['selling_price' => $price, 'updated_at' => now()])
+                : DB::table('inv_product_variant_prices')->insert([
+                    'variant_id'       => $variantId,
+                    'sales_channel_id' => $row->sales_channel_id,
+                    'selling_price'    => $price,
+                    'created_at'       => now(),
+                    'updated_at'       => now(),
+                ]);
         }
     }
 

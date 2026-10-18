@@ -20,6 +20,7 @@ class GoodsReceivedNoteItemResource extends JsonResource
             'product_id'        => $this->product_id,
             'unit_id'           => $this->unit_id,
             'attribute_id'      => $this->attribute_id,
+            'variant_id'        => $this->variant_id,
             'quantity_ordered'  => (float) $this->quantity_ordered,
             'quantity_received' => (float) $this->quantity_received,
             'conversion_factor' => (float) $this->conversion_factor,
@@ -50,6 +51,12 @@ class GoodsReceivedNoteItemResource extends JsonResource
             'attribute' => $this->whenLoaded('attribute', fn () => $this->attribute ? [
                 'id'   => $this->attribute->id,
                 'name' => $this->attribute->attribute_name,
+            ] : null),
+            // Product variant (Red / Floral / M) — null for roll products / products without variants.
+            'variant' => $this->whenLoaded('variant', fn () => $this->variant ? [
+                'id'   => $this->variant->id,
+                'sku'  => $this->variant->sku,
+                'name' => $this->variant->variant_label,
             ] : null),
             'batch_assignments' => $this->whenLoaded('batchAssignments', fn () =>
                 $this->batchAssignments->map(fn ($a) => [

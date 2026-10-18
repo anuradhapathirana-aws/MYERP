@@ -74,7 +74,7 @@ class GoodsReceivedNoteService
         return GoodsReceivedNote::with([
             'items.product.baseUnit',
             'items.unit',
-            'items.attribute',
+            'items.attribute', 'items.variant',
             'items.poItem',
             'items.batchAssignments.batch',
             'items.pieces',
@@ -91,7 +91,7 @@ class GoodsReceivedNoteService
      */
     public function getPoOutstandingItems(int $poId): array
     {
-        $po = PurchaseOrder::with(['items.product.baseUnit', 'items.unit', 'items.attribute', 'supplier'])->findOrFail($poId);
+        $po = PurchaseOrder::with(['items.product.baseUnit', 'items.unit', 'items.attribute', 'items.variant', 'supplier'])->findOrFail($poId);
 
         if (!$po->status->canReceiveGoods()) {
             abort(422, 'Purchase order must be confirmed before creating a GRN.');
@@ -107,6 +107,9 @@ class GoodsReceivedNoteService
                 'unit_id'          => $item->unit_id,
                 'attribute_id'     => $item->attribute_id,
                 'attribute_name'   => $item->attribute?->attribute_name,
+                'variant_id'       => $item->variant_id,
+                'variant_label'    => $item->variant?->variant_label,
+                'variant_sku'      => $item->variant?->sku,
                 'quantity_ordered'  => (float) $item->quantity_ordered,
                 'quantity_received' => (float) $item->quantity_received,
                 'remaining_qty'    => $item->remaining_qty,
@@ -139,7 +142,7 @@ class GoodsReceivedNoteService
             return [];
         }
 
-        $pos = PurchaseOrder::with(['items.product.baseUnit', 'items.unit', 'items.attribute'])
+        $pos = PurchaseOrder::with(['items.product.baseUnit', 'items.unit', 'items.attribute', 'items.variant'])
             ->whereIn('id', $poIds)
             ->get();
 
@@ -159,6 +162,9 @@ class GoodsReceivedNoteService
                     'unit_id'          => $item->unit_id,
                     'attribute_id'     => $item->attribute_id,
                     'attribute_name'   => $item->attribute?->attribute_name,
+                    'variant_id'       => $item->variant_id,
+                    'variant_label'    => $item->variant?->variant_label,
+                    'variant_sku'      => $item->variant?->sku,
                     'quantity_ordered'  => (float) $item->quantity_ordered,
                     'quantity_received' => (float) $item->quantity_received,
                     'remaining_qty'    => $item->remaining_qty,
@@ -278,7 +284,7 @@ class GoodsReceivedNoteService
             $this->syncItems($grn, $data->items);
             $this->recalculateTotal($grn);
 
-            return $grn->load(['items.product.baseUnit', 'items.unit', 'items.attribute', 'purchaseOrder', 'supplier', 'store', 'location']);
+            return $grn->load(['items.product.baseUnit', 'items.unit', 'items.attribute', 'items.variant', 'purchaseOrder', 'supplier', 'store', 'location']);
         });
     }
 
@@ -305,7 +311,7 @@ class GoodsReceivedNoteService
             $this->syncItems($grn, $data->items);
             $this->recalculateTotal($grn);
 
-            return $grn->load(['items.product.baseUnit', 'items.unit', 'items.attribute', 'purchaseOrder', 'supplier', 'store', 'location']);
+            return $grn->load(['items.product.baseUnit', 'items.unit', 'items.attribute', 'items.variant', 'purchaseOrder', 'supplier', 'store', 'location']);
         });
     }
 
@@ -384,6 +390,7 @@ class GoodsReceivedNoteService
                             'reference_id'     => $grn->id,
                             'product_id'       => $item->product_id,
                             'attribute_id'     => $item->attribute_id,
+                            'variant_id'       => $item->variant_id,
                             'store_id'         => $grn->store_id,
                             'location_id'      => $grn->location_id,
                             'batch_no'         => $batch->batch_no,
@@ -422,6 +429,7 @@ class GoodsReceivedNoteService
                         'reference_id'     => $grn->id,
                         'product_id'       => $item->product_id,
                         'attribute_id'     => $item->attribute_id,
+                        'variant_id'       => $item->variant_id,
                         'store_id'         => $grn->store_id,
                         'location_id'      => $grn->location_id,
                         'batch_no'         => $item->batch_no,
@@ -482,7 +490,7 @@ class GoodsReceivedNoteService
                 $this->syncPoStatusAfterGrn($poId);
             }
 
-            return $grn->fresh(['items.product.baseUnit', 'items.unit', 'items.attribute', 'purchaseOrder', 'supplier', 'store', 'location']);
+            return $grn->fresh(['items.product.baseUnit', 'items.unit', 'items.attribute', 'items.variant', 'purchaseOrder', 'supplier', 'store', 'location']);
         });
     }
 
@@ -633,12 +641,23 @@ class GoodsReceivedNoteService
                 ? ($poItem[$row['po_item_id']]?->attribute_id ?? null)
                 : (!empty($row['attribute_id']) ? (int) $row['attribute_id'] : null);
 
+            // Variant: the PO's by default; a variant picked on the GRN overrides it (the
+            // supplier shipped a different one) and brings its own colour with it — the
+            // request already derived attribute_id from the chosen variant.
+            $variantId = !empty($row['variant_id'])
+                ? (int) $row['variant_id']
+                : ($hasPoItem ? ($poItem[$row['po_item_id']]?->variant_id ?? null) : null);
+            if (!empty($row['variant_id']) && $hasPoItem) {
+                $attributeId = !empty($row['attribute_id']) ? (int) $row['attribute_id'] : null;
+            }
+
             $grnItem = GoodsReceivedNoteItem::create([
                 'grn_id'            => $grn->id,
                 'po_item_id'        => $hasPoItem ? (int) $row['po_item_id'] : null,
                 'product_id'        => (int) $row['product_id'],
                 'unit_id'           => $unitId,
                 'attribute_id'      => $attributeId,
+                'variant_id'        => $variantId,
                 'quantity_ordered'  => $ordered,
                 'quantity_received' => $qtyRcv,
                 'conversion_factor' => $line['factor'],

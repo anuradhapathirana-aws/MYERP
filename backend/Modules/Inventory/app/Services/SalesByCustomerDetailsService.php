@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Services;
 
+use Modules\Inventory\Support\VariantReportFilters;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -56,6 +57,7 @@ class SalesByCustomerDetailsService
             ->join('inv_products as p', 'p.id', '=', 'ii.product_id')
             ->join('inv_customer_masters as cu', 'cu.id', '=', 'i.customer_id')
             ->leftJoin('inv_attributes as a', 'a.id', '=', 'ii.attribute_id')
+            ->leftJoin('inv_product_variants as v', 'v.id', '=', 'ii.variant_id')
             ->leftJoin('inv_unit_types as u', 'u.id', '=', 'ii.unit_id')
             ->leftJoinSub($rollNoSub, 'rn', fn ($j) => $j->on('rn.do_item_id', '=', 'ii.do_item_id'))
             ->where('i.status', InvoiceStatus::Paid->value)
@@ -70,12 +72,15 @@ class SalesByCustomerDetailsService
                     ->whereColumn('st.reference_id', 'i.do_id')
                     ->whereColumn('st.product_id', 'ii.product_id')
                     ->whereRaw('st.attribute_id <=> ii.attribute_id') // null-safe equal — colourless products carry NULL on both sides
+                    ->whereRaw('st.variant_id <=> ii.variant_id')
                     ->where('st.location_id', $locationId);
             }))
+            ->tap(fn ($q) => VariantReportFilters::apply($q, $filters, 'p', 'ii.variant_id', 'ii.attribute_id'))
             ->select([
                 'cu.id as customer_id', 'cu.customer_name',
                 'p.name as product_name',
-                'a.attribute_name',
+                // The variant label (Red / Floral / M) where there is one, else the colour.
+                DB::raw('COALESCE(v.variant_label, a.attribute_name) as attribute_name'),
                 DB::raw('COALESCE(u.symbol, u.name) as unit_label'),
                 'i.invoice_no', 'i.invoice_date',
                 'ii.quantity', 'ii.unit_price', 'ii.line_total',

@@ -19,6 +19,8 @@ class CustomerReturnItemResource extends JsonResource
             'product_code'    => $this->whenLoaded('product', fn () => $this->product?->product_code),
             'product_name'    => $this->whenLoaded('product', fn () => $this->product?->name),
             'attribute_name'  => $this->whenLoaded('attribute', fn () => $this->attribute?->attribute_name),
+            'variant_id'      => $this->variant_id,
+            'variant_label'   => $this->whenLoaded('variant', fn () => $this->variant?->variant_label),
             'unit_name'       => $this->whenLoaded('unit', fn () => $this->unit?->symbol ?: $this->unit?->name),
             'quantity'        => (float) $this->quantity,
             'base_quantity'   => (float) $this->base_quantity,

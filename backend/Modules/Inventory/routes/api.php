@@ -12,6 +12,7 @@ use Modules\Inventory\Http\Controllers\CustomerController;
 use Modules\Inventory\Http\Controllers\IndustryController;
 use Modules\Inventory\Http\Controllers\LocationController;
 use Modules\Inventory\Http\Controllers\ProductController;
+use Modules\Inventory\Http\Controllers\ProductVariantController;
 use Modules\Inventory\Http\Controllers\SalesChannelController;
 use Modules\Inventory\Http\Controllers\StoreController;
 use Modules\Inventory\Http\Controllers\StoreTypeController;
@@ -31,6 +32,7 @@ use Modules\Inventory\Http\Controllers\SupplierAttachmentController;
 use Modules\Inventory\Http\Controllers\GrnPdfController;
 use Modules\Inventory\Http\Controllers\GrnItemPieceController;
 use Modules\Inventory\Http\Controllers\GrnPieceLabelPdfController;
+use Modules\Inventory\Http\Controllers\GrnVariantLabelController;
 use Modules\Inventory\Http\Controllers\PieceLabelController;
 use Modules\Inventory\Http\Controllers\StockController;
 use Modules\Inventory\Http\Controllers\StockReferenceTypeController;
@@ -95,6 +97,12 @@ Route::middleware(['auth:sanctum', 'module:inventory'])->prefix('v1')->group(fun
         ->name('inventory.products.all');
     Route::get('products/next-code', [ProductController::class, 'nextProductCode'])
         ->name('inventory.products.next-code');
+
+    // Variant pickers — before the apiResource so 'product-variants' is not swallowed.
+    Route::get('product-variants/search', [ProductVariantController::class, 'search'])
+        ->name('inventory.product-variants.search');
+    Route::get('products/{product}/variants', [ProductVariantController::class, 'index'])
+        ->name('inventory.products.variants');
 
     Route::apiResource('products', ProductController::class)
         ->names('inventory.products');
@@ -199,6 +207,8 @@ Route::middleware(['auth:sanctum', 'module:inventory'])->prefix('v1')->group(fun
         ->name('inventory.stock.by-store');
     Route::get('stock/by-colour', [StockController::class, 'byColour'])
         ->name('inventory.stock.by-colour');
+    Route::get('stock/by-variant', [ProductVariantController::class, 'stock'])
+        ->name('inventory.stock.by-variant');
     Route::get('stock-reference-types/all', [StockReferenceTypeController::class, 'all'])
         ->name('inventory.stock-reference-types.all');
 
@@ -284,6 +294,10 @@ Route::middleware(['auth:sanctum', 'module:inventory'])->prefix('v1')->group(fun
 
     Route::get('goods-received-notes/{goods_received_note}/piece-labels/pdf', [GrnPieceLabelPdfController::class, 'download'])
         ->name('inventory.grns.piece-labels.pdf');
+    Route::get('goods-received-notes/{goods_received_note}/variant-labels', [GrnVariantLabelController::class, 'index'])
+        ->name('inventory.grns.variant-labels');
+    Route::get('goods-received-notes/{goods_received_note}/variant-labels/pdf', [GrnVariantLabelController::class, 'pdf'])
+        ->name('inventory.grns.variant-labels.pdf');
     Route::apiResource('goods-received-notes', GoodsReceivedNoteController::class)
         ->names('inventory.grns');
 

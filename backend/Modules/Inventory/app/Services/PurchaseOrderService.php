@@ -65,7 +65,7 @@ class PurchaseOrderService
         return PurchaseOrder::with([
             'items.product',
             'items.unit',
-            'items.attribute',
+            'items.attribute', 'items.variant',
             'items.prItem',
             'supplier',
             'store',
@@ -78,7 +78,7 @@ class PurchaseOrderService
     /** Load PR items into PO draft (pre-populate from an approved PR) */
     public function loadFromPR(int $prId): array
     {
-        $pr = PurchaseRequest::with(['items.product', 'items.unit', 'items.attribute'])->findOrFail($prId);
+        $pr = PurchaseRequest::with(['items.product', 'items.unit', 'items.attribute', 'items.variant'])->findOrFail($prId);
 
         if ($pr->status !== PurchaseRequestStatus::Approved) {
             abort(422, 'Purchase requests must be approved before creating a PO.');
@@ -91,6 +91,8 @@ class PurchaseOrderService
                 'product_id'     => $item->product_id,
                 'unit_id'        => $item->unit_id,
                 'attribute_id'   => $item->attribute_id,
+                'variant_id'     => $item->variant_id,
+                'variant_label'  => $item->variant?->variant_label,
                 'quantity_ordered' => (float) $item->quantity,
                 'unit_price'     => (float) ($item->estimated_unit_price ?? 0),
                 'product'        => [
@@ -140,7 +142,7 @@ class PurchaseOrderService
                     ->update(['status' => PurchaseRequestStatus::Completed->value]);
             }
 
-            return $po->load(['items.product', 'items.unit', 'items.attribute', 'supplier', 'store', 'purchaseRequest']);
+            return $po->load(['items.product', 'items.unit', 'items.attribute', 'items.variant', 'supplier', 'store', 'purchaseRequest']);
         });
     }
 
@@ -180,7 +182,7 @@ class PurchaseOrderService
                 $this->recalculateTotals($po);
             }
 
-            return $po->load(['items.product', 'items.unit', 'items.attribute', 'supplier', 'store', 'purchaseRequest']);
+            return $po->load(['items.product', 'items.unit', 'items.attribute', 'items.variant', 'supplier', 'store', 'purchaseRequest']);
         });
     }
 
@@ -251,6 +253,7 @@ class PurchaseOrderService
                     'product_id'        => (int) $row['product_id'],
                     'unit_id'           => !empty($row['unit_id']) ? (int) $row['unit_id'] : null,
                     'attribute_id'      => !empty($row['attribute_id']) ? (int) $row['attribute_id'] : null,
+                    'variant_id'        => !empty($row['variant_id']) ? (int) $row['variant_id'] : null,
                     'pr_item_id'        => !empty($row['pr_item_id']) ? (int) $row['pr_item_id'] : null,
                     'quantity_ordered'  => $qty,
                     'quantity_received' => 0,

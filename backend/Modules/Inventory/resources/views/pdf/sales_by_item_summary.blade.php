@@ -100,7 +100,7 @@
     <thead>
       <tr>
         <th>Description</th>
-        <th>Colour</th>
+        <th>Colour / Variant</th>
         <th style="width:60px;">Unit</th>
         <th class="ta-r" style="width:70px;">Qty</th>
         <th class="ta-r" style="width:85px;">Amount ({{ $cur }})</th>

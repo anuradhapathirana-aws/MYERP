@@ -18,6 +18,8 @@ import {
 } from '../../api/salesOrders'
 import SalesOrderRollPickerModal from '../../components/inventory/SalesOrderRollPickerModal'
 import ProductSearchCell from '../../components/inventory/ProductSearchCell'
+import VariantSelect from '../../components/inventory/VariantSelect'
+import { getProductVariants } from '../../api/variants'
 import { getProducts, getProduct } from '../../api/products'
 import { colourStockMap, getColourStock, getProductStock } from '../../api/stock'
 import { getAllCustomers } from '../../api/customers'
@@ -233,6 +235,8 @@ function emptyItem() {
     attribute_id:    '', // colour — derived from rolls, or picked manually on no-roll lines
     color_name:      '',
     color_options:   [], // manual-line colour choices from the product's own attributes
+    variant_id:      '', // product variant (Red / Floral / M) — quantity products with variants
+    variant_options: [], // [{ id, variant_label, sku, attribute_id, stock, selling_price }]
     available_count: null, // in-stock rolls of the product (null = not fetched yet)
     available_weight: 0,
     available_stock: null, // total current stock — only checked when available_count is 0
@@ -264,11 +268,33 @@ function loadColourStock(setItems, rowKey, productId) {
     .catch(() => { /* silent — server guard still applies on save */ })
 }
 
-// Stock of the line's chosen colour on a quantity line (null = unknown / not checked).
-const colourAvailable = (row) =>
-  isQtyRow(row) && row.colour_stock && row.attribute_id
+// A quantity product that has variants is sold by variant (Red / Floral / M) —
+// the variant decides the colour, the stock and the default price.
+const hasVariants = (row) => row.variant_options?.length > 0
+
+// Fetch a quantity product's variants (all-store stock + default price) into row.variant_options.
+// Resolves once the row knows whether it has variants.
+function loadVariantOptions(setItems, rowKey, productId) {
+  return getProductVariants(productId)
+    .then((variants) => {
+      setItems((prev) => prev.map((row) => row._key === rowKey
+        ? { ...row, variant_options: variants, ...(variants.length > 0 ? { color_options: [] } : {}) }
+        : row))
+    })
+    .catch(() => { /* silent — the server still demands the variant */ })
+}
+
+// Stock of the line's chosen variant / colour on a quantity line (null = unknown / not checked).
+const colourAvailable = (row) => {
+  if (!isQtyRow(row)) return null
+  if (hasVariants(row)) {
+    const v = row.variant_options.find((o) => String(o.id) === String(row.variant_id))
+    return v && !row.allow_minus ? Number(v.stock) || 0 : null
+  }
+  return row.colour_stock && row.attribute_id
     ? (row.colour_stock[String(row.attribute_id)] ?? 0)
     : null
+}
 
 // A roll line no longer derives its quantity from the rolls: the customer may buy 50 yd
 // off a 100 m roll, and the roll gets cut at dispatch. Attaching rolls auto-fills the
@@ -642,8 +668,11 @@ export default function SalesOrderFormPage() {
         tax:          it.tax      || '',
         proforma_item_id: it.proforma_item_id ?? null,
         attribute_id: it.attribute_id != null ? String(it.attribute_id) : '',
-        color_name:   it.attribute?.name ?? '',
+        color_name:   it.variant?.name ?? it.attribute?.name ?? '',
         color_options: [],
+        variant_id:   it.variant_id != null ? String(it.variant_id) : '',
+        variant_options: [],
+        allow_minus:  Boolean(it.product?.allow_minus),
         available_count: null,
         available_weight: 0,
         available_stock: null,
@@ -679,6 +708,8 @@ export default function SalesOrderFormPage() {
         }).catch(() => { /* silent — server guard still applies on save */ })
         if (isQtyRow(r)) loadColourStock(setItems, r._key, r.product_id)
       })
+      // Variant products: load their variants (stock + price) for the picker
+      newItems.filter((r) => isQtyRow(r) && r.product_id).forEach((r) => loadVariantOptions(setItems, r._key, r.product_id))
       if (so.items.some((it) => parseFloat(it.discount) > 0)) setDiscountEnabled(true)
       if (so.items.some((it) => parseFloat(it.tax) > 0))      setTaxEnabled(true)
     }
@@ -828,6 +859,22 @@ export default function SalesOrderFormPage() {
     }
   }
 
+  // Picking a variant sets the line's colour and — unless the price came from a
+  // proforma quote — its default selling price (variant price, else product price).
+  const chooseVariant = (rowKey, variant) => {
+    setItems((prev) => prev.map((row) => {
+      if (row._key !== rowKey) return row
+      const price = variant && !row.proforma_item_id ? priceInPriceUom(variant.selling_price, row) : null
+      return {
+        ...row,
+        variant_id:   variant ? String(variant.id) : '',
+        attribute_id: variant?.attribute_id != null ? String(variant.attribute_id) : '',
+        color_name:   variant?.variant_label ?? '',
+        unit_price:   price != null ? String(Number(price.toFixed(4))) : row.unit_price,
+      }
+    }))
+  }
+
   const selectProduct = (rowKey, product) => {
     const defaultUnitTypeId = product.base_unit_type_id ?? product.cost_details?.[0]?.unit_type_id
     setItems((prev) => prev.map((row) =>
@@ -849,6 +896,9 @@ export default function SalesOrderFormPage() {
             attribute_id: '',
             color_name:   '',
             color_options: [],
+            variant_id:   '',
+            variant_options: [],
+            allow_minus:  Boolean(product.allow_minus),
             available_count: null,
             available_stock: null,
             stock_tracking: product.stock_tracking ?? 'roll',
@@ -909,7 +959,11 @@ export default function SalesOrderFormPage() {
           .catch(() => { /* silent — server guard still applies on save */ })
         loadColourStock(setItems, rowKey, product.id)
       }
-      setTimeout(() => focusCell(rowKey, 'color'), 50)
+      // Focus the Colour / Variant cell only once the variants are known — focusing it
+      // earlier opens the plain Colour pad, which the Variant picker then replaces,
+      // closing the pad before anything can be picked.
+      loadVariantOptions(setItems, rowKey, product.id)
+        .finally(() => setTimeout(() => focusCell(rowKey, 'color'), 50))
       return
     }
 
@@ -1071,6 +1125,8 @@ export default function SalesOrderFormPage() {
         unit_id:          line.unit_id != null ? String(line.unit_id) : row.unit_id,
         price_unit_id:    line.unit_id != null ? String(line.unit_id) : row.price_unit_id,
         attribute_id:     line.attribute_id != null ? String(line.attribute_id) : '',
+        variant_id:       line.variant_id != null ? String(line.variant_id) : '',
+        color_name:       line.variant?.name ?? row.color_name,
         quantity:         String(line.remaining_quantity),
         unit_price:       String(line.so_unit_price),
         discount:         Number(line.discount) > 0 ? String(line.discount) : '',
@@ -1263,10 +1319,15 @@ export default function SalesOrderFormPage() {
     if (noColourLine)
       clientErrors.items = [`Select a colour for ${noColourLine.product_name}.`]
 
+    const noVariantLine = items.find((r) =>
+      isQtyRow(r) && r.product_id && parseFloat(r.quantity) > 0 && hasVariants(r) && !r.variant_id)
+    if (noVariantLine)
+      clientErrors.items = [`Select the variant (colour / design / size) for ${noVariantLine.product_name}.`]
+
     const noColourStockLine = items.find((r) =>
       r.product_id && parseFloat(r.quantity) > 0 && colourAvailable(r) !== null && colourAvailable(r) <= 0)
     if (noColourStockLine)
-      clientErrors.items = [`${noColourStockLine.product_name} has no available stock in the selected colour.`]
+      clientErrors.items = [`${noColourStockLine.product_name} has no available stock in the selected ${hasVariants(noColourStockLine) ? 'variant' : 'colour'}.`]
 
     const outOfStockLine = items.find((r) =>
       r.product_id && parseFloat(r.quantity) > 0 && r.available_stock === 0)
@@ -1326,6 +1387,7 @@ export default function SalesOrderFormPage() {
         unit_id:      r.unit_id ? parseInt(r.unit_id) : null,
         price_unit_id: r.price_unit_id ? parseInt(r.price_unit_id) : null,
         attribute_id: r.attribute_id ? parseInt(r.attribute_id) : null,
+        variant_id:   r.variant_id ? parseInt(r.variant_id) : null,
         quantity:     rowQty(r),
         unit_price:   parseFloat(r.unit_price) || 0,
         discount:     discountEnabled ? (parseFloat(r.discount) || 0) : 0,
@@ -1490,7 +1552,7 @@ export default function SalesOrderFormPage() {
             <th className="w-7 px-1.5 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">#</th>
             <th className="w-32 px-1.5 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">Code</th>
             <th className="px-1.5 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">Product</th>
-            <th className="w-20 px-1.5 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">Colour</th>
+            <th className="w-20 px-1.5 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">Colour / Variant</th>
             <th className="w-16 px-1.5 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">UOM</th>
             {/* Quantity sits right after UOM so a line reads naturally — "100 Yd at 500/m". */}
             <th className="w-32 px-1.5 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">Quantity</th>
@@ -1551,7 +1613,7 @@ export default function SalesOrderFormPage() {
                     {isQtyRow(row) && row.product_id && row.available_stock !== 0 && (
                       colourAvailable(row) !== null ? (
                         <span className={`mt-0.5 inline-block rounded px-1.5 py-px text-[9px] font-bold ${colourAvailable(row) > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-500'}`}>
-                          {colourAvailable(row) > 0 ? `In stock: ${fmtQty(colourAvailable(row))}` : 'No stock in this colour'}
+                          {colourAvailable(row) > 0 ? `In stock: ${fmtQty(colourAvailable(row))}` : `No stock in this ${hasVariants(row) ? 'variant' : 'colour'}`}
                         </span>
                       ) : row.available_stock != null && (
                         <span className="mt-0.5 inline-block rounded bg-slate-100 px-1.5 py-px text-[9px] font-bold text-slate-500">
@@ -1573,6 +1635,17 @@ export default function SalesOrderFormPage() {
                   <td className="px-1.5 py-1">
                     {isScanned ? (
                       <span className="text-xs text-slate-600">{row.color_name || <span className="italic text-slate-300">—</span>}</span>
+                    ) : hasVariants(row) ? (
+                      <VariantSelect
+                        cellRef={setCellRef(row._key, 'color')}
+                        options={row.variant_options}
+                        value={row.variant_id}
+                        onChange={(v) => chooseVariant(row._key, v)}
+                        onNext={() => focusCell(row._key, 'unit')}
+                        disabled={Boolean(row.proforma_item_id) && Boolean(row.variant_id)}
+                        error={parseFloat(row.quantity) > 0 && !row.variant_id}
+                        showStock={!row.allow_minus}
+                      />
                     ) : (
                       <DropdownSelectCell
                         cellRef={setCellRef(row._key, 'color')}
@@ -1832,9 +1905,18 @@ export default function SalesOrderFormPage() {
                 />
               </div>
               <div>
-                <label className={LABEL_CLS}>Colour</label>
+                <label className={LABEL_CLS}>{hasVariants(row) ? 'Variant' : 'Colour'}</label>
                 {isScanned ? (
                   <input readOnly value={row.color_name || '—'} className={TABLE_INPUT_RO} />
+                ) : hasVariants(row) ? (
+                  <VariantSelect
+                    options={row.variant_options}
+                    value={row.variant_id}
+                    onChange={(v) => chooseVariant(row._key, v)}
+                    disabled={Boolean(row.proforma_item_id) && Boolean(row.variant_id)}
+                    error={parseFloat(row.quantity) > 0 && !row.variant_id}
+                    showStock={!row.allow_minus}
+                  />
                 ) : (
                   <DropdownSelectCell
                     value={row.attribute_id}

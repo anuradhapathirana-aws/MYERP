@@ -12,6 +12,7 @@ import { getAllLocations } from '../../../api/locations'
 import { getAllProducts } from '../../../api/products'
 import Breadcrumb from '../../../components/Breadcrumb'
 import TableFilter, { FilterField } from '../../../components/TableFilter'
+import ReportVariantFilters from '../../../components/inventory/ReportVariantFilters'
 import CollapsibleCard from '../../../components/ui/CollapsibleCard'
 import FilterSearchSelect from '../../../components/ui/FilterSearchSelect'
 import { ExcelBtn, PdfBtn, PrintBtn } from '../../../components/ui/ActionButtons'
@@ -29,6 +30,8 @@ const CRUMBS = [
 // Booleans travel as '' / '1' — the same shape every other filter uses, so the panel's
 // active-filter badge counts this tick like any other applied filter.
 const INITIAL_FILTERS = {
+  item_type: '',
+  attribute_values: '',
   product_id: '',
   category_id: '',
   attribute_id: '',
@@ -203,6 +206,7 @@ export default function AvailableStockReport() {
             <span className="font-medium">Include Selling Price</span>
           </label>
         </div>
+        <ReportVariantFilters draft={draft} setDraft={setDraft} />
       </TableFilter>
 
       {/* ── Report header (company + applied filters) — collapsed by default ── */}
@@ -228,6 +232,8 @@ export default function AvailableStockReport() {
             <HeaderItem label="Generated Time" value={header.generated_at} />
             <HeaderItem label="Items In Stock" value={Number(header.row_count ?? 0).toLocaleString()} />
             <HeaderItem label="Selling Price" value={withPrice ? 'Included' : 'Not included'} />
+            <HeaderItem label="Item Type" value={header.item_type_label ?? 'All'} />
+            <HeaderItem label="Attributes" value={header.attribute_values_label ?? 'All'} />
           </div>
         </CollapsibleCard>
       )}
@@ -251,7 +257,7 @@ export default function AvailableStockReport() {
                 <tr className="border-b border-slate-200 bg-slate-50 text-left">
                   <th className="w-10 bg-slate-50 px-3 py-1.5 font-semibold uppercase tracking-wider text-slate-500">#</th>
                   <th className="bg-slate-50 px-3 py-1.5 font-semibold uppercase tracking-wider text-slate-500">Product Name</th>
-                  <th className="w-40 bg-slate-50 px-3 py-1.5 font-semibold uppercase tracking-wider text-slate-500">Colour</th>
+                  <th className="w-48 bg-slate-50 px-3 py-1.5 font-semibold uppercase tracking-wider text-slate-500">Colour / Variant</th>
                   <th className="w-40 bg-slate-50 px-3 py-1.5 text-right font-semibold uppercase tracking-wider text-slate-500">Available Qty</th>
                   {withPrice && (
                     <th className="w-36 bg-slate-50 px-3 py-1.5 text-right font-semibold uppercase tracking-wider text-slate-500">Selling Price</th>
@@ -265,10 +271,13 @@ export default function AvailableStockReport() {
                   </tr>
                 ) : (
                   rows.map((row, i) => (
-                    <tr key={`${row.product_id}-${row.attribute_id ?? 0}`} className="transition-colors hover:bg-slate-50">
+                    <tr key={`${row.product_id}-${row.attribute_id ?? 0}-${row.variant_id ?? 0}`} className="transition-colors hover:bg-slate-50">
                       <td className="px-3 py-2 text-slate-400">{i + 1}</td>
                       <td className="max-w-0 truncate px-3 py-2 font-medium text-slate-800" title={row.product_name}>{row.product_name}</td>
-                      <td className="px-3 py-2 text-slate-500">{row.attribute_name || <span className="italic text-slate-300">—</span>}</td>
+                      <td className="px-3 py-2 text-slate-500" title={row.variant_sku || undefined}>
+                        {row.variant_label || row.attribute_name || <span className="italic text-slate-300">—</span>}
+                        {row.variant_sku && <div className="font-mono text-[10px] text-slate-400">{row.variant_sku}</div>}
+                      </td>
                       <td className={`${NUM_TD} font-semibold text-slate-800`}>
                         {fmtQty(row.available_qty)}
                         {row.unit && <span className="ml-1 text-[10px] font-normal text-slate-400">{row.unit}</span>}

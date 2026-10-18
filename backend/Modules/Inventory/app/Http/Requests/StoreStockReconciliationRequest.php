@@ -9,9 +9,21 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Modules\Inventory\Models\Product;
 use Modules\Inventory\Models\ProductAttribute;
+use Modules\Inventory\Models\ProductVariant;
 
 class StoreStockReconciliationRequest extends FormRequest
 {
+    /** A variant count's colour is the variant's — never trusted from input. */
+    protected function prepareForValidation(): void
+    {
+        if (is_numeric($this->input('variant_id'))) {
+            $variant = ProductVariant::with('values')->find((int) $this->input('variant_id'));
+            if ($variant !== null) {
+                $this->merge(['attribute_id' => $variant->colourAttributeId()]);
+            }
+        }
+    }
+
     public function authorize(): bool
     {
         return true;
@@ -23,6 +35,7 @@ class StoreStockReconciliationRequest extends FormRequest
         return [
             'product_id'    => ['required', 'integer', 'exists:inv_products,id'],
             'attribute_id'  => ['nullable', 'integer', 'exists:inv_attributes,id'],
+            'variant_id'    => ['nullable', 'integer'],
             'store_id'      => ['required', 'integer', 'exists:inv_stores,id'],
             'location_id'   => ['required', 'integer', 'exists:inv_locations,id'],
             'batch_id'      => ['nullable', 'integer', 'exists:inv_batches,id'],
@@ -52,9 +65,23 @@ class StoreStockReconciliationRequest extends FormRequest
                 $validator->errors()->add('counted_qty', 'Enter the counted quantity, or attach at least one roll to correct.');
             }
 
+            // A product with variants is counted per variant (Red / M on its own).
+            $productId = (int) $this->input('product_id');
+            $variantId = is_numeric($this->input('variant_id')) ? (int) $this->input('variant_id') : null;
+            if ($variantId !== null) {
+                $variant = ProductVariant::find($variantId);
+                if ($variant === null || (int) $variant->product_id !== $productId) {
+                    $validator->errors()->add('variant_id', 'This variant does not belong to the selected product.');
+                }
+                return;
+            }
+            if ($hasCountedQty && !$hasPieces && ProductVariant::productIdsWithVariants([$productId]) !== []) {
+                $validator->errors()->add('variant_id', 'Select the variant being counted.');
+                return;
+            }
+
             // A quantity-tracked product is counted per colour: one that offers
             // colours needs the colour being counted.
-            $productId = (int) $this->input('product_id');
             if ($hasCountedQty && !$hasPieces && !$this->filled('attribute_id')
                 && Product::rollTrackedIds([$productId]) === []
                 && ProductAttribute::colourProductIds([$productId]) !== []) {

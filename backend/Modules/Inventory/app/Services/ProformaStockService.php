@@ -24,15 +24,16 @@ class ProformaStockService
     public function __construct(
         private readonly ColourStockService $colourStock,
         private readonly UnitConversionService $units,
+        private readonly VariantStockService $variantStock,
     ) {
     }
 
     /**
      * @return array{available_qty: float, stock_status: string}
      */
-    public function check(int $productId, ?int $attributeId, ?int $unitId, float $quantity): array
+    public function check(int $productId, ?int $attributeId, ?int $unitId, float $quantity, ?int $variantId = null): array
     {
-        $available = $this->availableInLineUnit($productId, $attributeId, $unitId);
+        $available = $this->availableInLineUnit($productId, $attributeId, $unitId, $variantId);
 
         $status = match (true) {
             $available <= 0.0                         => ProformaInvoiceItem::STOCK_NONE,
@@ -43,7 +44,7 @@ class ProformaStockService
         return ['available_qty' => round($available, 4), 'stock_status' => $status];
     }
 
-    private function availableInLineUnit(int $productId, ?int $attributeId, ?int $unitId): float
+    private function availableInLineUnit(int $productId, ?int $attributeId, ?int $unitId, ?int $variantId = null): float
     {
         $product = Product::find($productId);
         if ($product === null) {
@@ -52,7 +53,9 @@ class ProformaStockService
 
         $base = $product->isRollTracked()
             ? $this->rollStock($productId, $attributeId)
-            : $this->quantityStock($productId, $attributeId);
+            : ($variantId !== null
+                ? $this->variantStock->available($productId, $variantId)
+                : $this->quantityStock($productId, $attributeId));
 
         $base = max(0.0, $base);
 

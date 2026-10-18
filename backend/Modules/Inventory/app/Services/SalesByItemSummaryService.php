@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Services;
 
+use Modules\Inventory\Support\VariantReportFilters;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -54,6 +55,7 @@ class SalesByItemSummaryService
             ->join('inv_products as p', 'p.id', '=', 'ii.product_id')
             ->join('inv_categories as c', 'c.id', '=', 'p.category_id')
             ->leftJoin('inv_attributes as a', 'a.id', '=', 'ii.attribute_id')
+            ->leftJoin('inv_product_variants as v', 'v.id', '=', 'ii.variant_id')
             ->leftJoin('inv_unit_types as u', 'u.id', '=', 'ii.unit_id')
             ->whereIn('i.status', [InvoiceStatus::Issued->value, InvoiceStatus::Paid->value])
             ->when($fromDate, fn ($q) => $q->where('i.invoice_date', '>=', $fromDate))
@@ -65,9 +67,11 @@ class SalesByItemSummaryService
                     ->whereColumn('st.reference_id', 'i.do_id')
                     ->whereColumn('st.product_id', 'ii.product_id')
                     ->whereRaw('st.attribute_id <=> ii.attribute_id') // null-safe equal — colourless products carry NULL on both sides
+                    ->whereRaw('st.variant_id <=> ii.variant_id')
                     ->where('st.location_id', $locationId);
             }))
             ->when($categoryId, fn ($q) => $q->where('p.category_id', $categoryId))
+            ->tap(fn ($q) => VariantReportFilters::apply($q, $filters, 'p', 'ii.variant_id', 'ii.attribute_id'))
             ->selectRaw(
                 'c.id as category_id,
                  c.category_name,
@@ -75,7 +79,8 @@ class SalesByItemSummaryService
                  p.name as product_name,
                  p.product_code,
                  a.id as attribute_id,
-                 a.attribute_name,
+                 COALESCE(v.variant_label, a.attribute_name) as attribute_name,
+                 v.sku as variant_sku,
                  ii.unit_id,
                  COALESCE(u.symbol, u.name) as unit_label,
                  SUM(ii.quantity) as qty,
@@ -84,12 +89,13 @@ class SalesByItemSummaryService
             ->groupBy(
                 'c.id', 'c.category_name',
                 'p.id', 'p.name', 'p.product_code',
-                'a.id', 'a.attribute_name',
+                'a.id', 'a.attribute_name', 'v.id', 'v.variant_label', 'v.sku',
                 'ii.unit_id', 'u.symbol', 'u.name'
             )
             ->orderBy('c.category_name')
             ->orderBy('p.name')
             ->orderBy('a.attribute_name')
+            ->orderBy('v.variant_label')
             ->limit(self::MAX_ROWS + 1)
             ->get();
 

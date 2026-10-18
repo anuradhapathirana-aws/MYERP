@@ -19,6 +19,7 @@ use Modules\Inventory\Models\DeliveryOrderPiece;
 use Modules\Inventory\Models\GrnItemPiece;
 use Modules\Inventory\Models\Product;
 use Modules\Inventory\Models\ProductLocationStore;
+use Modules\Inventory\Models\ProductVariant;
 use Modules\Inventory\Models\SalesOrder;
 use Modules\Inventory\Models\SalesOrderItem;
 use Modules\Inventory\Models\SalesOrderPiece;
@@ -44,6 +45,7 @@ class DeliveryOrderService
         private readonly UnitConversionService $units,
         private readonly RollService $rolls,
         private readonly ColourStockService $colourStock,
+        private readonly VariantStockService $variantStock,
     ) {
     }
 
@@ -100,6 +102,7 @@ class DeliveryOrderService
             'items.product.baseUnit',
             'items.unit',
             'items.attribute',
+            'items.variant',
             'items.pieces.piece.store',
             'items.pieces.piece.location',
             'items.pieces.piece.batch',
@@ -129,7 +132,7 @@ class DeliveryOrderService
     public function fromSalesOrder(int $soId): array
     {
         $so = SalesOrder::with([
-            'items.product.baseUnit', 'items.unit', 'items.attribute',
+            'items.product.baseUnit', 'items.unit', 'items.attribute', 'items.variant',
             'customer', 'salesPerson', 'orderTakenBy',
         ])->findOrFail($soId);
 
@@ -204,6 +207,7 @@ class DeliveryOrderService
                 // customer ordered in — the same arithmetic syncItems() applies on save.
                 'conversion_factor'  => (float) $item->conversion_factor ?: 1.0,
                 'attribute'          => $item->attribute ? ['id' => $item->attribute->id, 'name' => $item->attribute->attribute_name] : null,
+                'variant'            => $item->variant ? ['id' => $item->variant->id, 'sku' => $item->variant->sku, 'name' => $item->variant->variant_label] : null,
                 'is_scanned'         => $item->is_scanned,
                 'quantity'           => (float) $item->quantity,
                 'quantity_delivered' => (float) $item->quantity_delivered,
@@ -397,6 +401,7 @@ class DeliveryOrderService
                     'product_id'   => $soItem->product_id,
                     'unit_id'      => $soItem->unit_id,
                     'attribute_id' => $soItem->attribute_id,
+                    'variant_id'   => $soItem->variant_id,
                     'is_scanned'   => true,
                     'quantity'     => 0,
                     'remarks'      => $row['remarks'] ?? null,
@@ -437,6 +442,7 @@ class DeliveryOrderService
                     'product_id'   => $soItem->product_id,
                     'unit_id'      => $soItem->unit_id,
                     'attribute_id' => $soItem->attribute_id,
+                    'variant_id'   => $soItem->variant_id,
                     'is_scanned'   => false,
                     'quantity'     => $qty,
                     'remarks'      => $row['remarks'] ?? null,
@@ -597,6 +603,7 @@ class DeliveryOrderService
                         $groups[$key] ??= [
                             'product_id' => $item->product_id,
                             'attribute_id' => $item->attribute_id,
+                            'variant_id' => $item->variant_id,
                             'store_id'   => $live->store_id,
                             'location_id' => $live->location_id,
                             'batch_id'   => $live->batch_id,
@@ -629,6 +636,7 @@ class DeliveryOrderService
                     $groups["{$item->id}|manual"] = [
                         'product_id' => $item->product_id,
                         'attribute_id' => $item->attribute_id,
+                        'variant_id' => $item->variant_id,
                         'store_id'   => $do->store_id,
                         'location_id' => $do->location_id,
                         'batch_id'   => null,
@@ -686,15 +694,49 @@ class DeliveryOrderService
             // colours share it (30 Red + 20 Blue = 50). Each colour must cover its
             // own lines, read from the ledger. The pivot row locks taken above
             // serialise every concurrent writer of these products.
-            $colourNeeds = [];
+            $colourNeeds  = [];
+            $variantNeeds = [];
             foreach ($groups as $group) {
                 $product = $productsById->get($group['product_id']);
-                if ($group['piece_rows'] !== [] || $group['attribute_id'] === null
-                    || $product === null || $product->isRollTracked() || $product->allow_minus) {
+                if ($group['piece_rows'] !== [] || $product === null || $product->isRollTracked() || $product->allow_minus) {
+                    continue;
+                }
+                // Variant lines check their variant's own balance (Red / M), not the colour's.
+                if ($group['variant_id'] !== null) {
+                    $key = "{$group['product_id']}|{$group['variant_id']}|{$group['store_id']}|{$group['location_id']}";
+                    $variantNeeds[$key] = ($variantNeeds[$key] ?? 0.0) + $group['qty'];
+                    continue;
+                }
+                if ($group['attribute_id'] === null) {
                     continue;
                 }
                 $key = "{$group['product_id']}|{$group['attribute_id']}|{$group['store_id']}|{$group['location_id']}";
                 $colourNeeds[$key] = ($colourNeeds[$key] ?? 0.0) + $group['qty'];
+            }
+
+            foreach ($variantNeeds as $key => $needed) {
+                [$productId, $variantId, $storeId, $locationId] = array_map(
+                    fn ($v) => $v === '' ? null : (int) $v,
+                    explode('|', $key),
+                );
+
+                $balance = $this->variantStock->available($productId, $variantId, $storeId, $locationId);
+
+                if ($balance - $needed < -self::EPSILON) {
+                    $product = $productsById->get($productId);
+                    $symbol  = $product?->baseUnit?->symbol ?? $product?->baseUnit?->name ?? '';
+                    $label   = ProductVariant::whereKey($variantId)->value('variant_label') ?: "variant #{$variantId}";
+
+                    abort(422, sprintf(
+                        'Insufficient stock for %s (%s): available %s %s, required %s %s.',
+                        $product?->name ?? "product #{$productId}",
+                        $label,
+                        number_format($balance, 4),
+                        $symbol,
+                        number_format($needed, 4),
+                        $symbol,
+                    ));
+                }
             }
 
             foreach ($colourNeeds as $key => $needed) {
@@ -737,6 +779,7 @@ class DeliveryOrderService
                     'reference_id'     => $do->id,
                     'product_id'       => $group['product_id'],
                     'attribute_id'     => $group['attribute_id'],
+                    'variant_id'       => $group['variant_id'],
                     'store_id'         => $group['store_id'],
                     'location_id'      => $group['location_id'],
                     'batch_no'         => $batch?->batch_no,

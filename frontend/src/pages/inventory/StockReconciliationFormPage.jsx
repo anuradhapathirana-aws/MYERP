@@ -14,6 +14,8 @@ import { getAllProducts, getProduct } from '../../api/products'
 import { getAllStores } from '../../api/stores'
 import { getAllLocations } from '../../api/locations'
 import { getColourStock, getProductStock } from '../../api/stock'
+import { getProductVariants } from '../../api/variants'
+import VariantSelect from '../../components/inventory/VariantSelect'
 import Breadcrumb from '../../components/Breadcrumb'
 import StockReconciliationRollPickerModal from '../../components/inventory/StockReconciliationRollPickerModal'
 import { confirmAction, confirmWithReason, showError, showSuccess } from '../../utils/alerts'
@@ -43,6 +45,7 @@ export default function StockReconciliationFormPage() {
   const [form, setForm] = useState({
     product_id: '',
     attribute_id: '', // colour being counted (quantity-tracked products)
+    variant_id: '', // variant being counted (products with variants)
     store_id: '',
     location_id: '',
     unit_id: '',
@@ -97,12 +100,28 @@ export default function StockReconciliationFormPage() {
     enabled:  isQtyProduct && Boolean(form.store_id) && Boolean(form.location_id) && !isEdit,
   })
 
+  // Products with variants are counted per variant (Red / M), with each variant's
+  // balance in this store/location — zero-stock variants included (found stock).
+  const { data: variantRows } = useQuery({
+    queryKey: ['variant-stock', form.product_id, form.store_id, form.location_id],
+    queryFn:  () => getProductVariants(form.product_id, { storeId: form.store_id, locationId: form.location_id }),
+    enabled:  isQtyProduct && Boolean(form.product_id) && Boolean(form.store_id) && Boolean(form.location_id),
+  })
+  const hasVariants = (variantRows?.length ?? 0) > 0 || Boolean(existing?.variant_id)
+  const variantOptions = variantRows?.length
+    ? variantRows
+    : (existing?.variant ? [{ id: existing.variant.id, variant_label: existing.variant.name, sku: existing.variant.sku, stock: 0 }] : [])
+
   // On a new reconciliation the mode follows the product's tracking: quantity-tracked
   // items are counted, roll-tracked ones corrected roll by roll.
   const activeMode = !isEdit && productDetail ? (isQtyProduct ? 'qty' : 'rolls') : mode
 
   const systemQtyLive = useMemo(() => {
     if (isEdit) return existing?.system_qty_base ?? null
+    if (isQtyProduct && hasVariants) {
+      if (!form.variant_id || !variantRows) return null
+      return Number(variantRows.find((v) => String(v.id) === String(form.variant_id))?.stock ?? 0)
+    }
     if (isQtyProduct && form.attribute_id) {
       if (!colourRows) return null
       return colourRows
@@ -113,7 +132,7 @@ export default function StockReconciliationFormPage() {
     if (!form.location_id) return stockInfo.total_stock
     const row = stockInfo.breakdown?.find((b) => String(b.location_id) === String(form.location_id))
     return row ? Number(row.current_stock) : 0
-  }, [isEdit, existing, stockInfo, form.location_id, isQtyProduct, form.attribute_id, colourRows])
+  }, [isEdit, existing, stockInfo, form.location_id, isQtyProduct, form.attribute_id, colourRows, hasVariants, form.variant_id, variantRows])
 
   // Load an existing draft/submitted reconciliation into form state
   useEffect(() => {
@@ -121,6 +140,7 @@ export default function StockReconciliationFormPage() {
     setForm({
       product_id: existing.product_id ?? '',
       attribute_id: existing.attribute_id ?? '',
+      variant_id: existing.variant_id ?? '',
       store_id: existing.store_id ?? '',
       location_id: existing.location_id ?? '',
       unit_id: existing.unit_id ?? '',
@@ -213,6 +233,7 @@ export default function StockReconciliationFormPage() {
     } else {
       payload.counted_qty = form.counted_qty
       payload.attribute_id = form.attribute_id || null
+      payload.variant_id = hasVariants ? (form.variant_id || null) : null
     }
     setErrors({})
     saveMutation.mutate(payload)
@@ -460,7 +481,22 @@ export default function StockReconciliationFormPage() {
 
             {activeMode === 'qty' ? (
               <div>
-                {isQtyProduct && (
+                {isQtyProduct && hasVariants && (
+                  <div className="mb-2">
+                    <label className={LABEL_CLS}>Variant *</label>
+                    <VariantSelect
+                      options={variantOptions}
+                      value={form.variant_id}
+                      disabled={!isDraft || !form.store_id || !form.location_id}
+                      placeholder={form.store_id && form.location_id ? 'Select variant…' : 'Select store & location first…'}
+                      onChange={(v) => setForm((f) => ({ ...f, variant_id: v ? v.id : '', attribute_id: v?.attribute_id ?? '' }))}
+                      error={Boolean(errors.variant_id)}
+                      showStock
+                    />
+                    {errors.variant_id && <p className="mt-0.5 text-[10px] text-red-500">{errors.variant_id[0]}</p>}
+                  </div>
+                )}
+                {isQtyProduct && !hasVariants && (
                   <div className="mb-2">
                     <label className={LABEL_CLS}>Colour</label>
                     <select

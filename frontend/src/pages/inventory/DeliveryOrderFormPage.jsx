@@ -679,8 +679,8 @@ export default function DeliveryOrderFormPage() {
                     <div className="mb-1.5 flex flex-wrap items-center gap-2">
                       <span className="font-mono text-[10px] text-indigo-400">{line.product?.product_code}</span>
                       <span className="text-xs font-bold text-slate-700">{line.product?.name}</span>
-                      {line.attribute && (
-                        <span className="rounded-full bg-slate-100 px-1.5 py-px text-[9px] font-semibold text-slate-500">{line.attribute.name}</span>
+                      {(line.variant || line.attribute) && (
+                        <span className="rounded-full bg-slate-100 px-1.5 py-px text-[9px] font-semibold text-slate-500" title={line.variant?.sku}>{line.variant?.name ?? line.attribute.name}</span>
                       )}
                       <span className="text-[10px] text-slate-400">
                         Ordered <b className="font-semibold text-slate-500">{fmt(line.quantity)} {lineUom}</b>

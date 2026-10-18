@@ -166,7 +166,7 @@
         <tr>
           <th style="width:85px;">Code</th>
           <th>Description</th>
-          <th class="ta-c" style="width:55px;">Color</th>
+          <th class="ta-c" style="width:80px;">Colour / Variant</th>
           <th class="ta-r" style="width:70px;">Quantity</th>
           <th class="ta-r" style="width:78px;">{{ \Modules\Inventory\Support\Money::label('Unit Price') }}</th>
           <th class="ta-r" style="width:80px;">{{ \Modules\Inventory\Support\Money::label('Amount') }}</th>
@@ -177,7 +177,7 @@
         <tr>
           <td class="mono">{{ $item->product?->product_code ?? '—' }}</td>
           <td class="bold">{{ $item->product?->name ?? '—' }}</td>
-          <td class="ta-c">{{ $item->attribute?->attribute_name ?? '—' }}</td>
+          <td class="ta-c">{{ $item->variant?->variant_label ?? $item->attribute?->attribute_name ?? '—' }}</td>
           <td class="ta-r">
             {{ number_format((float) $item->quantity_ordered, 2) }}
             <span class="unit">{{ $item->unit?->symbol ?? $item->unit?->name }}</span>

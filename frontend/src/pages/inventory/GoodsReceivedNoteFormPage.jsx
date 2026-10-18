@@ -31,6 +31,9 @@ import Money from '../../components/ui/Money'
 import { CURRENCY, fmtMoney, fmtMoneyWithSymbol } from '../../utils/currency'
 import BatchAssignModal from '../../components/inventory/BatchAssignModal'
 import RollAssignModal from '../../components/inventory/RollAssignModal'
+import VariantSelect from '../../components/inventory/VariantSelect'
+import VariantLabelsModal from '../../components/inventory/VariantLabelsModal'
+import { getProductVariants } from '../../api/variants'
 import { showError, showSuccess } from '../../utils/alerts'
 import { printPdfBlob } from '../../utils/pdf'
 
@@ -591,13 +594,32 @@ export default function GoodsReceivedNoteFormPage() {
     return promise
   }
 
+  // Variants of a product (Red / Floral / M …). A product with variants is
+  // received by variant — its colour comes from the variant, so the plain
+  // Color picker is replaced by the Variant picker on that row.
+  const variantOptionsCache = useRef({})
+  const loadVariantOptions = (productId) => {
+    if (!productId) return Promise.resolve([])
+    if (!variantOptionsCache.current[productId]) {
+      variantOptionsCache.current[productId] = getProductVariants(productId).catch(() => [])
+    }
+    return variantOptionsCache.current[productId]
+  }
+
+  // Patch a row's colour + variant options; resolves true when the row has a picker to focus.
+  const patchLineOptions = (rowKey, productId, colours) =>
+    loadVariantOptions(productId).then((variants) => {
+      setItems((prev) => prev.map((r) => r._key === rowKey
+        ? { ...r, variant_options: variants, color_options: variants.length > 0 ? [] : colours }
+        : r))
+      return variants.length > 0 || colours.length > 0
+    })
+
   // Fetch color options for a batch of manual rows (edit-mode hydration) and patch them in once resolved.
   const hydrateColorOptions = (rows) => {
     rows.forEach((row) => {
       if (!row.product_id || row.po_item_id) return
-      loadColorOptions(row.product_id).then((options) => {
-        setItems((prev) => prev.map((r) => r._key === row._key ? { ...r, color_options: options } : r))
-      })
+      loadColorOptions(row.product_id).then((options) => patchLineOptions(row._key, row.product_id, options))
     })
   }
 
@@ -609,9 +631,7 @@ export default function GoodsReceivedNoteFormPage() {
     attrRehydratedRef.current = true
     colorOptionsCache.current = {}
     itemsRef.current.filter((r) => r.product_id && !r.po_item_id).forEach((row) => {
-      loadColorOptions(row.product_id).then((options) => {
-        setItems((prev) => prev.map((r) => r._key === row._key ? { ...r, color_options: options } : r))
-      })
+      loadColorOptions(row.product_id).then((options) => patchLineOptions(row._key, row.product_id, options))
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attributeTypes.length, allAttributes.length])
@@ -719,6 +739,9 @@ export default function GoodsReceivedNoteFormPage() {
         attribute_name:     it.attribute?.name ?? '',
         attribute_id:       it.attribute_id != null ? String(it.attribute_id) : '',
         color_options:      [],
+        variant_id:         it.variant_id != null ? String(it.variant_id) : '',
+        variant_label:      it.variant?.name ?? '',
+        variant_options:    [],
         quantity_ordered:   it.quantity_ordered,
         already_received:   null,
         remaining_qty:      null,
@@ -818,6 +841,9 @@ export default function GoodsReceivedNoteFormPage() {
     attribute_name:    it.attribute_name ?? '',
     attribute_id:      it.attribute_id != null ? String(it.attribute_id) : '',
     color_options:     [],
+    variant_id:        it.variant_id != null ? String(it.variant_id) : '',
+    variant_label:     it.variant_label ?? '',
+    variant_options:   [],
     quantity_ordered:  it.quantity_ordered,
     already_received:  it.quantity_received,
     remaining_qty:     it.remaining_qty,
@@ -955,6 +981,9 @@ export default function GoodsReceivedNoteFormPage() {
       rolls:             [],
       attribute_id:      '',
       color_options:     [],
+      variant_id:        '',
+      variant_label:     '',
+      variant_options:   [],
     }])
     // Auto-focus the product search input on the new row and pull it into view —
     // on long GRNs the new row lands below the fold of the scrolling items table.
@@ -1026,6 +1055,9 @@ export default function GoodsReceivedNoteFormPage() {
             expiry_date:  '',
             attribute_id: '',
             color_options: [],
+            variant_id:   '',
+            variant_label: '',
+            variant_options: [],
           }
         : row
     ))
@@ -1042,18 +1074,17 @@ export default function GoodsReceivedNoteFormPage() {
       }
     } catch { /* silent — price field stays empty */ }
 
-    loadColorOptions(product.id).then((options) => {
-      setItems((prev) => prev.map((row) => row._key === rowKey ? { ...row, color_options: options } : row))
-      // Auto-focus Color once its options are ready — skip straight to UOM if this
-      // product has none, since a disabled Color select can't receive focus.
-      setTimeout(() => focusCell(rowKey, options.length > 0 ? 'color' : 'uom'), 50)
-    })
+    loadColorOptions(product.id)
+      .then((options) => patchLineOptions(rowKey, product.id, options))
+      // Auto-focus Variant/Color once its options are ready — skip straight to UOM if
+      // this product has none, since a disabled picker can't receive focus.
+      .then((hasPicker) => setTimeout(() => focusCell(rowKey, hasPicker ? 'color' : 'uom'), 50))
   }
 
   const clearProductSelection = (rowKey) => {
     setItems((prev) => prev.map((row) =>
       row._key === rowKey
-        ? { ...row, product_id: null, product_code: '', product_name: '', is_batch: false, stock_tracking: 'roll', batches: [], rolls: [], attribute_id: '', color_options: [] }
+        ? { ...row, product_id: null, product_code: '', product_name: '', is_batch: false, stock_tracking: 'roll', batches: [], rolls: [], attribute_id: '', color_options: [], variant_id: '', variant_label: '', variant_options: [] }
         : row
     ))
     setProductSearch({ key: rowKey, query: '', results: [], open: false })
@@ -1145,7 +1176,7 @@ export default function GoodsReceivedNoteFormPage() {
       entry.qty += baseQty
       entry.rollCount += row.rolls?.length || 0
       entry.unconverted = entry.unconverted || unconverted
-      entry.colors.add(row.attribute_id || row._key)
+      entry.colors.add(row.variant_id || row.attribute_id || row._key)
       map.set(row.product_id, entry)
     })
 
@@ -1238,6 +1269,11 @@ export default function GoodsReceivedNoteFormPage() {
     }
   }
 
+  /* ── Variant QR labels (finished goods) ───────────────────── */
+  const [variantLabelsOpen, setVariantLabelsOpen] = useState(false)
+  const closeVariantLabels = useCallback(() => setVariantLabelsOpen(false), [])
+  const hasVariantLines = (existingGRN?.data?.items ?? []).some((it) => it.variant_id != null)
+
   /* ── Piece QR labels PDF ──────────────────────────────────── */
   const handlePrintPieceLabels = async () => {
     const grnId = isEdit ? id : null
@@ -1288,14 +1324,16 @@ export default function GoodsReceivedNoteFormPage() {
       return
     }
 
-    const itemsMissingColor = validItems.filter((r) => r.color_options?.length > 0 && !r.attribute_id)
+    const itemsMissingColor = validItems.filter((r) =>
+      r.variant_options?.length > 0 ? !r.variant_id : (r.color_options?.length > 0 && !r.attribute_id)
+    )
     if (itemsMissingColor.length) {
       setItemTouched((t) => {
         const next = { ...t }
         itemsMissingColor.forEach((r) => { next[r._key] = { ...next[r._key], color: true } })
         return next
       })
-      showError('Color is required for all line items.')
+      showError('Variant / Color is required for all line items.')
       return
     }
 
@@ -1327,6 +1365,7 @@ export default function GoodsReceivedNoteFormPage() {
         po_item_id:        r.po_item_id ? parseInt(r.po_item_id) : null,
         product_id:        parseInt(r.product_id),
         attribute_id:      r.attribute_id ? parseInt(r.attribute_id) : null,
+        variant_id:        r.variant_id ? parseInt(r.variant_id) : null,
         unit_id:           r.unit_id ? parseInt(r.unit_id) : null,
         quantity_received: parseFloat(r.quantity_received),
         unit_price:        parseFloat(r.unit_price) || 0,
@@ -1412,6 +1451,7 @@ export default function GoodsReceivedNoteFormPage() {
     // Color is validated in real time — a product that carries colors can't be
     // received without one, so flag it the moment the product lands on the row.
     if (field === 'color') {
+      if (row.product_id && row.variant_options?.length > 0) return row.variant_id ? null : 'Required'
       return (row.product_id && row.color_options?.length > 0 && !row.attribute_id) ? 'Required' : null
     }
 
@@ -1440,13 +1480,13 @@ export default function GoodsReceivedNoteFormPage() {
     const groups = {}
     items.forEach((row, idx) => {
       if (!row.product_id) return
-      const key = `${row.product_id}|${row.attribute_id || ''}`
+      const key = `${row.product_id}|${row.variant_id || row.attribute_id || ''}`
       ;(groups[key] ??= []).push(idx + 1)
     })
     const result = {}
     items.forEach((row) => {
       if (!row.product_id) return
-      const key = `${row.product_id}|${row.attribute_id || ''}`
+      const key = `${row.product_id}|${row.variant_id || row.attribute_id || ''}`
       const rowNumbers = groups[key]
       if (rowNumbers.length > 1) result[row._key] = rowNumbers
     })
@@ -1850,8 +1890,8 @@ export default function GoodsReceivedNoteFormPage() {
                     <th className="w-8 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">#</th>
                     <th className="w-24 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Code</th>
                     <th className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Product</th>
-                    <th className="w-20 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                      Color <span className="text-red-500">*</span>
+                    <th className="w-32 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                      Color / Variant <span className="text-red-500">*</span>
                     </th>
                     <th className="w-20 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 text-right">PO Qty</th>
                     <th className="w-20 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-600 text-right">Pending Qty</th>
@@ -1906,7 +1946,27 @@ export default function GoodsReceivedNoteFormPage() {
                         {/* Color — PO-linked rows inherit it read-only from the linked PO line;
                             manual rows have no PO item to inherit from, so pick it directly here. */}
                         <td className="px-2 py-1">
-                          {isManual ? (
+                          {isManual && row.variant_options?.length > 0 ? (
+                            <>
+                              <VariantSelect
+                                cellRef={setCellRef(row._key, 'color')}
+                                options={row.variant_options}
+                                value={row.variant_id}
+                                onChange={(v) => {
+                                  setItems((prev) => prev.map((r) => r._key === row._key
+                                    ? { ...r, variant_id: v ? String(v.id) : '', variant_label: v?.variant_label ?? '', attribute_id: v?.attribute_id != null ? String(v.attribute_id) : '' }
+                                    : r))
+                                  touchItemField(row._key, 'color')
+                                }}
+                                onNext={() => focusCell(row._key, 'uom')}
+                                onBlur={() => touchItemField(row._key, 'color')}
+                                error={!!getItemErr(row._key, 'color')}
+                              />
+                              {getItemErr(row._key, 'color') && (
+                                <p className="mt-0.5 text-[10px] text-red-500 leading-none">Required</p>
+                              )}
+                            </>
+                          ) : isManual ? (
                             <>
                               <FormDropdown
                                 compact
@@ -1925,7 +1985,7 @@ export default function GoodsReceivedNoteFormPage() {
                               )}
                             </>
                           ) : (
-                            <span className="text-slate-600">{row.attribute_name || <span className="text-slate-300">—</span>}</span>
+                            <span className="text-slate-600" title={row.variant_label || undefined}>{row.variant_label || row.attribute_name || <span className="text-slate-300">—</span>}</span>
                           )}
                         </td>
 
@@ -2265,6 +2325,19 @@ export default function GoodsReceivedNoteFormPage() {
                   <QrCode size={12} />
                   {isPrintingLabels ? 'Generating…' : 'Print Piece Labels'}
                 </button>
+              )}
+              {isEdit && existingGRN?.data?.status === 'confirmed' && hasVariantLines && (
+                <button
+                  type="button"
+                  onClick={() => setVariantLabelsOpen(true)}
+                  className="flex items-center gap-1.5 rounded border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-700 hover:bg-teal-100 transition-colors"
+                >
+                  <QrCode size={12} />
+                  Variant Labels
+                </button>
+              )}
+              {variantLabelsOpen && (
+                <VariantLabelsModal grnId={id} grnNo={existingGRN?.data?.grn_no} onClose={closeVariantLabels} />
               )}
             </div>
 

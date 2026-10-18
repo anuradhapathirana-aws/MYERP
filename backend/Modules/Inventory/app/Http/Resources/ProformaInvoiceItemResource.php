@@ -23,6 +23,7 @@ class ProformaInvoiceItemResource extends JsonResource
             'unit_id'           => $this->unit_id,
             'price_unit_id'     => $this->price_unit_id,
             'attribute_id'      => $this->attribute_id,
+            'variant_id'        => $this->variant_id,
             'quantity'          => (float) $this->quantity,
             'invoiced_quantity' => $invoiced !== null ? (float) $invoiced : null,
             'recalled_quantity' => $recalled !== null ? (float) $recalled : null,
@@ -52,6 +53,12 @@ class ProformaInvoiceItemResource extends JsonResource
             'attribute' => $this->whenLoaded('attribute', fn () => $this->attribute ? [
                 'id'   => $this->attribute->id,
                 'name' => $this->attribute->attribute_name,
+            ] : null),
+            // Product variant (Red / Floral / M) — null for roll products / products without variants.
+            'variant' => $this->whenLoaded('variant', fn () => $this->variant ? [
+                'id'   => $this->variant->id,
+                'sku'  => $this->variant->sku,
+                'name' => $this->variant->variant_label,
             ] : null),
         ];
     }

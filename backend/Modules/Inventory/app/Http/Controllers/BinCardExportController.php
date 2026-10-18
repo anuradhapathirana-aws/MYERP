@@ -56,7 +56,7 @@ class BinCardExportController extends Controller
 
             $uomTag = $header['uom'] ? " ({$header['uom']})" : '';
             fputcsv($out, [
-                'Date', 'Description', 'Document No', 'Colour',
+                'Date', 'Description', 'Document No', 'Colour / Variant',
                 "Unit Price ({$header['currency_code']})",
                 "Stock IN{$uomTag}", "Stock Out{$uomTag}", "Stock Balance{$uomTag}",
             ]);
@@ -83,13 +83,16 @@ class BinCardExportController extends Controller
         $request->validate([
             'product_id'   => ['required', 'integer', 'exists:inv_products,id'],
             'attribute_id' => ['nullable', 'integer', 'exists:inv_attributes,id'],
+            'variant_id'   => ['nullable', 'integer', 'exists:inv_product_variants,id'],
+            'attribute_values'   => ['nullable'],
             'location_id'  => ['nullable', 'integer', 'exists:inv_locations,id'],
             'store_id'     => ['nullable', 'integer', 'exists:inv_stores,id'],
             'date_from'    => ['nullable', 'date'],
             'date_to'      => ['nullable', 'date', 'after_or_equal:date_from'],
         ]);
 
-        return $request->only(['product_id', 'attribute_id', 'location_id', 'store_id', 'date_from', 'date_to']);
+        return $request->only(['product_id', 'attribute_id', 'variant_id', 'location_id', 'store_id', 'date_from', 'date_to'])
+            + ['attribute_values' => $request->input('attribute_values', [])];
     }
 
     /** @param array<string, mixed> $data */

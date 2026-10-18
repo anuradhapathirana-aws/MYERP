@@ -118,7 +118,7 @@
         <th style="width:64px;">Date</th>
         <th>Description</th>
         <th style="width:84px;">Document No</th>
-        <th style="width:58px;">Colour</th>
+        <th style="width:80px;">Colour / Variant</th>
         {{-- Header names the currency/unit once; cells stay bare numbers. --}}
         <th class="ta-r" style="width:66px;">Unit Price ({{ $header['currency_code'] }})</th>
         <th class="ta-r" style="width:62px;">Stock IN{{ $header['uom'] ? ' (' . $header['uom'] . ')' : '' }}</th>

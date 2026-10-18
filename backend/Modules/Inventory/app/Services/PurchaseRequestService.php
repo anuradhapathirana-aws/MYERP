@@ -56,7 +56,7 @@ class PurchaseRequestService
         return PurchaseRequest::with([
             'items.product',
             'items.unit',
-            'items.attribute',
+            'items.attribute', 'items.variant',
             'sourceLocation',
             'sourceStore',
             'targetLocation',
@@ -89,7 +89,7 @@ class PurchaseRequestService
 
             $this->syncItems($pr, $data->items);
 
-            return $pr->load(['items.product', 'items.unit', 'items.attribute', 'sourceLocation', 'sourceStore', 'targetLocation', 'targetStore', 'customer']);
+            return $pr->load(['items.product', 'items.unit', 'items.attribute', 'items.variant', 'sourceLocation', 'sourceStore', 'targetLocation', 'targetStore', 'customer']);
         });
     }
 
@@ -119,7 +119,7 @@ class PurchaseRequestService
 
             $this->syncItems($pr, $data->items);
 
-            return $pr->load(['items.product', 'items.unit', 'items.attribute', 'sourceLocation', 'sourceStore', 'targetLocation', 'targetStore', 'customer']);
+            return $pr->load(['items.product', 'items.unit', 'items.attribute', 'items.variant', 'sourceLocation', 'sourceStore', 'targetLocation', 'targetStore', 'customer']);
         });
     }
 
@@ -136,7 +136,7 @@ class PurchaseRequestService
             'remarks'     => $remarks ?? $pr->remarks,
         ]);
 
-        return $pr->load(['items.product', 'items.unit', 'items.attribute', 'sourceLocation', 'sourceStore', 'targetLocation', 'targetStore']);
+        return $pr->load(['items.product', 'items.unit', 'items.attribute', 'items.variant', 'sourceLocation', 'sourceStore', 'targetLocation', 'targetStore']);
     }
 
     public function reject(PurchaseRequest $pr, string $reason): PurchaseRequest
@@ -150,7 +150,7 @@ class PurchaseRequestService
             'rejection_reason' => $reason,
         ]);
 
-        return $pr->load(['items.product', 'items.unit', 'items.attribute', 'sourceLocation', 'sourceStore', 'targetLocation', 'targetStore']);
+        return $pr->load(['items.product', 'items.unit', 'items.attribute', 'items.variant', 'sourceLocation', 'sourceStore', 'targetLocation', 'targetStore']);
     }
 
     public function cancel(PurchaseRequest $pr): PurchaseRequest
@@ -161,7 +161,7 @@ class PurchaseRequestService
 
         $pr->update(['status' => PurchaseRequestStatus::Cancelled]);
 
-        return $pr->load(['items.product', 'items.unit', 'items.attribute', 'sourceLocation', 'sourceStore', 'targetLocation', 'targetStore']);
+        return $pr->load(['items.product', 'items.unit', 'items.attribute', 'items.variant', 'sourceLocation', 'sourceStore', 'targetLocation', 'targetStore']);
     }
 
     public function delete(PurchaseRequest $pr): void
@@ -240,6 +240,7 @@ class PurchaseRequestService
                 'product_id'           => (int) $row['product_id'],
                 'unit_id'              => !empty($row['unit_id']) ? (int) $row['unit_id'] : null,
                 'attribute_id'         => !empty($row['attribute_id']) ? (int) $row['attribute_id'] : null,
+                'variant_id'           => !empty($row['variant_id']) ? (int) $row['variant_id'] : null,
                 'quantity'             => (float) $row['quantity'],
                 'estimated_unit_price' => isset($row['estimated_unit_price']) ? (float) $row['estimated_unit_price'] : null,
                 'remarks'              => $row['remarks'] ?? null,

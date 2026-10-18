@@ -8,6 +8,7 @@ import { getAllProducts } from '../../../api/products'
 import { getAllAttributes } from '../../../api/attributes'
 import Breadcrumb from '../../../components/Breadcrumb'
 import TableFilter, { FilterField } from '../../../components/TableFilter'
+import ReportVariantFilters from '../../../components/inventory/ReportVariantFilters'
 import CollapsibleCard from '../../../components/ui/CollapsibleCard'
 import FilterSearchSelect from '../../../components/ui/FilterSearchSelect'
 import { ExcelBtn, PdfBtn, PrintBtn } from '../../../components/ui/ActionButtons'
@@ -23,6 +24,8 @@ const CRUMBS = [
 ]
 
 const INITIAL_FILTERS = {
+  item_type: '',
+  attribute_values: '',
   product_id: '',
   attribute_id: '',
   location_id: '',
@@ -191,6 +194,7 @@ export default function BinCardReport() {
         <FilterField label="Date To">
           <input type="date" className={FILTER_INPUT_CLS} value={draft.date_to} onChange={(e) => setDraft((d) => ({ ...d, date_to: e.target.value }))} />
         </FilterField>
+        <ReportVariantFilters draft={draft} setDraft={setDraft} showItemType={false} />
       </TableFilter>
 
       {!applied.product_id ? (
@@ -244,7 +248,7 @@ export default function BinCardReport() {
                       <th className="w-28 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Date</th>
                       <th className="px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Description</th>
                       <th className="w-32 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Document No</th>
-                      <th className="w-24 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Colour</th>
+                      <th className="w-24 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Colour / Variant</th>
                       {/* Cells stay bare numbers — the header names the unit/currency once. */}
                       <th className="w-28 px-3 py-2 text-right font-semibold uppercase tracking-wider text-slate-500">
                         Unit Price{header?.currency_code && <span className="ml-0.5 font-semibold normal-case text-indigo-500">({header.currency_code})</span>}

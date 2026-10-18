@@ -41,9 +41,12 @@ return new class extends Migration
             });
         }
 
-        Schema::table('inv_stock_transactions', function (Blueprint $table): void {
-            $table->index(['product_id', 'variant_id', 'store_id', 'location_id'], 'idx_stock_product_variant');
-        });
+        // Guarded: MySQL DDL is not transactional, so a re-run after a partial run must not fail here.
+        if (! Schema::hasIndex('inv_stock_transactions', 'idx_stock_product_variant')) {
+            Schema::table('inv_stock_transactions', function (Blueprint $table): void {
+                $table->index(['product_id', 'variant_id', 'store_id', 'location_id'], 'idx_stock_product_variant');
+            });
+        }
     }
 
     public function down(): void

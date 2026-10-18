@@ -20,6 +20,7 @@ class DeliveryOrderItemResource extends JsonResource
             'product_id' => $this->product_id,
             'unit_id'    => $this->unit_id,
             'attribute_id' => $this->attribute_id,
+            'variant_id'   => $this->variant_id,
             'is_scanned' => $this->is_scanned,
             'quantity'   => (float) $this->quantity,
             'remarks'    => $this->remarks,
@@ -45,6 +46,12 @@ class DeliveryOrderItemResource extends JsonResource
             'attribute' => $this->whenLoaded('attribute', fn () => $this->attribute ? [
                 'id'   => $this->attribute->id,
                 'name' => $this->attribute->attribute_name,
+            ] : null),
+            // Product variant (Red / Floral / M) — null for roll products / products without variants.
+            'variant' => $this->whenLoaded('variant', fn () => $this->variant ? [
+                'id'   => $this->variant->id,
+                'sku'  => $this->variant->sku,
+                'name' => $this->variant->variant_label,
             ] : null),
 
             'pieces' => $this->when(

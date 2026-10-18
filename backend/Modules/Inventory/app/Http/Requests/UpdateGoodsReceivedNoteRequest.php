@@ -6,6 +6,7 @@ namespace Modules\Inventory\Http\Requests;
 
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
+use Modules\Inventory\Http\Requests\Concerns\ResolvesLineVariants;
 use Illuminate\Validation\Rule;
 use Modules\Inventory\Models\AttributeType;
 use Modules\Inventory\Models\Product;
@@ -14,6 +15,14 @@ use Modules\Inventory\Models\UnitType;
 
 class UpdateGoodsReceivedNoteRequest extends FormRequest
 {
+    use ResolvesLineVariants;
+
+    protected function prepareForValidation(): void
+    {
+        $this->inheritLineVariants('po_item_id', 'inv_purchase_order_items');
+        $this->prepareLineVariants();
+    }
+
     public function authorize(): bool
     {
         return true;
@@ -44,6 +53,7 @@ class UpdateGoodsReceivedNoteRequest extends FormRequest
             'items.*.po_item_id'          => ['nullable', 'integer', 'exists:inv_purchase_order_items,id'],
             'items.*.product_id'          => ['required', 'integer', 'exists:inv_products,id'],
             'items.*.attribute_id'        => ['nullable', 'integer', 'exists:inv_attributes,id'],
+            'items.*.variant_id'          => ['nullable', 'integer'],
             'items.*.unit_id'             => ['required', 'integer', 'exists:inv_unit_types,id'],
             'items.*.quantity_received'   => ['required', 'numeric', 'min:0.0001'],
             'items.*.unit_price'          => ['required', 'numeric', 'min:0'],
@@ -81,6 +91,8 @@ class UpdateGoodsReceivedNoteRequest extends FormRequest
 
     public function withValidator(Validator $validator): void
     {
+        $validator->after(fn (Validator $validator) => $this->validateLineVariants($validator));
+
         $validator->after(function (Validator $validator): void {
             $items = (array) $this->input('items', []);
 
@@ -139,7 +151,7 @@ class UpdateGoodsReceivedNoteRequest extends FormRequest
 
             foreach ($items as $index => $item) {
                 $productId = (int) ($item['product_id'] ?? 0);
-                if (in_array($productId, $colorProducts, true) && empty($item['attribute_id'])) {
+                if (in_array($productId, $colorProducts, true) && empty($item['attribute_id']) && empty($item['variant_id'])) {
                     $validator->errors()->add("items.{$index}.attribute_id", 'Color is required for this item.');
                 }
             }

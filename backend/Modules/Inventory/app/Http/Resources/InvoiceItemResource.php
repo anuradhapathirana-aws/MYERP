@@ -22,6 +22,7 @@ class InvoiceItemResource extends JsonResource
             'unit_id'    => $this->unit_id,
             'price_unit_id' => $this->price_unit_id,
             'attribute_id' => $this->attribute_id,
+            'variant_id'   => $this->variant_id,
             'quantity'   => (float) $this->quantity,
             'unit_price' => (float) $this->unit_price,
             'discount'   => (float) $this->discount,
@@ -47,6 +48,12 @@ class InvoiceItemResource extends JsonResource
             'attribute' => $this->whenLoaded('attribute', fn () => $this->attribute ? [
                 'id'   => $this->attribute->id,
                 'name' => $this->attribute->attribute_name,
+            ] : null),
+            // Product variant (Red / Floral / M) — null for roll products / products without variants.
+            'variant' => $this->whenLoaded('variant', fn () => $this->variant ? [
+                'id'   => $this->variant->id,
+                'sku'  => $this->variant->sku,
+                'name' => $this->variant->variant_label,
             ] : null),
         ];
     }

@@ -17,6 +17,8 @@ import { getProduct, getProducts } from '../../api/products'
 import { getAllUnitTypesFlat } from '../../api/unitTypes'
 import { getAllAttributeTypes } from '../../api/attributeTypes'
 import { getAllAttributes } from '../../api/attributes'
+import { getProductVariants } from '../../api/variants'
+import VariantSelect from '../../components/inventory/VariantSelect'
 import Breadcrumb from '../../components/Breadcrumb'
 import FilterSearchSelect from '../../components/ui/FilterSearchSelect'
 import Money from '../../components/ui/Money'
@@ -81,6 +83,8 @@ function emptyLine() {
     unit_category_id: null,
     attribute_id:  '',
     color_options: [],
+    variant_id:    '', // product variant (Red / Floral / M) — required when the product has variants
+    variant_options: [],
     quantity:      '',
     unit_price:    '',
     discount:      '',
@@ -173,7 +177,9 @@ export default function ProformaInvoiceFormPage() {
       product_code: it.product?.product_code ?? '',
       unit_id:      it.unit_id != null ? String(it.unit_id) : '',
       attribute_id: it.attribute_id != null ? String(it.attribute_id) : '',
-      color_options: it.attribute ? [{ id: it.attribute.id, name: it.attribute.name }] : [],
+      color_options: it.attribute && it.variant_id == null ? [{ id: it.attribute.id, name: it.attribute.name }] : [],
+      variant_id:   it.variant_id != null ? String(it.variant_id) : '',
+      variant_options: it.variant ? [{ id: it.variant.id, variant_label: it.variant.name, sku: it.variant.sku }] : [],
       quantity:     String(it.quantity),
       unit_price:   String(it.unit_price),
       discount:     Number(it.discount) > 0 ? String(it.discount) : '',
@@ -192,6 +198,12 @@ export default function ProformaInvoiceFormPage() {
           }),
     }))
     setLines(hydrated.length ? hydrated : [emptyLine()])
+    // Full variant lists (with stock) for lines whose product has variants
+    hydrated.filter((l) => l.variant_id).forEach((l) => {
+      getProductVariants(l.product_id)
+        .then((variants) => setLines((prev) => prev.map((x) => x._key === l._key && variants.length > 0 ? { ...x, variant_options: variants } : x)))
+        .catch(() => { /* keeps the saved variant */ })
+    })
   }, [existing])
 
   /* ── Number preview (needs the customer's code) ── */
@@ -224,7 +236,7 @@ export default function ProformaInvoiceFormPage() {
   /* ── Live stock badge (debounced) ── */
   const stockKey = lines
     .filter((l) => l.product_id)
-    .map((l) => `${l.product_id}|${l.attribute_id}|${l.unit_id}|${l.quantity}`)
+    .map((l) => `${l.product_id}|${l.attribute_id}|${l.variant_id}|${l.unit_id}|${l.quantity}`)
     .join(',')
 
   useEffect(() => {
@@ -234,6 +246,7 @@ export default function ProformaInvoiceFormPage() {
       checkProformaStock(withProduct.map((l) => ({
         product_id:   Number(l.product_id),
         attribute_id: l.attribute_id ? Number(l.attribute_id) : null,
+        variant_id:   l.variant_id ? Number(l.variant_id) : null,
         unit_id:      l.unit_id ? Number(l.unit_id) : null,
         quantity:     parseFloat(l.quantity) || 0,
       })))
@@ -288,6 +301,8 @@ export default function ProformaInvoiceFormPage() {
       unit_category_id: product.base_unit_category_id ?? null,
       attribute_id:     '',
       color_options:    [],
+      variant_id:       '',
+      variant_options:  [],
       unit_price:       '',
       tax:              '',
       so_unit_price:    null,
@@ -297,13 +312,16 @@ export default function ProformaInvoiceFormPage() {
     } : l))
 
     // Colours + the UOM category (search results may not carry it) from the full product
-    colourOptionsFor(product.id).then(({ product: full, options }) => {
-      setLines((prev) => prev.map((l) => l._key === key ? {
-        ...l,
-        color_options:    options,
-        unit_category_id: full?.base_unit_category_id ?? l.unit_category_id,
-      } : l))
-    })
+    // A product with variants is quoted by variant — its picker replaces the colour one.
+    Promise.all([colourOptionsFor(product.id), getProductVariants(product.id).catch(() => [])])
+      .then(([{ product: full, options }, variants]) => {
+        setLines((prev) => prev.map((l) => l._key === key ? {
+          ...l,
+          color_options:    variants.length > 0 ? [] : options,
+          variant_options:  variants,
+          unit_category_id: full?.base_unit_category_id ?? l.unit_category_id,
+        } : l))
+      })
 
     refreshPrices(key, {
       product_id: product.id,
@@ -318,10 +336,11 @@ export default function ProformaInvoiceFormPage() {
   const invoiceTypeRef = useRef(invoiceType)
   useEffect(() => { invoiceTypeRef.current = invoiceType })
 
-  const refreshPrices = (key, { product_id, attribute_id = null, unit_id = null }) => {
+  const refreshPrices = (key, { product_id, attribute_id = null, variant_id = null, unit_id = null }) => {
     getProformaPrices([{
       product_id:   Number(product_id),
       attribute_id: attribute_id ? Number(attribute_id) : null,
+      variant_id:   variant_id ? Number(variant_id) : null,
       unit_id:      unit_id ? Number(unit_id) : null,
     }])
       .then(([p]) => {
@@ -340,9 +359,16 @@ export default function ProformaInvoiceFormPage() {
     refreshPrices(line._key, { product_id: line.product_id, attribute_id: value, unit_id: line.unit_id })
   }
 
+  const changeVariant = (line, variant) => {
+    const variantId   = variant ? String(variant.id) : ''
+    const attributeId = variant?.attribute_id != null ? String(variant.attribute_id) : ''
+    setLines((prev) => prev.map((l) => l._key === line._key ? { ...l, variant_id: variantId, attribute_id: attributeId } : l))
+    refreshPrices(line._key, { product_id: line.product_id, attribute_id: attributeId, variant_id: variantId, unit_id: line.unit_id })
+  }
+
   const changeUnit = (line, value) => {
     setLineField(line._key, 'unit_id', value)
-    refreshPrices(line._key, { product_id: line.product_id, attribute_id: line.attribute_id, unit_id: value })
+    refreshPrices(line._key, { product_id: line.product_id, attribute_id: line.attribute_id, variant_id: line.variant_id, unit_id: value })
   }
 
   /** A typed price belongs to the active type; the other set is re-derived through the VAT %. */
@@ -423,6 +449,7 @@ export default function ProformaInvoiceFormPage() {
     if (filled.length === 0) ce.items = ['Add at least one product.']
     else if (filled.some((l) => !(parseFloat(l.quantity) > 0))) ce.items = ['Every line needs a quantity.']
     else if (filled.some((l) => l.unit_price === '' || parseFloat(l.unit_price) < 0)) ce.items = ['Every line needs a unit price.']
+    else if (filled.some((l) => l.variant_options.length > 0 && !l.variant_id)) ce.items = ['Select the variant (colour / design / size) for every product that has variants.']
     else if (filled.some((l) => l.color_options.length > 0 && !l.attribute_id)) ce.items = ['Select a colour for every product that has colours.']
     return ce
   }
@@ -440,6 +467,7 @@ export default function ProformaInvoiceFormPage() {
     items: lines.filter((l) => l.product_id).map((l) => ({
       product_id:   Number(l.product_id),
       attribute_id: l.attribute_id ? Number(l.attribute_id) : null,
+      variant_id:   l.variant_id ? Number(l.variant_id) : null,
       unit_id:      l.unit_id ? Number(l.unit_id) : null,
       quantity:     parseFloat(l.quantity),
       unit_price:   parseFloat(l.unit_price) || 0,
@@ -607,7 +635,7 @@ export default function ProformaInvoiceFormPage() {
                 <tr className="bg-slate-50 border-b border-slate-200 text-left">
                   <th className="w-7 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">#</th>
                   <th className="min-w-48 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Product</th>
-                  <th className="w-28 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Colour</th>
+                  <th className="w-28 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Colour / Variant</th>
                   <th className="w-20 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">UOM</th>
                   <th className="w-20 px-2 py-1.5 text-right text-[10px] font-bold uppercase tracking-wider text-slate-500">Qty</th>
                   <th className="w-24 px-2 py-1.5 text-right text-[10px] font-bold uppercase tracking-wider text-slate-500">Unit Price</th>
@@ -637,7 +665,16 @@ export default function ProformaInvoiceFormPage() {
                         />
                       </td>
                       <td className="px-2 py-1">
-                        {l.color_options.length > 0 ? (
+                        {l.variant_options.length > 0 ? (
+                          <VariantSelect
+                            options={l.variant_options}
+                            value={l.variant_id}
+                            onChange={(v) => changeVariant(l, v)}
+                            onNext={() => focusCell(l._key, 'qty')}
+                            error={!l.variant_id}
+                            showStock
+                          />
+                        ) : l.color_options.length > 0 ? (
                           <select className={CELL_SELECT} value={l.attribute_id} onChange={(e) => changeColour(l, e.target.value)}>
                             <option value="">— Colour —</option>
                             {l.color_options.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}

@@ -195,7 +195,7 @@ class InvoiceTest extends TestCase
         $this->actingAs($this->user)
             ->postJson('/api/v1/invoices', ['do_id' => $doId, 'invoice_date' => '2026-07-11', 'invoice_type' => 'non_tax'])
             ->assertCreated()
-            ->assertJsonPath('data.invoice_no', '26JUL_CUS-0001_0001')
+            ->assertJsonPath('data.invoice_no', '26JUL_CUS0001_0001')
             ->assertJsonPath('data.status', 'draft')
             ->assertJsonPath('data.invoice_type', 'non_tax')
             ->assertJsonPath('data.items.0.quantity', 30)
@@ -591,7 +591,21 @@ class InvoiceTest extends TestCase
         $this->actingAs($this->user)
             ->getJson("/api/v1/invoices/next-invoice-no?do_id={$doId}&invoice_date=2026-10-05")
             ->assertOk()
-            ->assertJsonPath('data', '26OCT_CUS-0001_0001');
+            ->assertJsonPath('data', '26OCT_CUS0001_0001');
+    }
+
+    public function test_invoice_no_strips_spaces_and_dashes_from_the_customer_code(): void
+    {
+        // IRD format wants the code bare: CUS-01 15 → CUS0115.
+        $this->customer->update(['customer_code' => 'CUS-01 15']);
+
+        ['so' => $so, 'pieces' => $pieces] = $this->makeConfirmedSoWithRolls();
+        $doId = $this->makeConfirmedDo($so, $pieces);
+
+        $this->actingAs($this->user)
+            ->getJson("/api/v1/invoices/next-invoice-no?do_id={$doId}&invoice_date=2026-10-05")
+            ->assertOk()
+            ->assertJsonPath('data', '26OCT_CUS0115_0001');
     }
 
     public function test_billing_source_endpoints_return_previews(): void

@@ -29,6 +29,7 @@ const DOC_STATUS_STYLES = {
   completed: 'bg-green-100 text-green-700',
   issued:    'bg-blue-100 text-blue-700',
   paid:      'bg-green-100 text-green-700',
+  returned:  'bg-slate-200 text-slate-700',
   cancelled: 'bg-red-100 text-red-500',
 }
 

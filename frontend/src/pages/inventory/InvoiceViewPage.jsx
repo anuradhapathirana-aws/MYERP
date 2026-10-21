@@ -3,8 +3,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Ban, Download, Pencil, Printer, RefreshCw, Send, Trash2, Undo2, Wallet } from 'lucide-react'
 import { useState } from 'react'
 import { deleteInvoice, downloadInvoicePdf, getInvoice, updateInvoiceStatus } from '../../api/invoices'
+import { downloadCustomerReturnPdf } from '../../api/customerReturns'
 import Breadcrumb from '../../components/Breadcrumb'
 import Money from '../../components/ui/Money'
+import InvoiceReturnTag from '../../components/ui/InvoiceReturnTag'
+import { PdfBtn, PrintBtn, ViewBtn } from '../../components/ui/ActionButtons'
 import { confirmAction, confirmDelete, showError, showSuccess } from '../../utils/alerts'
 import { printPdfBlob } from '../../utils/pdf'
 
@@ -12,6 +15,7 @@ const STATUS_STYLES = {
   draft:     'bg-amber-100 text-amber-700',
   issued:    'bg-blue-100 text-blue-700',
   paid:      'bg-green-100 text-green-700',
+  returned:  'bg-slate-200 text-slate-700',
   cancelled: 'bg-red-100 text-red-500',
 }
 
@@ -29,6 +33,7 @@ export default function InvoiceViewPage() {
   const navigate    = useNavigate()
   const queryClient = useQueryClient()
   const [pdfBusy, setPdfBusy] = useState(false)
+  const [returnPdfBusy, setReturnPdfBusy] = useState(null)
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['invoice', id],
@@ -76,6 +81,27 @@ export default function InvoiceViewPage() {
     }
   }
 
+  const handleReturnPdf = async (ret, print) => {
+    setReturnPdfBusy(ret.id)
+    try {
+      const blob = await downloadCustomerReturnPdf(ret.id)
+      if (print) {
+        printPdfBlob(blob)
+      } else {
+        const url = URL.createObjectURL(blob)
+        const a   = document.createElement('a')
+        a.href    = url
+        a.download = `${ret.return_no}.pdf`
+        a.click()
+        URL.revokeObjectURL(url)
+      }
+    } catch {
+      showError('Failed to generate PDF.')
+    } finally {
+      setReturnPdfBusy(null)
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -109,6 +135,7 @@ export default function InvoiceViewPage() {
             <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[inv.status] ?? 'bg-slate-100 text-slate-500'}`}>
               {inv.status_label}
             </span>
+            {inv.status !== 'returned' && <InvoiceReturnTag status={inv.return_status} label={inv.return_status_label} />}
             <span
               className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${inv.invoice_type === 'tax' ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-500'}`}
               title={inv.invoice_type === 'tax'
@@ -166,7 +193,7 @@ export default function InvoiceViewPage() {
               <Wallet size={12} /> Make a Payment
             </button>
           )}
-          {(inv.status === 'issued' || inv.status === 'paid') && inv.do_id && (
+          {(inv.status === 'issued' || inv.status === 'paid') && inv.do_id && inv.return_status !== 'full' && (
             // Opens a new Customer Return with this invoice (and its customer) pre-selected.
             <button
               type="button"
@@ -300,6 +327,50 @@ export default function InvoiceViewPage() {
             </table>
           </div>
         </div>
+
+        {/* Returns — confirmed Customer Returns against this invoice */}
+        {inv.returns?.length > 0 && (
+          <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center gap-1.5 border-b border-slate-200 bg-slate-50 px-3 py-1.5">
+              <Undo2 size={12} className="text-slate-500" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600">Customer Returns</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left">
+                    <th className="w-28 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Return No</th>
+                    <th className="w-24 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Date</th>
+                    <th className="w-32 px-2 py-1.5 text-right text-[10px] font-bold uppercase tracking-wider text-slate-500">Return Value</th>
+                    <th className="w-32 px-2 py-1.5 text-right text-[10px] font-bold uppercase tracking-wider text-slate-500" title="Part of the return that reduced what this invoice still owed">Applied to Invoice</th>
+                    <th className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500" title="Excess over what was owed, kept as customer credit">Credit Note</th>
+                    <th className="w-24 px-2 py-1.5 text-right text-[10px] font-bold uppercase tracking-wider text-slate-500">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {inv.returns.map((r) => (
+                    <tr key={r.id} className="hover:bg-slate-50/60 transition-colors">
+                      <td className="px-2 py-1.5 font-mono font-medium text-indigo-600">
+                        <Link to={`/inventory/customer-returns/${r.id}/edit`} className="hover:underline">{r.return_no}</Link>
+                      </td>
+                      <td className="whitespace-nowrap px-2 py-1.5 text-slate-500">{r.return_date}</td>
+                      <td className="px-2 py-1.5 text-right font-medium text-slate-700"><Money value={r.total_amount} /></td>
+                      <td className="px-2 py-1.5 text-right text-slate-600"><Money value={r.applied_to_invoice} /></td>
+                      <td className="px-2 py-1.5 font-mono text-slate-600">{r.credit_note_no || <span className="italic text-slate-300">—</span>}</td>
+                      <td className="px-2 py-1.5">
+                        <div className="flex items-center justify-end gap-1">
+                          <ViewBtn to={`/inventory/customer-returns/${r.id}/edit`} />
+                          <PrintBtn onClick={() => handleReturnPdf(r, true)} disabled={returnPdfBusy === r.id} />
+                          <PdfBtn onClick={() => handleReturnPdf(r, false)} disabled={returnPdfBusy === r.id} />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
       </div>
     </div>

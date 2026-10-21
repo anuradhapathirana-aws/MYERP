@@ -88,24 +88,48 @@ class InvoiceBalanceService
     }
 
     /**
-     * Flip fully-settled issued invoices to Paid. Callers run this after the document
-     * that settled them (receipt or return) is Confirmed, with the invoice rows locked.
+     * Close fully-settled issued invoices. Callers run this after the document that
+     * settled them (receipt or return) is Confirmed, with the invoice rows locked.
+     *
+     * Settled with any money (or receipt discount) received → Paid. Settled by customer
+     * returns alone → Returned: nothing was collected, so it must not read as Paid.
      *
      * @param array<int> $invoiceIds
      */
     public function markPaidIfSettled(array $invoiceIds): void
     {
-        foreach ($invoiceIds as $invoiceId) {
-            if ($this->outstanding($invoiceId) > 0.01) {
+        if (empty($invoiceIds)) {
+            return;
+        }
+
+        $grandTotals = DB::table('inv_invoices')
+            ->whereIn('id', $invoiceIds)
+            ->where('status', InvoiceStatus::Issued->value)
+            ->pluck('grand_total', 'id');
+
+        if ($grandTotals->isEmpty()) {
+            return;
+        }
+
+        $ids      = $grandTotals->keys()->map(fn ($id) => (int) $id)->all();
+        $received = $this->receivedFor($ids);
+        $returned = $this->returnedFor($ids);
+
+        foreach ($grandTotals as $invoiceId => $grandTotal) {
+            $paidIn   = $received[$invoiceId] ?? 0.0;
+            $credited = $returned[$invoiceId] ?? 0.0;
+
+            if ((float) $grandTotal - $paidIn - $credited > 0.01) {
                 continue;
             }
 
+            $byReturnsOnly = $paidIn < 0.01 && $credited > 0.0;
+
             Invoice::whereKey($invoiceId)
                 ->where('status', InvoiceStatus::Issued->value)
-                ->update([
-                    'status'  => InvoiceStatus::Paid->value,
-                    'paid_at' => now(),
-                ]);
+                ->update($byReturnsOnly
+                    ? ['status' => InvoiceStatus::Returned->value]
+                    : ['status' => InvoiceStatus::Paid->value, 'paid_at' => now()]);
         }
     }
 

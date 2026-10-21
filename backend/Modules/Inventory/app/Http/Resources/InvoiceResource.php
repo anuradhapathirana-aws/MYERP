@@ -24,6 +24,8 @@ class InvoiceResource extends JsonResource
             'due_date'         => $this->due_date?->toDateString(),
             'status'           => $this->status->value,
             'status_label'     => $this->status->label(),
+            'return_status'       => $this->return_status?->value ?? 'none',
+            'return_status_label' => $this->return_status?->label() ?? '',
             'invoice_type'     => $this->invoice_type ?? 'non_tax',
             'invoice_type_label' => ($this->invoice_type ?? 'non_tax') === 'tax' ? 'Tax Invoice' : 'Non Tax Invoice',
             'subtotal'         => (float) $this->subtotal,
@@ -59,6 +61,15 @@ class InvoiceResource extends JsonResource
                 'customer_code' => $this->customer->customer_code,
                 'name'          => $this->customer->customer_name,
             ] : null),
+
+            'returns' => $this->whenLoaded('customerReturns', fn () => $this->customerReturns->map(fn ($r) => [
+                'id'                 => $r->id,
+                'return_no'          => $r->return_no,
+                'return_date'        => $r->return_date?->toDateString(),
+                'total_amount'       => (float) $r->total_amount,
+                'applied_to_invoice' => (float) $r->applied_to_invoice,
+                'credit_note_no'     => $r->creditNote?->credit_note_no,
+            ])->values()),
 
             'items' => $this->when(
                 $this->resource->relationLoaded('items'),

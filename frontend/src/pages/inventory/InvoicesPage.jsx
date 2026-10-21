@@ -6,6 +6,7 @@ import { deleteInvoice, downloadInvoicePdf, getInvoices } from '../../api/invoic
 import { getAllCustomers } from '../../api/customers'
 import Pagination from '../../components/ui/Pagination'
 import Money from '../../components/ui/Money'
+import InvoiceReturnTag from '../../components/ui/InvoiceReturnTag'
 import Breadcrumb from '../../components/Breadcrumb'
 import TableFilter, { FilterField } from '../../components/TableFilter'
 import FilterSearchSelect from '../../components/ui/FilterSearchSelect'
@@ -27,6 +28,7 @@ const STATUS_STYLES = {
   draft:     'bg-amber-100 text-amber-700',
   issued:    'bg-blue-100 text-blue-700',
   paid:      'bg-green-100 text-green-700',
+  returned:  'bg-slate-200 text-slate-700',
   cancelled: 'bg-red-100 text-red-500',
 }
 
@@ -34,6 +36,7 @@ const STATUS_OPTIONS = [
   { value: 'draft',     label: 'Draft' },
   { value: 'issued',    label: 'Issued' },
   { value: 'paid',      label: 'Paid' },
+  { value: 'returned',  label: 'Returned' },
   { value: 'cancelled', label: 'Cancelled' },
 ]
 
@@ -152,7 +155,7 @@ export default function InvoicesPage() {
                     <th className="px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Customer</th>
                     <th className="w-24 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Date</th>
                     <th className="w-28 px-3 py-2 text-right font-semibold uppercase tracking-wider text-slate-500">Total</th>
-                    <th className="w-24 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Status</th>
+                    <th className="w-40 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Status</th>
                     <th className="w-28 px-3 py-2 text-right font-semibold uppercase tracking-wider text-slate-500">Actions</th>
                   </tr>
                 </thead>
@@ -184,9 +187,13 @@ export default function InvoicesPage() {
                         <td className="whitespace-nowrap px-3 py-2 text-slate-500">{row.invoice_date}</td>
                         <td className="px-3 py-2 text-right font-medium text-slate-700"><Money value={row.grand_total} /></td>
                         <td className="px-3 py-2">
-                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[row.status] ?? 'bg-slate-100 text-slate-500'}`}>
-                            {row.status_label}
-                          </span>
+                          <div className="flex flex-wrap items-center gap-1">
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[row.status] ?? 'bg-slate-100 text-slate-500'}`}>
+                              {row.status_label}
+                            </span>
+                            {/* A fully returned, never-paid invoice already reads "Returned" — no second chip. */}
+                            {row.status !== 'returned' && <InvoiceReturnTag status={row.return_status} label={row.return_status_label} />}
+                          </div>
                         </td>
                         {/* stopPropagation so action buttons don't also fire the row's navigate */}
                         <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>

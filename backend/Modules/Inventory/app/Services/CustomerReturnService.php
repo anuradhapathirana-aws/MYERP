@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace Modules\Inventory\Services;
 
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\DTOs\CustomerReturnData;
 use Modules\Inventory\Enums\CreditNoteStatus;
 use Modules\Inventory\Enums\CustomerCreditNoteType;
 use Modules\Inventory\Enums\CustomerReturnStatus;
+use Modules\Inventory\Enums\InvoiceReturnStatus;
 use Modules\Inventory\Enums\InvoiceStatus;
 use Modules\Inventory\Models\Batch;
 use Modules\Inventory\Models\CustomerCreditNote;
@@ -322,6 +324,7 @@ class CustomerReturnService
             }
 
             $this->creditCustomer($return, $invoice);
+            $this->markReturnStatus($invoice, $return, $lines);
 
             $return->update([
                 'status'       => CustomerReturnStatus::Confirmed,
@@ -702,6 +705,26 @@ class CustomerReturnService
         $return->update([
             'applied_to_invoice' => $applied,
             'credit_note_id'     => $creditNoteId,
+        ]);
+    }
+
+    /**
+     * Tag the invoice Partly / Fully Returned. $lines is the returnable picture from
+     * before this return, so nothing is re-queried: the invoice is fully returned once
+     * this return takes every line's remaining quantity.
+     *
+     * @param Collection<int, array<string, mixed>> $lines keyed by invoice item id
+     */
+    private function markReturnStatus(Invoice $invoice, CustomerReturn $return, Collection $lines): void
+    {
+        $returning = $return->items->groupBy('invoice_item_id')
+            ->map(fn (Collection $items) => (float) $items->sum('quantity'));
+
+        $fully = $lines->every(fn (array $line, int $itemId) => $line['returnable'] - ($returning[$itemId] ?? 0.0)
+            <= Quantity::toleranceFor($line['factor']));
+
+        $invoice->update([
+            'return_status' => $fully ? InvoiceReturnStatus::Full : InvoiceReturnStatus::Partial,
         ]);
     }
 

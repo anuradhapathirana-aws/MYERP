@@ -455,12 +455,12 @@ class ProformaInvoiceService
 
     /**
      * PI-YYMMM_QQQQ_XXXX — mirrors the invoice number: proforma month, the customer's
-     * code and one global running serial that never resets.
+     * code (spaces and dashes stripped) and one global running serial that never resets.
      */
     private function buildProformaNo(bool $lock, string $customerCode, ?string $proformaDate): string
     {
         $date   = $proformaDate ? Carbon::parse($proformaDate) : now();
-        $code   = str_replace(' ', '', $customerCode) ?: 'CUST';
+        $code   = str_replace([' ', '-'], '', $customerCode) ?: 'CUST';
         $serial = str_pad((string) $this->nextSerial($lock), 4, '0', STR_PAD_LEFT);
 
         return 'PI-' . $date->format('y') . strtoupper($date->format('M')) . '_' . $code . '_' . $serial;

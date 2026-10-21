@@ -196,7 +196,7 @@ class ProformaInvoiceTest extends TestCase
 
         $this->createProforma([$this->line($newProduct, 50, 1000, ['discount' => 10])], ['transport_charge' => 500])
             ->assertCreated()
-            ->assertJsonPath('data.proforma_no', 'PI-26JUL_CUS-0001_0001')
+            ->assertJsonPath('data.proforma_no', 'PI-26JUL_CUS0001_0001')
             ->assertJsonPath('data.source_type', 'direct')
             ->assertJsonPath('data.so_id', null)
             ->assertJsonPath('data.status', 'draft')
@@ -298,7 +298,7 @@ class ProformaInvoiceTest extends TestCase
     {
         $p  = Product::factory()->create();
         $id = $this->createProforma([$this->line($p, 1, 1)], ['proforma_no' => 'HACKED'])
-            ->assertJsonPath('data.proforma_no', 'PI-26JUL_CUS-0001_0001')
+            ->assertJsonPath('data.proforma_no', 'PI-26JUL_CUS0001_0001')
             ->json('data.id');
 
         $this->actingAs($this->user)->deleteJson("/api/v1/proforma-invoices/{$id}")->assertNoContent();
@@ -549,7 +549,17 @@ class ProformaInvoiceTest extends TestCase
         $this->actingAs($this->user)
             ->getJson("/api/v1/proforma-invoices/next-no?customer_id={$this->customer->id}&proforma_date=2026-08-01")
             ->assertOk()
-            ->assertJsonPath('data', 'PI-26AUG_CUS-0001_0001');
+            ->assertJsonPath('data', 'PI-26AUG_CUS0001_0001');
+    }
+
+    public function test_next_no_strips_spaces_and_dashes_from_the_customer_code(): void
+    {
+        $this->customer->update(['customer_code' => 'CUS-01 15']);
+
+        $this->actingAs($this->user)
+            ->getJson("/api/v1/proforma-invoices/next-no?customer_id={$this->customer->id}&proforma_date=2026-08-01")
+            ->assertOk()
+            ->assertJsonPath('data', 'PI-26AUG_CUS0115_0001');
     }
 
     public function test_pdf_downloads(): void

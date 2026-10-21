@@ -402,7 +402,8 @@ class InvoiceService
      * IRD invoice serial number: YYMMM_QQQQ_XXXXX
      *   YY    — last 2 digits of the invoice's calendar year
      *   MMM   — first 3 letters of the invoice's calendar month, uppercase
-     *   QQQQ  — the billed customer's customer_code
+     *   QQQQ  — the billed customer's customer_code, spaces and dashes stripped
+     *           (CUS-0115 → CUS0115)
      *   XXXXX — a single running serial, shared by every customer/branch, that
      *           never resets by month or year, zero-padded to 4 digits
      *           (0001, 0002 … 9999) then growing naturally past that (10000)
@@ -410,7 +411,7 @@ class InvoiceService
     private function buildInvoiceNo(bool $lock, string $customerCode, ?string $invoiceDate): string
     {
         $date   = $invoiceDate ? \Illuminate\Support\Carbon::parse($invoiceDate) : now();
-        $code   = str_replace(' ', '', $customerCode) ?: 'CUST';
+        $code   = str_replace([' ', '-'], '', $customerCode) ?: 'CUST';
         $serial = str_pad((string) $this->nextInvoiceSerial($lock), 4, '0', STR_PAD_LEFT);
 
         return $date->format('y') . strtoupper($date->format('M')) . '_' . $code . '_' . $serial;

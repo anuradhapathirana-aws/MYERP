@@ -117,7 +117,7 @@ class SalesSummaryReportService
         $billStats = DB::table('inv_invoices as i')
             ->leftJoinSub($receivedPerInvoice, 'rc', 'rc.invoice_id', '=', 'i.id')
             ->leftJoinSub($returnedPerInvoice, 'rt', 'rt.invoice_id', '=', 'i.id')
-            ->whereIn('i.status', [InvoiceStatus::Issued->value, InvoiceStatus::Paid->value])
+            ->whereIn('i.status', [InvoiceStatus::Issued->value, InvoiceStatus::Paid->value, InvoiceStatus::Returned->value])
             ->whereNull('i.deleted_at')
             ->when($fromDate, fn ($q) => $q->where('i.invoice_date', '>=', $fromDate))
             ->when($toDate, fn ($q) => $q->where('i.invoice_date', '<=', $toDate))

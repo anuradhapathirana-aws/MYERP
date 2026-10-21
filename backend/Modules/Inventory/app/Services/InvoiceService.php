@@ -101,6 +101,8 @@ class InvoiceService
             'proforma',
             'customer',
             'company',
+            'customerReturns:id,invoice_id,return_no,return_date,total_amount,applied_to_invoice,credit_note_id',
+            'customerReturns.creditNote:id,credit_note_no',
         ])->findOrFail($id);
     }
 

@@ -10,6 +10,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Modules\Inventory\Enums\CustomerReturnStatus;
+use Modules\Inventory\Enums\InvoiceReturnStatus;
 use Modules\Inventory\Enums\InvoiceStatus;
 use Modules\Inventory\Enums\PaymentMode;
 
@@ -34,6 +36,7 @@ class Invoice extends Model
         'invoice_date',
         'due_date',
         'status',
+        'return_status',
         'invoice_type',
         'subtotal',
         'transport_charge',
@@ -44,6 +47,11 @@ class Invoice extends Model
         'created_by',
         'issued_at',
         'paid_at',
+    ];
+
+    /** Mirrors the column default, so a freshly created invoice reads 'none' without a refresh. */
+    protected $attributes = [
+        'return_status' => 'none',
     ];
 
     protected $casts = [
@@ -61,6 +69,7 @@ class Invoice extends Model
         'company_id'       => 'integer',
         'created_by'       => 'integer',
         'status'           => InvoiceStatus::class,
+        'return_status'    => InvoiceReturnStatus::class,
         // Modules\Inventory\Enums\PaymentMode (a backed enum cast), NOT the
         // relocated App\Models\PaymentMode master. Do not "fix" this import.
         'mode_of_payment'  => PaymentMode::class,
@@ -69,6 +78,14 @@ class Invoice extends Model
     public function items(): HasMany
     {
         return $this->hasMany(InvoiceItem::class, 'invoice_id');
+    }
+
+    /** Confirmed customer returns raised against this invoice — drafts never touch it. */
+    public function customerReturns(): HasMany
+    {
+        return $this->hasMany(CustomerReturn::class, 'invoice_id')
+            ->where('status', CustomerReturnStatus::Confirmed->value)
+            ->orderBy('id');
     }
 
     public function salesOrder(): BelongsTo

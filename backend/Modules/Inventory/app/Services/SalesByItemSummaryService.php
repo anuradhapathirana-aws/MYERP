@@ -57,7 +57,7 @@ class SalesByItemSummaryService
             ->leftJoin('inv_attributes as a', 'a.id', '=', 'ii.attribute_id')
             ->leftJoin('inv_product_variants as v', 'v.id', '=', 'ii.variant_id')
             ->leftJoin('inv_unit_types as u', 'u.id', '=', 'ii.unit_id')
-            ->whereIn('i.status', [InvoiceStatus::Issued->value, InvoiceStatus::Paid->value])
+            ->whereIn('i.status', [InvoiceStatus::Issued->value, InvoiceStatus::Paid->value, InvoiceStatus::Returned->value])
             ->when($fromDate, fn ($q) => $q->where('i.invoice_date', '>=', $fromDate))
             ->when($toDate, fn ($q) => $q->where('i.invoice_date', '<=', $toDate))
             ->when($locationId, fn ($q) => $q->whereExists(function ($sub) use ($locationId) {

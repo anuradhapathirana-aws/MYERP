@@ -22,6 +22,7 @@ use Modules\Inventory\Models\StockReferenceType;
 use Modules\Inventory\Models\StockTransaction;
 use Modules\Inventory\Services\CustomerReceiptService;
 use Modules\Inventory\Services\OutstandingSummaryReportService;
+use Modules\Inventory\Services\SalesByItemSummaryService;
 use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 
@@ -730,6 +731,104 @@ class CustomerReturnTest extends TestCase
             ->assertJsonPath('data.applied_to_invoice', 200);
 
         $this->assertSame('paid', $invoice->fresh()->status->value);
+        $this->assertSame('partial', $invoice->fresh()->return_status->value);
+    }
+
+    public function test_full_return_of_an_unpaid_invoice_marks_it_returned_not_paid(): void
+    {
+        $invoice = $this->invoicedManualSale(10, 50)['invoice']; // 500, no receipt
+
+        $this->confirm($this->createReturn($this->payload($invoice, [['quantity' => 10]])))
+            ->assertOk()
+            ->assertJsonPath('data.applied_to_invoice', 500);
+
+        $invoice->refresh();
+        $this->assertSame('returned', $invoice->status->value);
+        $this->assertSame('full', $invoice->return_status->value);
+        $this->assertNull($invoice->paid_at);
+        $this->assertSame(0, CustomerCreditNote::count());
+    }
+
+    public function test_partial_returns_tag_the_invoice_until_the_last_one_settles_it(): void
+    {
+        $invoice = $this->invoicedManualSale(10, 50)['invoice']; // 500, no receipt
+
+        $this->confirm($this->createReturn($this->payload($invoice, [['quantity' => 4]])))->assertOk();
+
+        $invoice->refresh();
+        $this->assertSame('issued', $invoice->status->value);
+        $this->assertSame('partial', $invoice->return_status->value);
+
+        $this->confirm($this->createReturn($this->payload($invoice, [['quantity' => 6]])))->assertOk();
+
+        $invoice->refresh();
+        $this->assertSame('returned', $invoice->status->value);
+        $this->assertSame('full', $invoice->return_status->value);
+    }
+
+    public function test_a_draft_return_leaves_the_invoice_untagged(): void
+    {
+        $invoice = $this->invoicedManualSale(10, 50)['invoice'];
+        $this->createReturn($this->payload($invoice, [['quantity' => 10]]));
+
+        $invoice->refresh();
+        $this->assertSame('issued', $invoice->status->value);
+        $this->assertSame('none', $invoice->return_status->value);
+    }
+
+    public function test_invoice_view_lists_its_confirmed_returns_with_the_credit_note(): void
+    {
+        $invoice = $this->invoicedManualSale(10, 50)['invoice']; // 500
+        $this->receive($invoice, 500);
+
+        $returnId = $this->createReturn($this->payload($invoice, [['quantity' => 2]])); // 100 → credit note
+        $this->confirm($returnId)->assertOk();
+        $this->createReturn($this->payload($invoice, [['quantity' => 1]])); // draft — not listed
+
+        $response = $this->actingAs($this->user)->getJson("/api/v1/invoices/{$invoice->id}")->assertOk();
+
+        $response->assertJsonPath('data.status', 'paid')
+            ->assertJsonPath('data.return_status', 'partial')
+            ->assertJsonPath('data.return_status_label', 'Partly Returned')
+            ->assertJsonCount(1, 'data.returns')
+            ->assertJsonPath('data.returns.0.id', $returnId)
+            ->assertJsonPath('data.returns.0.total_amount', 100)
+            ->assertJsonPath('data.returns.0.applied_to_invoice', 0)
+            ->assertJsonPath('data.returns.0.credit_note_no', CustomerCreditNote::sole()->credit_note_no);
+
+        // The list stays lean: the tag comes from the column, the returns are not loaded.
+        $this->actingAs($this->user)->getJson('/api/v1/invoices')
+            ->assertOk()
+            ->assertJsonPath('data.0.return_status', 'partial')
+            ->assertJsonMissingPath('data.0.returns');
+    }
+
+    public function test_a_returned_invoice_cannot_be_moved_to_another_status(): void
+    {
+        $invoice = $this->invoicedManualSale(10, 50)['invoice'];
+        $this->confirm($this->createReturn($this->payload($invoice, [['quantity' => 10]])))->assertOk();
+
+        foreach (['paid', 'cancelled', 'issued'] as $status) {
+            $this->actingAs($this->user)
+                ->patchJson("/api/v1/invoices/{$invoice->id}/status", ['status' => $status])
+                ->assertStatus(422);
+        }
+
+        $this->assertSame('returned', $invoice->fresh()->status->value);
+    }
+
+    public function test_a_returned_invoice_still_counts_in_the_sales_by_item_summary(): void
+    {
+        $invoice = $this->invoicedManualSale(10, 50)['invoice'];
+        $this->confirm($this->createReturn($this->payload($invoice, [['quantity' => 10]])))->assertOk();
+        $this->assertSame('returned', $invoice->fresh()->status->value);
+
+        // Same figures as before the Returned status existed — it billed 10 x 50.
+        $summary = app(SalesByItemSummaryService::class)
+            ->build(['date_from' => '2026-07-01', 'date_to' => '2026-07-31'])['summary'];
+
+        $this->assertEqualsWithDelta(10.0, $summary['total_qty'], 0.001);
+        $this->assertEqualsWithDelta(500.0, $summary['total_amount'], 0.001);
     }
 
     public function test_return_on_a_paid_invoice_raises_an_open_credit_note_for_the_excess(): void

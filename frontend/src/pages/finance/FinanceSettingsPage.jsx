@@ -10,6 +10,7 @@ import { getAllLedgerAccounts } from '../../api/ledgerAccounts'
 import { getAllCompanies } from '../../api/companies'
 import FilterSearchSelect from '../../components/ui/FilterSearchSelect'
 import Breadcrumb from '../../components/Breadcrumb'
+import FinanceControlsCard from './FinanceControlsCard'
 import { usePermissions } from '../../hooks/usePermissions'
 import { confirmAction, showError, showSuccess } from '../../utils/alerts'
 import { FILTER_SELECT_CLS } from '../../utils/fieldStyles'
@@ -390,6 +391,17 @@ export default function FinanceSettingsPage() {
 
         {/* ── Posting mode + explanation ──────────────────────────────────── */}
         <div className="flex flex-col gap-2">
+          <FinanceControlsCard
+            key={settings?.lock_date ?? 'none'}
+            lockDate={settings?.lock_date ?? null}
+            makerChecker={settings?.maker_checker ?? false}
+            canManage={canManage}
+            onChanged={() => {
+              queryClient.invalidateQueries({ queryKey: settingsKey })
+              queryClient.invalidateQueries({ queryKey: ['bill-options'] })
+            }}
+          />
+
           <div className="rounded-lg border border-slate-200 bg-white">
             <div className="flex items-center gap-1.5 border-b border-slate-200 bg-slate-50 px-3 py-2">
               <Zap size={14} className="text-slate-500" strokeWidth={2} />

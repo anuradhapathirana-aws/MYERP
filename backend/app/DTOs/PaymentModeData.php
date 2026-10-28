@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\DTOs;
 
+use App\Enums\PaymentModeType;
 use App\Http\Requests\StorePaymentModeRequest;
 use App\Http\Requests\UpdatePaymentModeRequest;
 
@@ -12,6 +13,7 @@ final class PaymentModeData
     public function __construct(
         public readonly string $payment_mode_name,
         public readonly string $code,
+        public readonly PaymentModeType $type,
         public readonly bool   $requires_bank_details,
         public readonly bool   $requires_reference_no,
         public readonly bool   $requires_date,
@@ -24,6 +26,7 @@ final class PaymentModeData
         return new self(
             payment_mode_name:     trim($request->input('payment_mode_name')),
             code:                  trim($request->input('code')),
+            type:                  PaymentModeType::from((string) $request->input('type')),
             requires_bank_details: (bool) $request->input('requires_bank_details', false),
             requires_reference_no: (bool) $request->input('requires_reference_no', false),
             requires_date:         (bool) $request->input('requires_date', false),
@@ -37,6 +40,7 @@ final class PaymentModeData
         return new self(
             payment_mode_name:     trim($request->input('payment_mode_name')),
             code:                  trim($request->input('code')),
+            type:                  PaymentModeType::from((string) $request->input('type')),
             requires_bank_details: (bool) $request->input('requires_bank_details', false),
             requires_reference_no: (bool) $request->input('requires_reference_no', false),
             requires_date:         (bool) $request->input('requires_date', false),

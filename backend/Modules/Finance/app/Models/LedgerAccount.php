@@ -93,6 +93,42 @@ class LedgerAccount extends Model
         return $query->whereNull('party_type');
     }
 
+    /** Accounts whose category is of the given type (expense, asset ...). */
+    public function scopeOfType(Builder $query, AccountType $type): Builder
+    {
+        return $query->whereHas(
+            'controlAccount.category',
+            fn (Builder $q) => $q->where('account_type', $type->value),
+        );
+    }
+
+    /**
+     * What a bill line may be charged to: an active expense account that is
+     * not a per-party ledger and not a cash/bank account. Money accounts and
+     * party ledgers are reached through payments and the payable role, never
+     * hand-picked as an "expense".
+     */
+    public function scopeBillable(Builder $query): Builder
+    {
+        return $query
+            ->where('is_active', true)
+            ->whereNull('party_type')
+            ->whereNull('cash_book_type')
+            ->ofType(AccountType::Expense);
+    }
+
+    /**
+     * Where a payment may be made from: an active Cash Book or Bank account.
+     * Petty cash is excluded; it has its own payment flow.
+     */
+    public function scopePayFrom(Builder $query): Builder
+    {
+        return $query
+            ->where('is_active', true)
+            ->whereNull('party_type')
+            ->whereIn('cash_book_type', [CashBookType::CashBook->value, CashBookType::Bank->value]);
+    }
+
     /**
      * The legal entity that owns this cash/bank account.
      *

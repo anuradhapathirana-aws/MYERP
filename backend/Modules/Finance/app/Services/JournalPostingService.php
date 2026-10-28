@@ -8,6 +8,7 @@ use App\Contracts\JournalPoster;
 use App\Services\SettingsService;
 use App\Support\Journal\JournalLineRequest;
 use App\Support\Journal\JournalRequest;
+use Carbon\CarbonImmutable;
 use DateTimeInterface;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -61,6 +62,7 @@ final class JournalPostingService implements JournalPoster
     public function __construct(
         private readonly AccountResolver $accounts,
         private readonly SettingsService $settings,
+        private readonly FinanceControlService $controls,
     ) {}
 
     public function acceptsPostings(): bool
@@ -77,6 +79,10 @@ final class JournalPostingService implements JournalPoster
         // A nested DB::transaction becomes a savepoint, so this composes
         // correctly inside the transaction confirm() already opened, and still
         // works for a standalone manual voucher.
+        // The period lock guards every posting from every module, so a closed
+        // month cannot move no matter which screen tries.
+        $this->controls->assertOpen($request->journalDate);
+
         return DB::transaction(function () use ($request): string {
             $companyId = $request->companyId ?? $this->deriveCompanyId($request);
 
@@ -127,13 +133,17 @@ final class JournalPostingService implements JournalPoster
         });
     }
 
-    public function reverseDocument(string $sourceType, int $sourceId, ?string $narration = null): ?string
-    {
+    public function reverseDocument(
+        string $sourceType,
+        int $sourceId,
+        ?string $narration = null,
+        ?DateTimeInterface $reversalDate = null,
+    ): ?string {
         if (! $this->settings->isEnabled('module.finance')) {
             return null;
         }
 
-        return DB::transaction(function () use ($sourceType, $sourceId, $narration): ?string {
+        return DB::transaction(function () use ($sourceType, $sourceId, $narration, $reversalDate): ?string {
             $original = JournalEntry::forSource($sourceType, $sourceId)
                 ->whereIn('status', [JournalStatus::Draft, JournalStatus::Posted])
                 ->lockForUpdate()
@@ -161,7 +171,7 @@ final class JournalPostingService implements JournalPoster
                 return null;
             }
 
-            return $this->reverse($original, $narration);
+            return $this->reverse($original, $narration, $reversalDate);
         });
     }
 
@@ -208,9 +218,14 @@ final class JournalPostingService implements JournalPoster
      * JournalEntry::scopeInLedger(). The pair nets to zero only because both
      * are still there.
      */
-    public function reverse(JournalEntry $original, ?string $narration = null): string
-    {
-        return DB::transaction(function () use ($original, $narration): string {
+    public function reverse(
+        JournalEntry $original,
+        ?string $narration = null,
+        ?DateTimeInterface $reversalDate = null,
+    ): string {
+        $date = $this->assertReversalDate($original, $reversalDate);
+
+        return DB::transaction(function () use ($original, $narration, $date): string {
             if ($original->status !== JournalStatus::Posted) {
                 throw ValidationException::withMessages([
                     'status' => 'Only a posted journal can be reversed. '
@@ -238,7 +253,7 @@ final class JournalPostingService implements JournalPoster
             ])->all();
 
             $reversal = new JournalEntry([
-                'journal_date'  => now()->toDateString(),
+                'journal_date'  => $date->toDateString(),
                 'document_date' => $original->document_date,
                 // source_type stays NULL so the unique index on
                 // (source_type, source_id) cannot collide with the entry being
@@ -259,7 +274,7 @@ final class JournalPostingService implements JournalPoster
                 'posted_at'           => now(),
             ]);
 
-            $reversal->journal_no = $this->nextJournalNo(now());
+            $reversal->journal_no = $this->nextJournalNo($date);
             $reversal->save();
             $reversal->lines()->createMany($mirror);
 
@@ -270,6 +285,41 @@ final class JournalPostingService implements JournalPoster
 
             return $reversal->journal_no;
         });
+    }
+
+    /**
+     * When the mirror journal is dated, and the rules it must meet.
+     *
+     * Checked here as well as in each document's void(), so a caller that
+     * forgets cannot reverse into a closed month (defence in depth).
+     *
+     * @throws ValidationException
+     */
+    private function assertReversalDate(JournalEntry $original, ?DateTimeInterface $reversalDate): CarbonImmutable
+    {
+        $date  = CarbonImmutable::instance($reversalDate ?? now())->startOfDay();
+        $today = CarbonImmutable::today();
+
+        if ($date->greaterThan($today)) {
+            throw ValidationException::withMessages([
+                'reversal_date' => 'The reversal date cannot be in the future.',
+            ]);
+        }
+
+        $originalDate = CarbonImmutable::parse($original->journal_date)->startOfDay();
+
+        // Only enforced for an explicit date: a default of today on an entry
+        // dated in the future is an existing-data edge we must not break.
+        if ($reversalDate !== null && $date->lessThan($originalDate)) {
+            throw ValidationException::withMessages([
+                'reversal_date' => 'The reversal date cannot be before the original entry date ('
+                    . $originalDate->format('d-m-Y') . ').',
+            ]);
+        }
+
+        $this->controls->assertOpen($date, 'reversal_date');
+
+        return $date;
     }
 
     public function hasPostingFor(string $sourceType, int $sourceId): bool

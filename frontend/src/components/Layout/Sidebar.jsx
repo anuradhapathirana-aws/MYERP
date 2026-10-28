@@ -199,6 +199,15 @@ const NAV_ITEMS = [
           { label: 'Account Mapping', to: '/finance/account-mapping', icon: Settings2,   permissionGuard: 'view_finance_settings' },
         ],
       },
+      {
+        label: 'Payables',
+        icon: Receipt,
+        isSubgroup: true,
+        children: [
+          { label: 'Bills',         to: '/finance/bills',         icon: FileText, permissionGuard: 'view_bills' },
+          { label: 'Bill Payments', to: '/finance/bill-payments', icon: Wallet,   permissionGuard: 'view_bill_payments' },
+        ],
+      },
     ],
   },
   {

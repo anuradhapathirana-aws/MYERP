@@ -51,6 +51,8 @@ final class PostingRole
     public const SOURCE_INVOICE          = 'invoice';
     public const SOURCE_SUPPLIER_PAYMENT = 'supplier_payment';
     public const SOURCE_CUSTOMER_RECEIPT = 'customer_receipt';
+    public const SOURCE_BILL             = 'bill';
+    public const SOURCE_BILL_PAYMENT     = 'bill_payment';
 
     /** @return list<string> Every role key, for the contract test. */
     public static function all(): array

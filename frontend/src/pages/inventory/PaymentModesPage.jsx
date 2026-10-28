@@ -15,8 +15,23 @@ const CRUMBS = [
   { label: 'Payment Modes' },
 ]
 
+// Mirrors the backend PaymentModeType enum. The Type decides behaviour
+// (which account it pays from, cheque fields); the name is just a label.
+const TYPE_OPTIONS = [
+  { value: 'cash',          label: 'Cash',          hint: 'Paid from a Cash Book' },
+  { value: 'cheque',        label: 'Cheque',        hint: 'Drawn on a Bank; needs cheque no & date' },
+  { value: 'bank_transfer', label: 'Bank Transfer', hint: 'From a Bank; needs a reference no' },
+  { value: 'card',          label: 'Card',          hint: 'Charged to a Bank account' },
+  { value: 'setoff',        label: 'Set-off',       hint: 'Settled against advances / credit notes' },
+]
+
+const TYPE_BADGE = {
+  cash: 'bg-green-50 text-green-700', cheque: 'bg-amber-50 text-amber-700',
+  bank_transfer: 'bg-sky-50 text-sky-700', card: 'bg-violet-50 text-violet-700', setoff: 'bg-slate-100 text-slate-600',
+}
+
 const EMPTY_FORM = {
-  payment_mode_name: '', code: '', requires_bank_details: false,
+  payment_mode_name: '', code: '', type: '', requires_bank_details: false,
   requires_reference_no: false, requires_date: false, sort_order: 0, is_active: true,
 }
 
@@ -29,6 +44,7 @@ function validate(field, value) {
     if (!String(value).trim()) return 'Code is required.'
     if (String(value).length > 30) return 'Max 30 characters.'
   }
+  if (field === 'type' && !value) return 'Type is required.'
   return ''
 }
 
@@ -86,6 +102,7 @@ function PaymentModeForm({ editId, onDone, onCancel }) {
       setForm({
         payment_mode_name:     m.payment_mode_name     ?? '',
         code:                  m.code                  ?? '',
+        type:                  m.type                  ?? '',
         requires_bank_details: m.requires_bank_details  ?? false,
         requires_reference_no: m.requires_reference_no  ?? false,
         requires_date:         m.requires_date          ?? false,
@@ -95,6 +112,8 @@ function PaymentModeForm({ editId, onDone, onCancel }) {
       initialized.current = true
     }
   }, [fetchedData])
+
+  const isBuiltIn = Boolean(fetchedData?.data?.is_built_in)
 
   useEffect(() => {
     if (!isFetching) nameRef.current?.focus()
@@ -138,13 +157,15 @@ function PaymentModeForm({ editId, onDone, onCancel }) {
     const newErrors = {
       payment_mode_name: validate('payment_mode_name', form.payment_mode_name),
       code:               validate('code', form.code),
+      type:               validate('type', form.type),
     }
     setErrors(newErrors)
-    setTouched({ payment_mode_name: true, code: true })
+    setTouched({ payment_mode_name: true, code: true, type: true })
     if (Object.values(newErrors).some(Boolean)) return
     mutation.mutate({
       payment_mode_name:     form.payment_mode_name.trim(),
       code:                  form.code.trim().toLowerCase(),
+      type:                  form.type,
       requires_bank_details: form.requires_bank_details,
       requires_reference_no: form.requires_reference_no,
       requires_date:         form.requires_date,
@@ -199,15 +220,37 @@ function PaymentModeForm({ editId, onDone, onCancel }) {
         </div>
       </div>
 
-      <div>
-        <label className={LABEL_CLS}>Sort Order</label>
-        <input
-          name="sort_order"
-          type="number"
-          value={form.sort_order}
-          onChange={handleChange}
-          className={inputBase}
-        />
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className={LABEL_CLS}>
+            Type <span className="text-red-500">*</span>
+          </label>
+          <select
+            name="type"
+            value={form.type}
+            onChange={handleChange}
+            onBlur={handleBlur}
+            disabled={isBuiltIn}
+            title={isBuiltIn ? 'Built-in mode: its type is fixed.' : undefined}
+            className={`${errors.type && touched.type ? inputErr : inputBase} disabled:cursor-not-allowed disabled:opacity-70`}
+          >
+            <option value="">Select</option>
+            {TYPE_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+          {errors.type && touched.type
+            ? <p className={ERR_CLS}>{errors.type}</p>
+            : <p className="mt-0.5 text-[9px] text-slate-400">{isBuiltIn ? 'Built-in mode: type is fixed.' : (TYPE_OPTIONS.find((t) => t.value === form.type)?.hint ?? 'Decides how the mode behaves.')}</p>}
+        </div>
+        <div>
+          <label className={LABEL_CLS}>Sort Order</label>
+          <input
+            name="sort_order"
+            type="number"
+            value={form.sort_order}
+            onChange={handleChange}
+            className={inputBase}
+          />
+        </div>
       </div>
 
       <div className="space-y-1.5">
@@ -310,6 +353,7 @@ export default function PaymentModesPage() {
                       <th className="w-8 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">#</th>
                       <th className="px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Name</th>
                       <th className="px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Code</th>
+                      <th className="px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Type</th>
                       <th className="px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Requires</th>
                       <th className="w-20 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Status</th>
                       <th className="w-16 px-3 py-2 text-right font-semibold uppercase tracking-wider text-slate-500">Actions</th>
@@ -318,7 +362,7 @@ export default function PaymentModesPage() {
                   <tbody className="divide-y divide-slate-100">
                     {rows.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-400">
+                        <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-400">
                           No payment modes yet. Use the form to create the first one.
                         </td>
                       </tr>
@@ -328,6 +372,11 @@ export default function PaymentModesPage() {
                           <td className="px-3 py-2 text-slate-400">{(page - 1) * (meta?.per_page ?? 25) + i + 1}</td>
                           <td className="px-3 py-2 font-medium text-slate-800">{row.payment_mode_name}</td>
                           <td className="px-3 py-2 font-mono text-slate-500">{row.code}</td>
+                          <td className="px-3 py-2">
+                            {row.type
+                              ? <span className={`inline-flex items-center rounded px-2 py-0.5 text-[11px] font-semibold ${TYPE_BADGE[row.type] ?? 'bg-slate-100 text-slate-600'}`}>{row.type_label}</span>
+                              : <span className="italic text-slate-300">—</span>}
+                          </td>
                           <td className="px-3 py-2 text-slate-500">
                             <div className="flex flex-wrap gap-1">
                               {row.requires_bank_details && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold">Bank</span>}

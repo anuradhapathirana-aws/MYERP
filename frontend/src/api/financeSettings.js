@@ -45,3 +45,16 @@ export const updatePartyLedgerMode = (partyType, mode) =>
 export const updatePostingMode = (postingMode) =>
   api.put(`${BASE}/posting-mode`, { posting_mode: postingMode })
     .then((r) => r.data?.data ?? {})
+
+/**
+ * Last CLOSED day: nothing may be posted or reversed on or before it, from
+ * any module. null reopens everything. Never in the future. Audited.
+ */
+export const updateLockDate = (lockDate) =>
+  api.put(`${BASE}/lock-date`, { lock_date: lockDate || null })
+    .then((r) => r.data?.data ?? {})
+
+/** When on, the person who entered a document cannot also confirm it. */
+export const updateMakerChecker = (enabled) =>
+  api.put(`${BASE}/maker-checker`, { enabled })
+    .then((r) => r.data?.data ?? {})

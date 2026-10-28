@@ -133,6 +133,17 @@ class UpdateSupplierPaymentRequest extends FormRequest
 
             if ($isCheque && !preg_match('/^\d{6}$/', (string) ($settlement['reference_no'] ?? ''))) {
                 $validator->errors()->add("settlements.{$index}.reference_no", 'Cheque number must be exactly 6 digits.');
+            } elseif ($isCheque && !empty($settlement['ledger_account_id'])) {
+                // The same leaf may not also be on a Finance Bill Payment from this bank account.
+                $usedOn = app(\App\Services\ChequeRegistry::class)->usedElsewhere(
+                    (int) $settlement['ledger_account_id'],
+                    (string) $settlement['reference_no'],
+                    \App\Services\ChequeRegistry::SOURCE_SUPPLIER_PAYMENT,
+                );
+
+                if ($usedOn !== null) {
+                    $validator->errors()->add("settlements.{$index}.reference_no", "Cheque {$settlement['reference_no']} is already used on {$usedOn}.");
+                }
             }
 
             if ($isCheque && empty($settlement['instrument_date'])) {

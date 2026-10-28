@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, Plus, X } from 'lucide-react'
 import { createUser, deleteUser, getUsers, updateUser } from '../../api/users'
 import { getRoles } from '../../api/roles'
+import { getAllCompanies } from '../../api/companies'
 import Breadcrumb from '../../components/Breadcrumb'
 import { confirmDelete, showError, showSuccess } from '../../utils/alerts'
 import { EditBtn, DeleteBtn } from '../../components/ui/ActionButtons'
@@ -10,7 +11,7 @@ import Pagination from '../../components/ui/Pagination'
 
 const CRUMBS = [{ label: 'Team Management' }]
 
-const EMPTY_FORM = { name: '', email: '', password: '', role: '', modules: ['inventory'] }
+const EMPTY_FORM = { name: '', email: '', password: '', role: '', modules: ['inventory'], companies: [] }
 
 const AVAILABLE_MODULES = [
   { key: 'inventory', label: 'Inventory' },
@@ -40,6 +41,14 @@ function UserModal({ open, onClose, editing, roles, onSuccess, isSuperAdmin }) {
   const [form, setForm]     = useState(EMPTY_FORM)
   const [errors, setErrors] = useState({})
 
+  // Company access: none ticked = every company (the default for everyone).
+  const { data: companies = [] } = useQuery({
+    queryKey: ['companies-all'],
+    queryFn:  getAllCompanies,
+    enabled:  open,
+    staleTime: 5 * 60 * 1000,
+  })
+
   // Populate form when opening for edit, reset when opening for add
   useEffect(() => {
     if (!open) return
@@ -50,6 +59,7 @@ function UserModal({ open, onClose, editing, roles, onSuccess, isSuperAdmin }) {
         password: '',
         role:     editing.roles?.[0] ?? '',
         modules:  editing.active_modules ?? [],
+        companies: editing.company_ids ?? [],
       })
     } else {
       setForm(EMPTY_FORM)
@@ -88,6 +98,7 @@ function UserModal({ open, onClose, editing, roles, onSuccess, isSuperAdmin }) {
       email:          form.email,
       roles:          form.role ? [form.role] : [],
       active_modules: form.modules,
+      company_ids:    form.companies,
     }
     if (form.password) payload.password = form.password
 
@@ -256,6 +267,38 @@ function UserModal({ open, onClose, editing, roles, onSuccess, isSuperAdmin }) {
               <p className="text-xs text-slate-400">
                 <span className="font-medium text-slate-500">Module Access</span> can only be configured by a Super Admin.
               </p>
+            </div>
+          )}
+
+          {/* Company Access — empty means every company */}
+          {companies.length > 1 && (
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">Company Access</label>
+              <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                {companies.map((c) => (
+                  <label key={c.id} className="flex cursor-pointer items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={form.companies.includes(c.id)}
+                      onChange={(e) => {
+                        const next = e.target.checked
+                          ? [...form.companies, c.id]
+                          : form.companies.filter((x) => x !== c.id)
+                        setForm((prev) => ({ ...prev, companies: next }))
+                        setErrors((prev) => ({ ...prev, company_ids: undefined }))
+                      }}
+                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/30"
+                    />
+                    <span className="text-slate-700">{c.name}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-slate-400">
+                {form.companies.length === 0
+                  ? 'None selected = access to all companies.'
+                  : 'This user only sees Finance documents of the ticked companies.'}
+              </p>
+              {errors.company_ids && <p className="mt-1 text-xs text-red-600">{errors.company_ids[0]}</p>}
             </div>
           )}
 

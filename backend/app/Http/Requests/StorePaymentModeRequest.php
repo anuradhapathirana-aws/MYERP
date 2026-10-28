@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
+use App\Enums\PaymentModeType;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -20,6 +21,7 @@ class StorePaymentModeRequest extends FormRequest
         return [
             'payment_mode_name'     => ['required', 'string', 'max:50', Rule::unique('inv_payment_modes', 'payment_mode_name')->whereNull('deleted_at')],
             'code'                  => ['required', 'string', 'max:30', Rule::unique('inv_payment_modes', 'code')->whereNull('deleted_at')],
+            'type'                  => ['required', Rule::enum(PaymentModeType::class)],
             'requires_bank_details' => ['boolean'],
             'requires_reference_no' => ['boolean'],
             'requires_date'         => ['boolean'],

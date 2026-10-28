@@ -73,6 +73,10 @@ const JournalEntriesPage        = lazy(() => import('./pages/finance/JournalEntr
 const JournalVoucherFormPage    = lazy(() => import('./pages/finance/JournalVoucherFormPage'))
 const TrialBalancePage          = lazy(() => import('./pages/finance/TrialBalancePage'))
 const FinanceSettingsPage       = lazy(() => import('./pages/finance/FinanceSettingsPage'))
+const BillsPage                 = lazy(() => import('./pages/finance/BillsPage'))
+const BillFormPage              = lazy(() => import('./pages/finance/BillFormPage'))
+const BillPaymentsPage          = lazy(() => import('./pages/finance/BillPaymentsPage'))
+const BillPaymentFormPage       = lazy(() => import('./pages/finance/BillPaymentFormPage'))
 const SalesOrdersPage           = lazy(() => import('./pages/inventory/SalesOrdersPage'))
 const SalesOrderFormPage        = lazy(() => import('./pages/inventory/SalesOrderFormPage'))
 const SalesOrderViewPage        = lazy(() => import('./pages/inventory/SalesOrderViewPage'))
@@ -266,6 +270,14 @@ export default function App() {
         <Route path="/finance/journal-voucher"                 element={<Lazy component={JournalVoucherFormPage} />} />
         <Route path="/finance/trial-balance"                   element={<Lazy component={TrialBalancePage} />} />
         <Route path="/finance/account-mapping"                 element={<Lazy component={FinanceSettingsPage} />} />
+        <Route path="/finance/bills"                           element={<Lazy component={BillsPage} />} />
+        <Route path="/finance/bills/create"                    element={<Lazy component={BillFormPage} />} />
+        <Route path="/finance/bills/:id"                       element={<Lazy component={BillFormPage} />} />
+        <Route path="/finance/bills/:id/edit"                  element={<Lazy component={BillFormPage} />} />
+        <Route path="/finance/bill-payments"                   element={<Lazy component={BillPaymentsPage} />} />
+        <Route path="/finance/bill-payments/create"            element={<Lazy component={BillPaymentFormPage} />} />
+        <Route path="/finance/bill-payments/:id"               element={<Lazy component={BillPaymentFormPage} />} />
+        <Route path="/finance/bill-payments/:id/edit"          element={<Lazy component={BillPaymentFormPage} />} />
 
         {/* ── Inventory Reports ── */}
         <Route path="/inventory/reports/stock-levels"      element={<Lazy component={StockLevelsReport} />} />

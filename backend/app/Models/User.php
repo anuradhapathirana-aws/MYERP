@@ -7,6 +7,7 @@ namespace App\Models;
 use App\Enums\UserRole;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -38,6 +39,16 @@ class User extends Authenticatable
             'role'              => UserRole::class,
             'active_modules'    => 'array',
         ];
+    }
+
+    /**
+     * Companies this user is restricted to. Empty = every company.
+     * Written only through CompanyAccessService::sync(), which audits it.
+     */
+    public function accessCompanies(): BelongsToMany
+    {
+        return $this->belongsToMany(Company::class, 'user_company_access', 'user_id', 'company_id')
+            ->withTimestamps();
     }
 
     public function isSuperAdmin(): bool

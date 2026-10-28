@@ -104,6 +104,13 @@ class RolesAndPermissionsSeeder extends Seeder
         // a third. There is no 'edit' because a posted journal is immutable.
         'journal_entries' => ['view', 'create', 'post', 'reverse', 'delete'],
 
+        // Payables (Bill Entry). confirm posts to the ledger and void reverses
+        // it, so both are separate from create/edit for the same reason.
+        'bills' => ['view', 'create', 'edit', 'delete', 'confirm', 'void'],
+
+        // Bill Payment: same split. confirm pays out money, void puts it back.
+        'bill_payments' => ['view', 'create', 'edit', 'delete', 'confirm', 'void'],
+
     ];
 
     /**

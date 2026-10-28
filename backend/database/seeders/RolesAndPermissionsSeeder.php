@@ -116,9 +116,10 @@ class RolesAndPermissionsSeeder extends Seeder
     /**
      * Finance permissions kept OUT of the staff read-only default.
      *
-     * Every other `view_*` is handed to staff automatically, which is right for
-     * documents and masters — staff already see invoices and payments. These
-     * two are different in kind:
+     * No Finance screen is handed to staff by default (bills, payments and the
+     * books are admin-only until granted per person). These two are kept out
+     * of even a broad per-person grant of Finance screens, being different in
+     * kind:
      *
      *   finance_reports  — the Trial Balance is the whole company position:
      *                      total payables, cash, revenue and profit in one
@@ -141,6 +142,18 @@ class RolesAndPermissionsSeeder extends Seeder
     ];
 
     /**
+     * Inventory screens that only admin and super_admin see by default (the
+     * client's decision): money received from customers, stock count results
+     * and customer credit. Like every FINANCE_RESOURCES screen, staff get them
+     * only when an administrator grants them per person.
+     */
+    private const STAFF_HIDDEN_RESOURCES = [
+        'customer_receipts',
+        'stock_reconciliations',
+        'customer_credit_notes',
+    ];
+
+    /**
      * Administration resources (user & role management).
      * Deliberately excluded from the staff read-only default set.
      */
@@ -155,16 +168,21 @@ class RolesAndPermissionsSeeder extends Seeder
 
         $allPermissions = [];
         $staffViewPerms = [];
+        $newPermissions = [];
 
         // ── Shared master data + Inventory + Finance permissions ─────────
         foreach ([self::MASTER_DATA_RESOURCES, self::INVENTORY_RESOURCES, self::FINANCE_RESOURCES] as $resources) {
             foreach ($resources as $resource => $actions) {
                 foreach ($actions as $action) {
                     $perm = "{$action}_{$resource}";
-                    Permission::firstOrCreate(['name' => $perm, 'guard_name' => 'web']);
+                    if (Permission::firstOrCreate(['name' => $perm, 'guard_name' => 'web'])->wasRecentlyCreated) {
+                        $newPermissions[] = $perm;
+                    }
                     $allPermissions[] = $perm;
 
-                    if ($action === 'view') {
+                    if ($action === 'view'
+                        && ! array_key_exists($resource, self::FINANCE_RESOURCES)
+                        && ! in_array($resource, self::STAFF_HIDDEN_RESOURCES, true)) {
                         $staffViewPerms[] = $perm;
                     }
                 }
@@ -179,7 +197,9 @@ class RolesAndPermissionsSeeder extends Seeder
             foreach ($resources as $resource => $actions) {
                 foreach ($actions as $action) {
                     $perm = "{$action}_{$resource}";
-                    Permission::firstOrCreate(['name' => $perm, 'guard_name' => 'web']);
+                    if (Permission::firstOrCreate(['name' => $perm, 'guard_name' => 'web'])->wasRecentlyCreated) {
+                        $newPermissions[] = $perm;
+                    }
                     $allPermissions[] = $perm;
                 }
             }
@@ -199,6 +219,12 @@ class RolesAndPermissionsSeeder extends Seeder
         //
         // givePermissionTo is idempotent: already-granted permissions are left
         // alone, so re-running this seeder is safe.
+        //
+        // DEFAULTS APPLY ONCE. A role receives its default set only when the
+        // role is new (a fresh install) or the permission is new (this release
+        // introduced it). A permission that already existed is the client's
+        // decision either way: if an administrator took view_costings away from
+        // staff, a deployment must not quietly hand it back.
 
         // super_admin: holds NO permission rows by design — Gate::before() in
         // AppServiceProvider grants it everything unconditionally.
@@ -206,11 +232,23 @@ class RolesAndPermissionsSeeder extends Seeder
 
         // admin: full access to everything this release knows about.
         $admin = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
-        $admin->givePermissionTo($allPermissions);
+        $admin->givePermissionTo($this->defaultsFor($admin, $allPermissions, $newPermissions));
 
         // staff: read access to shared master data and Inventory as a BASELINE.
         // Anything extra an administrator granted is preserved.
         $staff = Role::firstOrCreate(['name' => 'staff', 'guard_name' => 'web']);
-        $staff->givePermissionTo($staffViewPerms);
+        $staff->givePermissionTo($this->defaultsFor($staff, $staffViewPerms, $newPermissions));
+    }
+
+    /**
+     * @param  list<string> $defaults        the role's default permission set
+     * @param  list<string> $newPermissions  permissions created by this run
+     * @return list<string>                  what may be granted without overriding a client decision
+     */
+    private function defaultsFor(Role $role, array $defaults, array $newPermissions): array
+    {
+        return $role->wasRecentlyCreated
+            ? $defaults
+            : array_values(array_intersect($defaults, $newPermissions));
     }
 }

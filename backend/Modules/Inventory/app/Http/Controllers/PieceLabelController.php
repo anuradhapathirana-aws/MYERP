@@ -4,17 +4,17 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Http\Controllers;
 
-use Barryvdh\DomPDF\Facade\Pdf;
-use Endroid\QrCode\QrCode;
-use Endroid\QrCode\Writer\PngWriter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Collection;
 use Modules\Inventory\Enums\GrnStatus;
 use Modules\Inventory\Models\GoodsReceivedNote;
 use Modules\Inventory\Models\GrnItemPiece;
+use Modules\Inventory\Services\PieceLabelPdfRenderer;
+use Modules\Inventory\Services\PieceQrCodeService;
 
 /**
  * Cross-GRN piece label lookup — filter sealed pieces by product / shipping
@@ -23,16 +23,16 @@ use Modules\Inventory\Models\GrnItemPiece;
  */
 class PieceLabelController extends Controller
 {
+    /** Labels shown on screen — each carries its QR as an <img>. */
     private const MAX_LABELS = 500;
 
-    // The PDF page is one physical row of the 2-up sticker roll loaded in the
-    // TSC label printer: [38mm sticker][3mm gap][38mm sticker] x 25mm high.
-    // The driver's stock must be configured to the same 79x25mm size.
-    private const PAGE_WIDTH_PT  = 79 * 72 / 25.4; // 79mm
-    private const PAGE_HEIGHT_PT = 25 * 72 / 25.4; // 25mm
+    /** Labels in one PDF. Covers the largest GRN; drawing costs a few ms per label. */
+    public const MAX_PDF_LABELS = 2000;
 
-    public function __construct()
-    {
+    public function __construct(
+        private readonly PieceQrCodeService $qr,
+        private readonly PieceLabelPdfRenderer $renderer,
+    ) {
         $this->middleware('permission:view_grns');
     }
 
@@ -41,42 +41,45 @@ class PieceLabelController extends Controller
     {
         $filters = $this->validateFilters($request);
 
-        $pieces = $this->pieceQuery($filters)->limit(self::MAX_LABELS + 1)->get();
-
-        $truncated = $pieces->count() > self::MAX_LABELS;
-        $labels    = $this->buildLabels($pieces->take(self::MAX_LABELS));
+        $total  = $this->pieceQuery($filters)->count();
+        $pieces = $this->pieceQuery($filters)->limit(self::MAX_LABELS)->get();
 
         return response()->json([
             'data' => [
-                'labels'    => $labels,
-                'truncated' => $truncated,
+                'labels'    => $this->buildLabels($pieces, withQr: true),
+                'truncated' => $total > self::MAX_LABELS,
+                // The PDF prints up to MAX_PDF_LABELS, so the page can say how many
+                // labels the print will hold beyond the ones previewed.
+                'total'     => $total,
+                'pdf_limit' => self::MAX_PDF_LABELS,
             ],
         ]);
     }
 
-    /** GET /piece-labels/pdf — printable PDF for the same filters */
-    public function pdf(Request $request)
+    /**
+     * GET /piece-labels/pdf — printable PDF for the same filters.
+     *
+     * The PDF page is one physical row of the 2-up sticker roll loaded in the
+     * TSC label printer: [38mm sticker][3mm gap][38mm sticker] x 25mm high.
+     * The driver's stock must be configured to the same 79x25mm size.
+     */
+    public function pdf(Request $request): Response
     {
         $filters = $this->validateFilters($request);
 
-        $pieces = $this->pieceQuery($filters)->limit(self::MAX_LABELS)->get();
+        $pieces = $this->pieceQuery($filters)->limit(self::MAX_PDF_LABELS)->get();
         abort_if($pieces->isEmpty(), 404, 'No pieces found for the selected filters.');
 
-        $pdf = Pdf::loadView('inventory::pdf.piece-labels-filtered', [
-            'labels' => $this->buildLabels($pieces),
-        ])->setPaper([0, 0, self::PAGE_WIDTH_PT, self::PAGE_HEIGHT_PT])
-          ->setOptions([
-              'defaultFont'          => 'DejaVu Sans',
-              'isHtml5ParserEnabled' => true,
-              'isPhpEnabled'         => false,
-              'dpi'                  => 150,
-          ]);
+        $content = $this->renderer->stickerRoll($this->buildLabels($pieces, withQr: false));
 
         GrnItemPiece::whereIn('id', $pieces->pluck('id'))
             ->whereNull('printed_at')
             ->update(['printed_at' => now()]);
 
-        return $pdf->download('Piece_Labels.pdf');
+        return response($content, 200, [
+            'Content-Type'        => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="Piece_Labels.pdf"',
+        ]);
     }
 
     /** GET /piece-labels/grn-nos — GRN numbers of confirmed GRNs for the filter dropdown */
@@ -167,11 +170,13 @@ class PieceLabelController extends Controller
                 ->orderBy('piece_no'));
     }
 
-    /** @return Collection<int, array<string, mixed>> */
-    private function buildLabels(Collection $pieces): Collection
+    /**
+     * @param bool $withQr Screen preview needs the QR as an image; the PDF draws it itself.
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function buildLabels(Collection $pieces, bool $withQr): Collection
     {
-        $frontendUrl = config('app.frontend_url');
-        $writer      = new PngWriter();
+        $qrs = $withQr ? $this->qr->matrices($pieces->pluck('piece_code')) : [];
 
         return $pieces->map(fn (GrnItemPiece $piece) => [
             'id'            => $piece->id,
@@ -192,15 +197,7 @@ class PieceLabelController extends Controller
             'grn_no'        => $piece->grn?->grn_no,
             'shipping_code' => $piece->grn?->shipping_code,
             'printed_at'    => $piece->printed_at?->toDateTimeString(),
-            'qr_data_uri'   => $writer->write(
-                new QrCode(
-                    // 300px so the 18mm print on the thermal sticker stays crisp;
-                    // margin 2 keeps a quiet zone without shrinking the modules.
-                    data:   "{$frontendUrl}/inventory/pieces/{$piece->piece_code}",
-                    size:   300,
-                    margin: 2,
-                )
-            )->getDataUri(),
+            'qr_data_uri'   => $withQr ? $this->qr->svgFromMatrix($qrs[$piece->piece_code]) : null,
         ])->values();
     }
 }

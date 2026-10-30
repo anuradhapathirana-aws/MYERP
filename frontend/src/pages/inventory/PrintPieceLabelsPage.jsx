@@ -267,11 +267,15 @@ export default function PrintPieceLabelsPage() {
               <>
                 <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
                   <span className="text-xs font-semibold text-slate-600">
-                    {labels.length} label{labels.length !== 1 ? 's' : ''} found
+                    {data?.total ?? labels.length} label{(data?.total ?? labels.length) !== 1 ? 's' : ''} found
                     {applied.print_status !== 'pending' && pendingCount > 0 && (
                       <span className="ml-1 font-normal text-amber-600">· {pendingCount} still to print</span>
                     )}
-                    {data?.truncated && <span className="ml-1 font-normal text-amber-600">(showing first {labels.length} — narrow your filters)</span>}
+                    {data?.truncated && (
+                      <span className="ml-1 font-normal text-amber-600">
+                        (showing first {labels.length} — the PDF / Print includes {data.total > data.pdf_limit ? `the first ${data.pdf_limit}; narrow your filters for the rest` : `all ${data.total}`})
+                      </span>
+                    )}
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">

@@ -129,6 +129,38 @@ class LedgerAccount extends Model
             ->whereIn('cash_book_type', [CashBookType::CashBook->value, CashBookType::Bank->value]);
     }
 
+    /** An active Bank account: where a deposit is paid into. */
+    public function scopeBankAccounts(Builder $query): Builder
+    {
+        return $query
+            ->where('is_active', true)
+            ->whereNull('party_type')
+            ->where('cash_book_type', CashBookType::Bank->value);
+    }
+
+    /** An active Cash Book that takes notes and coin, until they are banked. */
+    public function scopeCashInHand(Builder $query): Builder
+    {
+        return $query
+            ->where('is_active', true)
+            ->whereNull('party_type')
+            ->where('cash_book_type', CashBookType::CashBook->value)
+            ->where('allows_cash', true);
+    }
+
+    /**
+     * An active Cash Book that takes cheques -- "Cheques in Hand". A received
+     * cheque sits here from the receipt until a bank deposit carries it out.
+     */
+    public function scopeChequesInHand(Builder $query): Builder
+    {
+        return $query
+            ->where('is_active', true)
+            ->whereNull('party_type')
+            ->where('cash_book_type', CashBookType::CashBook->value)
+            ->where('allows_cheque', true);
+    }
+
     /**
      * The legal entity that owns this cash/bank account.
      *

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\Inventory\Services;
 
 use App\Contracts\JournalPoster;
+use App\Services\ReceivedChequeRegistry;
 use App\Support\Journal\PostingRole;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -425,6 +426,17 @@ class CustomerReceiptService
         }
 
         return DB::transaction(function () use ($receipt, $reason): CustomerReceipt {
+            // A cheque already on a deposit slip has left Cheques in Hand, so
+            // reversing the receipt would take it out a second time. Checked
+            // inside the transaction, after the deposit side's locks would
+            // have queued us, not before.
+            $depositNo = app(ReceivedChequeRegistry::class)->depositedOn((int) $receipt->id);
+
+            if ($depositNo !== null) {
+                abort(422, 'A cheque from ' . $receipt->receipt_no . ' is on bank deposit ' . $depositNo
+                    . '. Remove it from that deposit (or void the deposit) first.');
+            }
+
             $receipt->loadMissing(['allocations', 'setoffs']);
 
             // Give back what this receipt consumed, locked in id order so two

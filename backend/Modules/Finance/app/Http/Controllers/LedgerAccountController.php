@@ -10,14 +10,18 @@ use Modules\Finance\DTOs\LedgerAccountData;
 use Modules\Finance\Enums\CashBookType;
 use Modules\Finance\Http\Requests\LedgerAccountRequest;
 use Modules\Finance\Http\Resources\LedgerAccountResource;
+use Modules\Finance\Models\Bill;
 use Modules\Finance\Models\ControlAccount;
 use Modules\Finance\Models\LedgerAccount;
+use Modules\Finance\Services\FundBalanceService;
 use Modules\Finance\Services\LedgerAccountService;
 
 class LedgerAccountController extends Controller
 {
-    public function __construct(private readonly LedgerAccountService $service)
-    {
+    public function __construct(
+        private readonly LedgerAccountService $service,
+        private readonly FundBalanceService   $funds,
+    ) {
         $this->middleware('permission:view_ledger_accounts')->only(['index', 'show', 'all', 'cashBookTypes', 'nextCode']);
         $this->middleware('permission:create_ledger_accounts')->only(['store']);
         $this->middleware('permission:edit_ledger_accounts')->only(['update']);
@@ -31,6 +35,12 @@ class LedgerAccountController extends Controller
             'cash_book_type', 'company_id', 'is_active',
         ]);
         $paginator = $this->service->paginate(50, $filters);
+
+        // Cash and bank rows show their posted balance, so an empty or
+        // overdrawn account is visible from the list. One query for the page.
+        $money    = collect($paginator->items())->filter(fn (LedgerAccount $a) => $a->cash_book_type !== null);
+        $balances = $this->funds->balancesCents($money->pluck('id')->all());
+        $money->each(fn (LedgerAccount $a) => $a->setAttribute('balance', Bill::fromCents($balances[$a->id] ?? 0)));
 
         return response()->json([
             'data' => LedgerAccountResource::collection($paginator->items()),
@@ -59,6 +69,12 @@ class LedgerAccountController extends Controller
             'cash_book_type', 'company_id', 'fund_sources_only',
             'include_party_accounts',
         ]));
+
+        // Payment screens show the money in each Pay From / Deposit To account.
+        if (request()->boolean('fund_sources_only')) {
+            $available = $this->funds->availableNow($accounts);
+            $accounts->each(fn (LedgerAccount $a) => $a->setAttribute('available', $available[$a->id] ?? '0.00'));
+        }
 
         return response()->json(['data' => LedgerAccountResource::collection($accounts)]);
     }

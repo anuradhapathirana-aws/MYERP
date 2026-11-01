@@ -2,10 +2,12 @@
 
 namespace Modules\Finance\Providers;
 
+use App\Contracts\FundBalanceGuard;
 use App\Contracts\JournalPoster;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
+use Modules\Finance\Services\FundBalanceService;
 use Modules\Finance\Services\JournalPostingService;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
@@ -35,6 +37,7 @@ class FinanceServiceProvider extends ModuleServiceProvider
         parent::register();
 
         $this->app->bind(JournalPoster::class, JournalPostingService::class);
+        $this->app->bind(FundBalanceGuard::class, FundBalanceService::class);
     }
 
     public function boot(): void

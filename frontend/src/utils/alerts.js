@@ -76,6 +76,23 @@ export async function confirmAction({ title, message, confirmText = 'Yes, Confir
   return result.isConfirmed
 }
 
+const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+
+/**
+ * The server's "bank will go negative" warning (errors.bank_overdraw) as a Yes/No.
+ * Yes means: confirm again with allow_overdraw. A cash book short never gets here —
+ * the server refuses it outright.
+ */
+export async function confirmBankOverdraw(warnings = []) {
+  return confirmAction({
+    title:        'Not enough money in the bank',
+    message:      `${warnings.map(escapeHtml).join('<br>')}<br><span class="swal2-sub-text">Continue only if the bank will honour it (e.g. an overdraft facility or a receipt not yet entered).</span>`,
+    confirmText:  'Yes, Pay Anyway',
+    confirmColor: '#d97706',
+    icon:         'warning',
+  })
+}
+
 /**
  * Three-way prompt: Confirm / Deny / Close, each mapped to a distinct outcome
  * rather than collapsing to a plain yes/no. Returns 'confirm' | 'deny' | 'cancel'.

@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Finance;
 
+use App\Contracts\FundBalanceGuard;
 use App\Models\PaymentMode;
 use App\Models\SupplierGroup;
 use App\Models\SupplierMaster;
 use App\Models\User;
 use App\Services\SettingsService;
+use App\Support\Journal\NullFundBalanceGuard;
 use App\Support\Journal\PostingRole;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Finance\Database\Seeders\FinanceChartOfAccountsSeeder;
@@ -21,6 +23,7 @@ use Modules\Finance\Models\AccountDefault;
 use Modules\Finance\Models\ControlAccount;
 use Modules\Finance\Models\JournalEntry;
 use Modules\Finance\Models\LedgerAccount;
+use Modules\Finance\Services\FundBalanceService;
 use Modules\Finance\Services\JournalPostingService;
 use Modules\Finance\Services\LedgerAccountService;
 use Modules\Inventory\Models\GoodsReceivedNote;
@@ -50,6 +53,10 @@ class SupplierPaymentPostingTest extends TestCase
         parent::setUp();
 
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+
+        // These tests pin the journal and account balances on unfunded banks.
+        // The "enough money?" rule has its own tests in FundBalanceTest.
+        $this->app->instance(FundBalanceGuard::class, new NullFundBalanceGuard());
 
         app(SettingsService::class)->set('module.inventory', true);
         app(SettingsService::class)->set('module.finance', true);
@@ -172,6 +179,35 @@ class SupplierPaymentPostingTest extends TestCase
         // balance matches what actually left that one account.
         $this->assertSame(-70000.0, $this->balance($this->bankA->id));
         $this->assertSame(-30000.0, $this->balance($this->bankB->id));
+    }
+
+    public function test_paying_from_a_bank_without_the_money_asks_first(): void
+    {
+        // The real guard, not setUp's no-op: this proves Inventory reaches it.
+        $this->app->instance(FundBalanceGuard::class, app(FundBalanceService::class));
+
+        $grn = $this->confirmedGrn(10000);
+        $id  = $this->createPayment([
+            'allocations' => [[
+                'reference_type' => 'grn', 'reference_id' => $grn->id,
+                'payment_amount' => 10000, 'discount' => 0,
+            ]],
+            'settlements' => [$this->settlement($this->bankA, 10000, '333333')],
+        ]);
+
+        $this->actingAs($this->user)
+            ->postJson("/api/v1/supplier-payments/{$id}/confirm")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('bank_overdraw');
+
+        $this->assertSame('draft', SupplierPayment::findOrFail($id)->status->value);
+        $this->assertSame(0.0, $this->balance($this->bankA->id));
+
+        $this->actingAs($this->user)
+            ->postJson("/api/v1/supplier-payments/{$id}/confirm", ['allow_overdraw' => true])
+            ->assertOk();
+
+        $this->assertSame(-10000.0, $this->balance($this->bankA->id));
     }
 
     public function test_payables_are_posted_per_grn_so_ageing_works(): void

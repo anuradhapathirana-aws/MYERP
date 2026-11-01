@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Finance;
 
+use App\Contracts\FundBalanceGuard;
 use App\Enums\PaymentModeType;
 use App\Models\AuditLog;
 use App\Models\PaymentMode;
 use App\Models\SupplierMaster;
 use App\Services\CompanyAccessService;
 use App\Services\SettingsService;
+use App\Support\Journal\NullFundBalanceGuard;
 use App\Support\Journal\PostingRole;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -58,6 +60,10 @@ class BillPaymentTest extends TestCase
         ];
 
         $this->setUpBills();
+
+        // These tests pin posting and bill balances, on accounts nobody funded.
+        // The "enough money?" rule has its own tests in FundBalanceTest.
+        $this->app->instance(FundBalanceGuard::class, new NullFundBalanceGuard());
 
         $this->cash       = $this->ledger('Main Cash', 'Cash & Cash Equivalents', CashBookType::CashBook, $this->companyA);
         $this->bank       = $this->ledger('Sampath Current', 'Cash & Cash Equivalents', CashBookType::Bank, $this->companyA);

@@ -20,8 +20,8 @@ export const deleteBillPayment = (id) =>
   api.delete(`${BASE}/${id}`)
 
 /** Pays out: Dr Accounts Payable per bill / Cr the cash book or bank. Bill balances fall. */
-export const confirmBillPayment = (id) =>
-  api.post(`${BASE}/${id}/confirm`).then((r) => r.data?.data)
+export const confirmBillPayment = (id, { allowOverdraw = false } = {}) =>
+  api.post(`${BASE}/${id}/confirm`, allowOverdraw ? { allow_overdraw: true } : {}).then((r) => r.data?.data)
 
 /** Reverses the journal on reversal_date (must be in an open period); bill balances come back. */
 export const voidBillPayment = (id, { reason, reversal_date }) =>

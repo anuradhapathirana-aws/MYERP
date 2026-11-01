@@ -15,8 +15,9 @@ export const updateSupplierPayment = (id, data) =>
 export const deleteSupplierPayment = (id) =>
   api.delete(`/api/v1/supplier-payments/${id}`)
 
-export const confirmSupplierPayment = (id) =>
-  api.post(`/api/v1/supplier-payments/${id}/confirm`).then((r) => r.data)
+/** allowOverdraw: the user said yes to the "bank will go negative" warning. */
+export const confirmSupplierPayment = (id, { allowOverdraw = false } = {}) =>
+  api.post(`/api/v1/supplier-payments/${id}/confirm`, allowOverdraw ? { allow_overdraw: true } : {}).then((r) => r.data)
 
 /**
  * Reverse a confirmed payment. Not a delete: the document stays, the ledger

@@ -19,6 +19,7 @@ use Modules\Finance\Models\BillPayment;
 use Modules\Finance\Models\LedgerAccount;
 use Modules\Finance\Services\BillPaymentService;
 use Modules\Finance\Services\FinanceControlService;
+use Modules\Finance\Services\FundBalanceService;
 use Modules\Finance\Support\PaymentModeRules;
 
 /**
@@ -33,6 +34,7 @@ class BillPaymentController extends Controller
         private readonly BillPaymentService    $service,
         private readonly FinanceControlService $controls,
         private readonly CompanyAccessService  $companyAccess,
+        private readonly FundBalanceService    $funds,
     ) {
         $this->middleware('permission:view_bill_payments')
             ->only(['index', 'show', 'history', 'nextNo', 'options', 'openBills']);
@@ -93,14 +95,19 @@ class BillPaymentController extends Controller
                 fn ($w) => $w->whereNull('company_id')->orWhereIn('company_id', $allowed),
             ))
             ->orderBy('code')
-            ->get(['id', 'code', 'ledger_account_name', 'company_id', 'cash_book_type'])
-            ->map(fn (LedgerAccount $a): array => [
-                'id'             => $a->id,
-                'code'           => $a->code,
-                'name'           => $a->ledger_account_name,
-                'company_id'     => $a->company_id,
-                'cash_book_type' => $a->cash_book_type?->value,
-            ]);
+            ->get(['id', 'code', 'ledger_account_name', 'company_id', 'cash_book_type', 'allows_cheque']);
+
+        // Shown under the account picker so the user sees the money before paying.
+        $available = $this->funds->availableNow($accounts);
+
+        $accounts = $accounts->map(fn (LedgerAccount $a): array => [
+            'id'             => $a->id,
+            'code'           => $a->code,
+            'name'           => $a->ledger_account_name,
+            'company_id'     => $a->company_id,
+            'cash_book_type' => $a->cash_book_type?->value,
+            'available'      => $available[$a->id] ?? '0.00',
+        ]);
 
         $modes = PaymentModeRules::usable()->get()
             ->map(fn (PaymentMode $m): array => [
@@ -167,7 +174,9 @@ class BillPaymentController extends Controller
 
     public function confirm(Request $request, BillPayment $billPayment): JsonResponse
     {
-        $payment = $this->service->confirm($billPayment);
+        // allow_overdraw: the user said yes to the "bank will go negative"
+        // warning. It never lets a cash book go negative.
+        $payment = $this->service->confirm($billPayment, $request->boolean('allow_overdraw'));
 
         return response()->json(['data' => (new BillPaymentResource($payment))->toArray($request)]);
     }

@@ -77,6 +77,8 @@ const BillsPage                 = lazy(() => import('./pages/finance/BillsPage')
 const BillFormPage              = lazy(() => import('./pages/finance/BillFormPage'))
 const BillPaymentsPage          = lazy(() => import('./pages/finance/BillPaymentsPage'))
 const BillPaymentFormPage       = lazy(() => import('./pages/finance/BillPaymentFormPage'))
+const BankDepositsPage          = lazy(() => import('./pages/finance/BankDepositsPage'))
+const BankDepositFormPage       = lazy(() => import('./pages/finance/BankDepositFormPage'))
 const SalesOrdersPage           = lazy(() => import('./pages/inventory/SalesOrdersPage'))
 const SalesOrderFormPage        = lazy(() => import('./pages/inventory/SalesOrderFormPage'))
 const SalesOrderViewPage        = lazy(() => import('./pages/inventory/SalesOrderViewPage'))
@@ -278,6 +280,10 @@ export default function App() {
         <Route path="/finance/bill-payments/create"            element={<Lazy component={BillPaymentFormPage} />} />
         <Route path="/finance/bill-payments/:id"               element={<Lazy component={BillPaymentFormPage} />} />
         <Route path="/finance/bill-payments/:id/edit"          element={<Lazy component={BillPaymentFormPage} />} />
+        <Route path="/finance/bank-deposits"                   element={<Lazy component={BankDepositsPage} />} />
+        <Route path="/finance/bank-deposits/create"            element={<Lazy component={BankDepositFormPage} />} />
+        <Route path="/finance/bank-deposits/:id"               element={<Lazy component={BankDepositFormPage} />} />
+        <Route path="/finance/bank-deposits/:id/edit"          element={<Lazy component={BankDepositFormPage} />} />
 
         {/* ── Inventory Reports ── */}
         <Route path="/inventory/reports/stock-levels"      element={<Lazy component={StockLevelsReport} />} />

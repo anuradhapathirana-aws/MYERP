@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Finance\Services;
 
+use App\Contracts\FundBalanceGuard;
 use App\Contracts\JournalPoster;
 use App\Models\AuditLog;
 use App\Models\User;
@@ -62,6 +63,7 @@ class BillPaymentService
         private readonly CompanyAccessService  $companyAccess,
         private readonly AuditLogger           $audit,
         private readonly ChequeRegistry        $cheques,
+        private readonly FundBalanceGuard      $funds,
     ) {}
 
     // ── Reading ──────────────────────────────────────────────────────────────
@@ -324,11 +326,11 @@ class BillPaymentService
     }
 
     /** Pay the bills: post the journal and reduce each bill's balance. */
-    public function confirm(BillPayment $payment): BillPayment
+    public function confirm(BillPayment $payment, bool $bankOverdrawConfirmed = false): BillPayment
     {
         $this->assertAccessible($payment);
 
-        DB::transaction(function () use ($payment): void {
+        DB::transaction(function () use ($payment, $bankOverdrawConfirmed): void {
             /** @var BillPayment $locked */
             $locked = BillPayment::with('allocations')->whereKey($payment->id)->lockForUpdate()->firstOrFail();
 
@@ -385,6 +387,14 @@ class BillPaymentService
                     'status' => 'The Finance module is not enabled, so this payment cannot be posted.',
                 ]);
             }
+
+            // Enough money in the Pay From account? Cash short is refused; a
+            // bank short asks the user first (see FundBalanceGuard).
+            $this->funds->assertCovered(
+                [$locked->pay_from_account_id => $locked->total_amount],
+                $locked->payment_date->toDateString(),
+                $bankOverdrawConfirmed,
+            );
 
             $journalNo = $poster->post(BillPaymentJournal::build($locked));
 

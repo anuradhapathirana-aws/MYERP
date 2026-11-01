@@ -55,6 +55,7 @@ import {
   Wallet,
   Warehouse,
   X,
+  PiggyBank,
 } from 'lucide-react'
 import UpgradeModal from './UpgradeModal'
 
@@ -206,6 +207,14 @@ const NAV_ITEMS = [
         children: [
           { label: 'Bills',         to: '/finance/bills',         icon: FileText, permissionGuard: 'view_bills' },
           { label: 'Bill Payments', to: '/finance/bill-payments', icon: Wallet,   permissionGuard: 'view_bill_payments' },
+        ],
+      },
+      {
+        label: 'Banking',
+        icon: Landmark,
+        isSubgroup: true,
+        children: [
+          { label: 'Bank Deposits', to: '/finance/bank-deposits', icon: PiggyBank, permissionGuard: 'view_bank_deposits' },
         ],
       },
     ],

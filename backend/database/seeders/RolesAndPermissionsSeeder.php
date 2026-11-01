@@ -111,6 +111,9 @@ class RolesAndPermissionsSeeder extends Seeder
         // Bill Payment: same split. confirm pays out money, void puts it back.
         'bill_payments' => ['view', 'create', 'edit', 'delete', 'confirm', 'void'],
 
+        // Bank Deposit: same split. confirm moves the money into the bank.
+        'bank_deposits' => ['view', 'create', 'edit', 'delete', 'confirm', 'void'],
+
     ];
 
     /**

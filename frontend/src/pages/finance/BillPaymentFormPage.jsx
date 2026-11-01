@@ -17,7 +17,7 @@ import FilterSearchSelect from '../../components/ui/FilterSearchSelect'
 import Money from '../../components/ui/Money'
 import { usePermissions } from '../../hooks/usePermissions'
 import {
-  confirmAction, confirmDelete, confirmWithReasonAndDate, showError, showSuccess, showWarning,
+  confirmAction, confirmBankOverdraw, confirmDelete, confirmWithReasonAndDate, showError, showSuccess, showWarning,
 } from '../../utils/alerts'
 import { INPUT_DISABLED_CLS, LABEL_CLS, inputCls, selectCls, textareaCls } from '../../utils/fieldStyles'
 
@@ -544,7 +544,20 @@ export default function BillPaymentFormPage() {
           await confirmBillPayment(saved.id)
           confirmed = true
         } catch (cErr) {
-          showWarning(`${saved.payment_no} saved as draft but not paid: ${firstError(cErr, 'confirmation failed.')}`)
+          // Bank short: ask, and pay anyway only on Yes. Cash short stays a plain failure.
+          const overdraw = cErr?.response?.data?.errors?.bank_overdraw
+          if (overdraw && await confirmBankOverdraw(overdraw)) {
+            try {
+              await confirmBillPayment(saved.id, { allowOverdraw: true })
+              confirmed = true
+            } catch (c2Err) {
+              showWarning(`${saved.payment_no} saved as draft but not paid: ${firstError(c2Err, 'confirmation failed.')}`)
+            }
+          } else if (overdraw) {
+            showWarning(`${saved.payment_no} saved as draft, not paid.`)
+          } else {
+            showWarning(`${saved.payment_no} saved as draft but not paid: ${firstError(cErr, 'confirmation failed.')}`)
+          }
         }
       }
 
@@ -557,6 +570,7 @@ export default function BillPaymentFormPage() {
       qc.invalidateQueries({ queryKey: ['bills'] })
       qc.invalidateQueries({ queryKey: ['bill'] })
       qc.invalidateQueries({ queryKey: ['journal-entries'] })
+      qc.invalidateQueries({ queryKey: ['bill-payment-options'] }) // account balances moved
       // Awaited: a balance payment must prefill from the bills as they are now.
       await qc.invalidateQueries({ queryKey: ['open-bills'] })
 
@@ -610,12 +624,21 @@ export default function BillPaymentFormPage() {
     qc.invalidateQueries({ queryKey: ['bill'] })
     qc.invalidateQueries({ queryKey: ['open-bills'] })
     qc.invalidateQueries({ queryKey: ['journal-entries'] })
+    qc.invalidateQueries({ queryKey: ['bill-payment-options'] })
   }
 
   const confirmMutation = useMutation({
-    mutationFn: () => confirmBillPayment(id),
+    mutationFn: (opts) => confirmBillPayment(id, opts),
     onSuccess: (p) => { refreshPayment(); showSuccess(`${p?.payment_no} paid and posted.`) },
-    onError: (e) => showError(firstError(e, 'Could not confirm this payment.')),
+    onError: async (e) => {
+      // Bank short: ask, and confirm again only on Yes. Cash short is a plain error.
+      const overdraw = e?.response?.data?.errors?.bank_overdraw
+      if (overdraw) {
+        if (await confirmBankOverdraw(overdraw)) confirmMutation.mutate({ allowOverdraw: true })
+        return
+      }
+      showError(firstError(e, 'Could not confirm this payment.'))
+    },
   })
   const voidMutation = useMutation({
     mutationFn: (body) => voidBillPayment(id, body),
@@ -735,7 +758,14 @@ export default function BillPaymentFormPage() {
   const primaryLabel = isCreate ? (canConfirm ? 'Create & Close' : 'Save as Draft') : (canConfirm ? 'Save & Pay' : 'Save Draft')
   const primaryAction = canConfirm ? 'close' : 'draft'
   const supplierOptions = suppliers.map((s) => ({ value: s.id, label: s.name }))
-  const accountOptions = accountsForMode.map((a) => ({ value: a.id, label: `${a.code} - ${a.name}` }))
+  const accountOptions = accountsForMode.map((a) => ({
+    value: a.id,
+    label: `${a.code} - ${a.name}${a.available != null ? ` (${fmt(toCents(a.available))})` : ''}`,
+  }))
+  // Money in the chosen account vs this payment. Cash short is refused on
+  // confirm; a bank short only warns.
+  const availableCents = !isView && selectedAccount?.available != null ? toCents(selectedAccount.available) : null
+  const payFromShort   = availableCents !== null && shownPayTotal > availableCents
   const readyForBills = Boolean(form.supplier_id) && Boolean(form.company_id)
 
   return (
@@ -1081,6 +1111,12 @@ export default function BillPaymentFormPage() {
                       disabled={readOnly || (!selectedMode && !isView)}
                     />
                   </div>
+                  {availableCents !== null && (
+                    <p className={`mt-0.5 text-[10px] font-semibold ${payFromShort || availableCents < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                      Available: {fmt(availableCents)}
+                      {payFromShort && (paysFromBank ? ' — not enough, will ask on confirm' : ' — not enough cash')}
+                    </p>
+                  )}
                   <FieldError msg={err('pay_from_account_id') ? errors.pay_from_account_id : null} />
                 </div>
 

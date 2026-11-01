@@ -15,9 +15,11 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Modules\Finance\Enums\BankDepositStatus;
 use Modules\Finance\Enums\BillPaymentStatus;
 use Modules\Finance\Enums\BillStatus;
 use Modules\Finance\Models\Attachment;
+use Modules\Finance\Models\BankDeposit;
 use Modules\Finance\Models\Bill;
 use Modules\Finance\Models\BillPayment;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
@@ -60,6 +62,9 @@ class AttachmentService
         Bill::AUDIT_TYPE        => ['model' => Bill::class, 'view' => 'view_bills', 'edit' => 'edit_bills'],
         BillPayment::AUDIT_TYPE => [
             'model' => BillPayment::class, 'view' => 'view_bill_payments', 'edit' => 'edit_bill_payments',
+        ],
+        BankDeposit::AUDIT_TYPE => [
+            'model' => BankDeposit::class, 'view' => 'view_bank_deposits', 'edit' => 'edit_bank_deposits',
         ],
     ];
 
@@ -209,6 +214,7 @@ class AttachmentService
         return match ($type) {
             Bill::AUDIT_TYPE        => $document->status !== BillStatus::Voided,
             BillPayment::AUDIT_TYPE => $document->status !== BillPaymentStatus::Voided,
+            BankDeposit::AUDIT_TYPE => $document->status !== BankDepositStatus::Voided,
             default                 => false,
         };
     }
@@ -218,6 +224,7 @@ class AttachmentService
         return match ($type) {
             Bill::AUDIT_TYPE        => $document->status === BillStatus::Draft,
             BillPayment::AUDIT_TYPE => $document->status === BillPaymentStatus::Draft,
+            BankDeposit::AUDIT_TYPE => $document->status === BankDepositStatus::Draft,
             default                 => false,
         };
     }

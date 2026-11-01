@@ -25,12 +25,14 @@ class DocumentNumberService
 {
     public const TYPE_BILL         = 'bill';
     public const TYPE_BILL_PAYMENT = 'bill_payment';
+    public const TYPE_BANK_DEPOSIT = 'bank_deposit';
 
     /** @var array<string, array{prefix: string, padding: int}> */
     private const TYPES = [
         self::TYPE_BILL         => ['prefix' => 'BILL', 'padding' => 4],
         // BP, not PAY: Inventory's supplier payments already use PAY-.
         self::TYPE_BILL_PAYMENT => ['prefix' => 'BP', 'padding' => 4],
+        self::TYPE_BANK_DEPOSIT => ['prefix' => 'BD', 'padding' => 4],
     ];
 
     /** Allocate the next number. Call inside a DB transaction. */

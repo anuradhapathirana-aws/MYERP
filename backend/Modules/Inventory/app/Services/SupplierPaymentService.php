@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Services;
 
+use App\Contracts\FundBalanceGuard;
 use App\Contracts\JournalPoster;
 use App\Support\Journal\PostingRole;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -241,13 +242,13 @@ class SupplierPaymentService
      * authoritatively, converts overpayment into a credit note, consumes setoff credit notes,
      * and posts a standalone advance's credit note.
      */
-    public function confirm(SupplierPayment $payment): SupplierPayment
+    public function confirm(SupplierPayment $payment, bool $bankOverdrawConfirmed = false): SupplierPayment
     {
         if ($payment->status !== SupplierPaymentStatus::Draft) {
             abort(422, 'Only draft payments can be confirmed.');
         }
 
-        return DB::transaction(function () use ($payment): SupplierPayment {
+        return DB::transaction(function () use ($payment, $bankOverdrawConfirmed): SupplierPayment {
             $payment->load(['allocations', 'setoffs', 'settlements']);
 
             $grnIds = $payment->allocations
@@ -403,6 +404,22 @@ class SupplierPaymentService
             // their confirm() behaving exactly as it did before Finance
             // existed, which is the whole premise of selling the modules apart.
             if ($poster->acceptsPostings()) {
+                // Enough money in each Pay From account? A cash book short is
+                // refused; a bank short asks first (see FundBalanceGuard).
+                $outflows = [];
+                foreach ($fresh->settlements as $settlement) {
+                    if (! empty($settlement->ledger_account_id)) {
+                        $id = (int) $settlement->ledger_account_id;
+                        $outflows[$id] = ($outflows[$id] ?? 0) + (float) $settlement->amount;
+                    }
+                }
+
+                app(FundBalanceGuard::class)->assertCovered(
+                    $outflows,
+                    $fresh->payment_date->toDateString(),
+                    $bankOverdrawConfirmed,
+                );
+
                 $poster->post(SupplierPaymentJournal::build($fresh));
             }
 

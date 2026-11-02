@@ -46,6 +46,10 @@ enum AccountRole: string
     case CustomerAdvance      = 'customer_advance';
     case RoundingDifference   = 'rounding_difference';
     case OpeningBalanceEquity = 'opening_balance_equity';
+    case SalesReturns         = 'sales_returns';
+
+    // ── Used only when switched on (SSCL rate above zero) ────────────────────
+    case SsclPayable          = 'sscl_payable';
 
     // ── Mapped but not yet used by any posting ───────────────────────────────
     case BankCharges          = 'bank_charges';
@@ -68,6 +72,8 @@ enum AccountRole: string
             self::CustomerAdvance      => 'Customer Advances',
             self::RoundingDifference   => 'Rounding Difference',
             self::OpeningBalanceEquity => 'Opening Balance Equity',
+            self::SalesReturns         => 'Sales Returns',
+            self::SsclPayable          => 'SSCL Payable',
             self::BankCharges          => 'Bank Charges',
             self::GrniClearing         => 'Goods Received Not Invoiced',
             self::Inventory            => 'Inventory',
@@ -91,6 +97,8 @@ enum AccountRole: string
             self::CustomerAdvance      => 'Money held for a customer: overpayments and advances.',
             self::RoundingDifference   => 'Absorbs sub-cent residue so the ledger agrees with the documents.',
             self::OpeningBalanceEquity => 'The balancing side of the opening-balance journal.',
+            self::SalesReturns         => 'Goods customers sent back, net of tax. Debited by a Customer Return.',
+            self::SsclPayable          => 'SSCL inside the selling price, owed to the revenue authority. Used when an SSCL rate is set.',
             self::BankCharges          => 'Bank fees. Not yet posted by any document.',
             self::GrniClearing         => 'Used only once Bill Entry exists: a GRN credits this, the Bill moves it to Payables.',
             self::Inventory            => 'Used only if stock moves to perpetual valuation. Unused today.',
@@ -113,6 +121,7 @@ enum AccountRole: string
 
             self::AccountsPayable,
             self::OutputTaxPayable,
+            self::SsclPayable,
             self::CustomerAdvance,
             self::GrniClearing         => [AccountType::Liability],
 
@@ -127,6 +136,7 @@ enum AccountRole: string
             // Both treatments are valid — see the class docblock.
             self::DiscountAllowed,
             self::DiscountReceived,
+            self::SalesReturns,
             self::RoundingDifference   => [AccountType::Income, AccountType::Expense],
         };
     }
@@ -143,6 +153,7 @@ enum AccountRole: string
             self::GrniClearing,
             self::Inventory,
             self::CostOfSales,
+            self::SsclPayable,
         ], true);
     }
 

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Services;
 
+use App\Models\Tax;
+use App\Services\TaxService;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -393,9 +395,9 @@ class CostingService
 
         return $this->computeBreakdown($grns, null, [
             'apply_sscl' => (bool) ($input['apply_sscl'] ?? true),
-            'sscl_pct'   => (float) ($input['sscl_pct'] ?? 1.25),
+            'sscl_pct'   => (float) ($input['sscl_pct'] ?? app(TaxService::class)->configuredRate(Tax::SSCL)),
             'apply_vat'  => (bool) ($input['apply_vat'] ?? true),
-            'vat_pct'    => (float) ($input['vat_pct'] ?? 18),
+            'vat_pct'    => (float) ($input['vat_pct'] ?? app(TaxService::class)->rate(Tax::VAT)),
             'items'      => (array) ($input['items'] ?? []),
         ]);
     }

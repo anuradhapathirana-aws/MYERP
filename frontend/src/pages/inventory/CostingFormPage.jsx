@@ -24,6 +24,7 @@ import {
   updateCosting,
 } from '../../api/costings'
 import { getAllSuppliers } from '../../api/suppliers'
+import { currentTaxesQuery } from '../../api/taxes'
 import Breadcrumb from '../../components/Breadcrumb'
 import { usePermissions } from '../../hooks/usePermissions'
 import { confirmAction, showError, showSuccess } from '../../utils/alerts'
@@ -296,6 +297,20 @@ export default function CostingFormPage() {
     apply_vat:        true,
     vat_pct:          18,
   })
+  // A new costing starts from today's rates in Master Data > Taxes (the 1.25 / 18
+  // above are only the first-paint placeholders). Saved costings keep their own.
+  const { data: currentTaxes } = useQuery({ ...currentTaxesQuery, enabled: !id })
+  const taxDefaultsApplied = useRef(false)
+  useEffect(() => {
+    if (id || !currentTaxes || taxDefaultsApplied.current) return
+    taxDefaultsApplied.current = true
+    setForm((f) => ({
+      ...f,
+      sscl_pct: currentTaxes.sscl_rate ?? f.sscl_pct,
+      vat_pct:  currentTaxes.vat ?? f.vat_pct,
+    }))
+  }, [id, currentTaxes])
+
   const [docNoPreview, setDocNoPreview] = useState('')
   const [refNoPreview, setRefNoPreview] = useState('')
   const [errors,       setErrors]       = useState({})

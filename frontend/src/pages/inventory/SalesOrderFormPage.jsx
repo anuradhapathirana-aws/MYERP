@@ -230,8 +230,7 @@ function emptyItem() {
     quantity:        '',
     unit_price:      '',
     discount:        '',
-    tax:             '',
-    pieces:          [], // [{ piece_code, weight, roll_no, grn_unit_price, attribute_id, color }] — non-empty = roll-backed line
+    pieces:        [], // [{ piece_code, weight, roll_no, grn_unit_price, attribute_id, color }] — non-empty = roll-backed line
     attribute_id:    '', // colour — derived from rolls, or picked manually on no-roll lines
     color_name:      '',
     color_options:   [], // manual-line colour choices from the product's own attributes
@@ -242,7 +241,7 @@ function emptyItem() {
     available_stock: null, // total current stock — only checked when available_count is 0
     stock_tracking:  'roll', // 'quantity' = finished goods etc.: typed qty + colour, never rolls
     colour_stock:    null, // quantity lines: { [attribute_id]: qty } (null = not fetched / allow_minus)
-    cost_hint:       null, // latest GRN cost — below-cost warning basis on manual lines
+    cost_hint:       null, // break-even price (costing landed + SSCL + VAT, else GRN cost) — below-cost basis on manual lines
     no_selling_price: false, // product has no price-list selling price configured
     proforma_item_id: null, // line recalled from a proforma ("Create SO from Proforma") — keeps the quoted price
     expanded:        false,
@@ -308,20 +307,22 @@ function rollCapacityBase(row) {
   return row.pieces.reduce((sum, p) => sum + (parseFloat(p.weight) || 0), 0)
 }
 
-function calcItem(row, discountEnabled, taxEnabled) {
+// No tax on an SO: its prices are the costing's AFTER-tax figure (VAT inside), and
+// the invoice decides Tax / Non-Tax billing — a tax column here would add VAT twice.
+function calcItem(row, discountEnabled) {
   const qty     = rowQty(row)
   const price   = parseFloat(row.unit_price) || 0
   const discPct = discountEnabled ? (parseFloat(row.discount) || 0) : 0
-  const taxPct  = taxEnabled      ? (parseFloat(row.tax)      || 0) : 0
   const gross   = qty * price
   const discAmt = gross * (discPct / 100)
-  const taxAmt  = gross * (taxPct / 100)
-  const amount  = gross - discAmt + taxAmt
-  return { qty, gross, discAmt, taxAmt, amount }
+  const amount  = gross - discAmt
+  return { qty, gross, discAmt, amount }
 }
 
-// Below-cost guard basis: the dearest attached roll's GRN cost, or the latest confirmed
-// GRN cost (cost_hint) for manual no-roll lines. Null = unknown.
+// Below-cost guard basis: the dearest attached roll's break-even price (cost_floor =
+// its costing's landed cost + SSCL + VAT, no margin; the GRN cost when never costed),
+// or the newest costing's break-even price (cost_hint) for manual no-roll lines.
+// SO prices are AFTER-tax, so the basis includes VAT too. Null = unknown.
 //
 // Every cost the API returns is PER THE STOCKING UOM (see ProductPricingService), while
 // the line is priced in the UOM the customer buys in — so the two must be brought into
@@ -329,7 +330,7 @@ function calcItem(row, discountEnabled, taxEnabled) {
 // per-metre cost and the warning would fire at random.
 function rowCostBasis(row) {
   if (row.pieces.length > 0) {
-    const costs = row.pieces.map((p) => Number(p.grn_unit_price) || 0).filter((c) => c > 0)
+    const costs = row.pieces.map((p) => Number(p.cost_floor ?? p.grn_unit_price) || 0).filter((c) => c > 0)
     return costs.length ? Math.max(...costs) : null
   }
   return row.cost_hint != null ? Number(row.cost_hint) : null
@@ -347,9 +348,11 @@ function priceInBase(row, factor) {
   return price > 0 && factor > 0 ? price / factor : 0
 }
 
-function isBelowCost(row, factor = 1) {
+function isBelowCost(row, factor = 1, discountEnabled = false) {
   const cost  = rowCostBasis(row) // per base UOM
-  const price = priceInBase(row, factor)
+  // What the customer actually pays per unit — a line discount lowers it too.
+  const disc  = discountEnabled ? (parseFloat(row.discount) || 0) : 0
+  const price = priceInBase(row, factor) * (1 - disc / 100)
   return cost != null && price > 0 && price < cost
 }
 
@@ -404,7 +407,6 @@ export default function SalesOrderFormPage() {
 
   const [viewMode, setViewMode]               = useState('table') // 'table' | 'form'
   const [discountEnabled, setDiscountEnabled] = useState(false)
-  const [taxEnabled, setTaxEnabled]           = useState(false)
 
   /* ── Product search state ─────────────────────────────────── */
   const [productSearch, setProductSearch] = useState({ key: null, query: '', results: [], open: false })
@@ -419,7 +421,7 @@ export default function SalesOrderFormPage() {
   const [rollPickerKey, setRollPickerKey] = useState(null) // _key of the row being picked
 
   /* ── Cell refs for Enter-key row navigation ───────────────── */
-  const cellRefs = useRef({}) // { [rowKey]: { product, qty, unit, price, disc, tax } }
+  const cellRefs = useRef({}) // { [rowKey]: { product, qty, unit, price, disc } }
 
   const setCellRef = (rowKey, field) => (el) => {
     if (!cellRefs.current[rowKey]) cellRefs.current[rowKey] = {}
@@ -665,7 +667,6 @@ export default function SalesOrderFormPage() {
         quantity:     it.quantity,
         unit_price:   it.unit_price,
         discount:     it.discount || '',
-        tax:          it.tax      || '',
         proforma_item_id: it.proforma_item_id ?? null,
         attribute_id: it.attribute_id != null ? String(it.attribute_id) : '',
         color_name:   it.variant?.name ?? it.attribute?.name ?? '',
@@ -683,6 +684,7 @@ export default function SalesOrderFormPage() {
           weight:         p.weight,
           roll_no:        p.roll_no ?? '',
           grn_unit_price: p.grn_unit_price,
+          cost_floor:     p.cost_floor ?? null,
           attribute_id:   it.attribute_id ?? null,
           color:          it.attribute?.name ?? '',
         })),
@@ -711,7 +713,6 @@ export default function SalesOrderFormPage() {
       // Variant products: load their variants (stock + price) for the picker
       newItems.filter((r) => isQtyRow(r) && r.product_id).forEach((r) => loadVariantOptions(setItems, r._key, r.product_id))
       if (so.items.some((it) => parseFloat(it.discount) > 0)) setDiscountEnabled(true)
-      if (so.items.some((it) => parseFloat(it.tax) > 0))      setTaxEnabled(true)
     }
   }, [existingSO])
 
@@ -744,6 +745,7 @@ export default function SalesOrderFormPage() {
       weight:         scan.piece.weight,
       roll_no:        scan.piece.roll_no ?? '',
       grn_unit_price: scan.grn_unit_price,
+      cost_floor:     scan.cost_floor ?? null,
       selling_price:  scan.selling_price ?? null,
       price_source:   scan.price_source ?? null,
       attribute_id:   scan.piece.attribute_id ?? null,
@@ -920,7 +922,7 @@ export default function SalesOrderFormPage() {
     // Prefill unit price from the product's price-list selling price (editable);
     // keep the latest GRN cost on the row as the below-cost warning basis.
     getProductSalePrice(product.id)
-      .then(({ unit_price, cost_price }) => {
+      .then(({ unit_price, cost_price, cost_floor }) => {
         setItems((prev) => prev.map((row) => {
           if (row._key !== rowKey) return row
 
@@ -932,7 +934,7 @@ export default function SalesOrderFormPage() {
           return {
             ...row,
             unit_price:       !row.unit_price && listPrice != null ? String(Number(listPrice.toFixed(4))) : row.unit_price,
-            cost_hint:        cost_price ?? null,
+            cost_hint:        cost_floor ?? cost_price ?? null,
             no_selling_price: unit_price == null,
           }
         }))
@@ -1168,6 +1170,7 @@ export default function SalesOrderFormPage() {
         weight:         p.weight,
         roll_no:        p.roll_no ?? '',
         grn_unit_price: p.grn_unit_price,
+        cost_floor:     p.cost_floor ?? null,
         selling_price:  p.selling_price ?? null,
         price_source:   p.price_source ?? null,
         attribute_id:   p.attribute_id ?? null,
@@ -1247,16 +1250,15 @@ export default function SalesOrderFormPage() {
   /* ── Totals ───────────────────────────────────────────────── */
   const totals = items.reduce(
     (acc, row) => {
-      const { qty, gross, discAmt, taxAmt, amount } = calcItem(row, discountEnabled, taxEnabled)
+      const { qty, gross, discAmt, amount } = calcItem(row, discountEnabled)
       return {
         qty:   acc.qty   + qty,
         gross: acc.gross + gross,
         disc:  acc.disc  + discAmt,
-        tax:   acc.tax   + taxAmt,
         total: acc.total + amount,
       }
     },
-    { qty: 0, gross: 0, disc: 0, tax: 0, total: 0 },
+    { qty: 0, gross: 0, disc: 0, total: 0 },
   )
   const transportCharge = parseFloat(form.transport_charge) || 0
   const netAmount       = totals.total + transportCharge
@@ -1351,14 +1353,14 @@ export default function SalesOrderFormPage() {
       return
     }
 
-    // Warn-but-allow loss guard: selling below the rolls' GRN cost is sometimes
-    // intentional (clearance), so confirm instead of blocking.
-    const belowCostLines = items.filter((r) => r.product_id && isBelowCost(r))
+    // Warn-but-allow loss guard: selling below break-even (landed cost + SSCL + VAT)
+    // is sometimes intentional (clearance), so confirm instead of blocking.
+    const belowCostLines = items.filter((r) => r.product_id && isBelowCost(r, conversionFor(r)?.factor ?? 1, discountEnabled))
     if (belowCostLines.length > 0) {
       const names = belowCostLines.map((r) => r.product_name).filter(Boolean).join(', ')
       const ok = await confirmAction({
         title: 'Selling below cost',
-        message: `${belowCostLines.length} line(s) are priced below the GRN cost${names ? ` (${names})` : ''}. Save anyway?`,
+        message: `${belowCostLines.length} line(s) are priced below cost (landed cost + SSCL + VAT)${names ? ` (${names})` : ''}. Save anyway?`,
         confirmText: 'Yes, Save',
         confirmColor: '#d97706',
         icon: 'warning',
@@ -1391,7 +1393,6 @@ export default function SalesOrderFormPage() {
         quantity:     rowQty(r),
         unit_price:   parseFloat(r.unit_price) || 0,
         discount:     discountEnabled ? (parseFloat(r.discount) || 0) : 0,
-        tax:          taxEnabled      ? (parseFloat(r.tax)      || 0) : 0,
         piece_codes:  r.pieces.map((p) => p.piece_code),
         proforma_item_id: r.proforma_item_id || null,
       })),
@@ -1403,13 +1404,12 @@ export default function SalesOrderFormPage() {
     setItems([emptyItem()])
     setErrors({})
     setDiscountEnabled(false)
-    setTaxEnabled(false)
     scanInputRef.current?.focus()
   }
 
   const err = (f) => errors[f]?.[0]
   // #, Code, Product, Colour, UOM, Qty, Price, Gross, Amount, delete = 10 base columns
-  const itemColSpan = 10 + (discountEnabled ? 1 : 0) + (taxEnabled ? 1 : 0)
+  const itemColSpan = 10 + (discountEnabled ? 1 : 0)
 
   // In edit mode a confirmed SO stays confirmed on save; a draft can be saved
   // as draft again or confirmed ("Save & Confirm").
@@ -1561,14 +1561,13 @@ export default function SalesOrderFormPage() {
             <th className="w-36 px-1.5 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">Unit Price ({CURRENCY})</th>
             <th className="w-24 px-1.5 py-1.5 text-right text-[10px] font-bold uppercase tracking-wider text-slate-500">Gross ({CURRENCY})</th>
             {discountEnabled && <th className="w-16 px-1.5 py-1.5 text-center text-[10px] font-bold uppercase tracking-wider text-amber-500">Disc%</th>}
-            {taxEnabled && <th className="w-16 px-1.5 py-1.5 text-center text-[10px] font-bold uppercase tracking-wider text-sky-500">Tax%</th>}
             <th className="w-24 px-1.5 py-1.5 text-right text-[10px] font-bold uppercase tracking-wider text-slate-700">Amount ({CURRENCY})</th>
             <th className="w-8"></th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
           {items.map((row, idx) => {
-            const { qty, gross, amount } = calcItem(row, discountEnabled, taxEnabled)
+            const { qty, gross, amount } = calcItem(row, discountEnabled)
             const isScanned = row.pieces.length > 0
             return (
               <FragmentRow key={row._key}>
@@ -1735,7 +1734,7 @@ export default function SalesOrderFormPage() {
                     {(() => {
                       const conv      = conversionFor(row)
                       const factor    = conv?.factor ?? 1
-                      const belowCost = isBelowCost(row, factor)
+                      const belowCost = isBelowCost(row, factor, discountEnabled)
                       const price     = parseFloat(row.unit_price) || 0
 
                       return (
@@ -1797,18 +1796,9 @@ export default function SalesOrderFormPage() {
                         type="number" min="0" max="100" step="0.01" placeholder="0" value={row.discount}
                         onChange={(e) => setRowField(idx, 'discount', e.target.value)}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter') { e.preventDefault(); if (taxEnabled) focusCell(row._key, 'tax') }
+                          if (e.key === 'Enter') e.preventDefault()
                         }}
                         className="block w-full rounded border border-amber-200 bg-amber-50/50 px-1.5 py-0.5 text-xs text-slate-800 outline-none transition-all focus:border-amber-400 focus:bg-white" />
-                    </td>
-                  )}
-                  {taxEnabled && (
-                    <td className="px-1.5 py-1">
-                      <input
-                        ref={setCellRef(row._key, 'tax')}
-                        type="number" min="0" max="100" step="0.01" placeholder="0" value={row.tax}
-                        onChange={(e) => setRowField(idx, 'tax', e.target.value)}
-                        className="block w-full rounded border border-sky-200 bg-sky-50/50 px-1.5 py-0.5 text-xs text-slate-800 outline-none transition-all focus:border-sky-400 focus:bg-white" />
                     </td>
                   )}
                   <td className="px-1.5 py-1 text-right font-bold text-slate-800 tabular-nums">
@@ -1854,7 +1844,6 @@ export default function SalesOrderFormPage() {
                 <span className="font-bold uppercase tracking-wider text-indigo-600">Summary</span>
                 <span className="text-slate-500">Gross: <Money value={totals.gross} className="font-bold text-slate-700" /></span>
                 {discountEnabled && <span className="text-amber-600">Disc: -<Money value={totals.disc} className="font-bold" /></span>}
-                {taxEnabled && <span className="text-sky-600">Tax: +<Money value={totals.tax} className="font-bold" /></span>}
                 {transportCharge > 0 && <span className="text-slate-500">Transport: <Money value={transportCharge} className="font-bold text-slate-700" /></span>}
               </div>
             </td>
@@ -1874,7 +1863,7 @@ export default function SalesOrderFormPage() {
   const renderItemsForm = () => (
     <div className="grid grid-cols-1 gap-2 p-3 md:grid-cols-2 xl:grid-cols-3">
       {items.map((row, idx) => {
-        const { qty, gross, amount } = calcItem(row, discountEnabled, taxEnabled)
+        const { qty, gross, amount } = calcItem(row, discountEnabled)
         const isScanned = row.pieces.length > 0
         return (
           <div key={row._key} className="rounded-lg border border-slate-200 bg-slate-50/50 p-2">
@@ -1970,7 +1959,7 @@ export default function SalesOrderFormPage() {
                   <input
                     type="number" min="0" step="0.01" value={row.unit_price}
                     onChange={(e) => setRowField(idx, 'unit_price', e.target.value)}
-                    className={isBelowCost(row, conversionFor(row)?.factor ?? 1) ? TABLE_INPUT_WARN : TABLE_INPUT}
+                    className={isBelowCost(row, conversionFor(row)?.factor ?? 1, discountEnabled) ? TABLE_INPUT_WARN : TABLE_INPUT}
                   />
                   <div className="w-14 shrink-0" title="Unit the price is quoted per — independent of the selling UOM">
                     <DropdownSelectCell
@@ -1982,7 +1971,7 @@ export default function SalesOrderFormPage() {
                     />
                   </div>
                 </div>
-                {isBelowCost(row, conversionFor(row)?.factor ?? 1) && (
+                {isBelowCost(row, conversionFor(row)?.factor ?? 1, discountEnabled) && (
                   <p className="mt-0.5 text-[9px] font-semibold leading-tight text-amber-600">
                     Below cost ({fmtMoneyWithSymbol(rowCostBasis(row) * (conversionFor(row)?.factor ?? 1))})
                   </p>
@@ -1999,12 +1988,6 @@ export default function SalesOrderFormPage() {
                 <div>
                   <label className={LABEL_CLS}>Disc %</label>
                   <input type="number" min="0" max="100" step="0.01" value={row.discount} onChange={(e) => setRowField(idx, 'discount', e.target.value)} className={TABLE_INPUT} />
-                </div>
-              )}
-              {taxEnabled && (
-                <div>
-                  <label className={LABEL_CLS}>Tax %</label>
-                  <input type="number" min="0" max="100" step="0.01" value={row.tax} onChange={(e) => setRowField(idx, 'tax', e.target.value)} className={TABLE_INPUT} />
                 </div>
               )}
               <div>
@@ -2176,7 +2159,6 @@ export default function SalesOrderFormPage() {
             extra={
               <div className="flex items-center gap-3">
                 <CheckToggle checked={discountEnabled} onChange={setDiscountEnabled} label="Discount %" title="Show/hide the line discount column" />
-                <CheckToggle checked={taxEnabled} onChange={setTaxEnabled} label="Tax %" title="Show/hide the line tax column" />
                 <div className="h-4 w-px bg-violet-200" />
                 {/* Form / Table view toggle */}
                 <div className="flex overflow-hidden rounded border border-violet-200">

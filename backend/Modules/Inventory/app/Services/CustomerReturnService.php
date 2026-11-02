@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Services;
 
+use App\Contracts\JournalPoster;
+use App\Support\Journal\PostingRole;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -29,6 +31,7 @@ use Modules\Inventory\Models\SalesOrderItem;
 use Modules\Inventory\Models\StockReferenceType;
 use Modules\Inventory\Models\StockTransaction;
 use Modules\Inventory\Models\Store;
+use Modules\Inventory\Posting\CustomerReturnJournal;
 use Modules\Inventory\Support\Quantity;
 
 /**
@@ -331,6 +334,15 @@ class CustomerReturnService
                 'confirmed_at' => now(),
                 'confirmed_by' => Auth::id(),
             ]);
+
+            // Only an invoice that reached the ledger can be reversed in it. One
+            // issued before Finance was switched on never debited the customer,
+            // so crediting them for its return would leave the books short.
+            $poster = app(JournalPoster::class);
+
+            if ($poster->acceptsPostings() && $poster->hasPostingFor(PostingRole::SOURCE_INVOICE, (int) $invoice->id)) {
+                $poster->post(CustomerReturnJournal::build($return->fresh(['items', 'customer', 'invoice'])));
+            }
 
             $this->balances->markPaidIfSettled([$invoice->id]);
 

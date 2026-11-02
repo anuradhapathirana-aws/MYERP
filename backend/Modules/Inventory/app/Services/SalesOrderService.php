@@ -25,6 +25,9 @@ use Modules\Inventory\Support\Quantity;
  */
 class SalesOrderService
 {
+    /** @var array<int, array<string, float>|false> grn_item_id => costing pricing (false = never costed) */
+    private array $costingByGrnItem = [];
+
     public function __construct(
         private readonly ProductPricingService $pricing,
         private readonly UnitConversionService $units,
@@ -261,6 +264,8 @@ class SalesOrderService
             ] : null,
             // Cost of this roll's shipment — snapshot basis, NOT the sale price.
             'grn_unit_price'     => $this->grnCostPerBase($piece),
+            // Below-cost guard basis: break-even after-tax price (costing), else GRN cost.
+            'cost_floor'         => $resolved['cost_floor'] ?? $this->grnCostPerBase($piece),
             // Shipment-specific sale price: confirmed-costing price for this
             // roll's GRN line, price-list fallback (null = neither configured).
             'selling_price'      => $resolved['price'] ?? null,
@@ -305,6 +310,7 @@ class SalesOrderService
                 'store'          => $piece->store?->store_name,
                 'location'       => $piece->location?->location_name ?? $piece->location?->name,
                 'grn_unit_price' => $this->grnCostPerBase($piece),
+                'cost_floor'     => $resolve($piece)['cost_floor'] ?? $this->grnCostPerBase($piece),
                 // Shipment-specific sale price (confirmed costing → price list)
                 'selling_price'  => $resolve($piece)['price'],
                 'price_source'   => $resolve($piece)['source'],
@@ -347,6 +353,8 @@ class SalesOrderService
         $baseUnit = Product::with('baseUnit')->find($productId)?->baseUnit;
 
         return $this->pricing->pricingFor($productId) + [
+            // Below-cost guard basis: newest costing's break-even price, else GRN cost.
+            'cost_floor'        => $this->pricing->costFloorFor($productId),
             'base_unit_type_id' => $baseUnit?->id,
             'base_uom'          => $baseUnit?->symbol ?? $baseUnit?->name,
         ];
@@ -376,7 +384,7 @@ class SalesOrderService
      * before rebuilding items, so edits that keep the same pieces re-allocate
      * them cleanly and removed lines release theirs.
      *
-     * @param array<array{product_id:int, unit_id:?int, price_unit_id:?int, attribute_id:?int, quantity:?float, unit_price:float, discount:float, tax:float, remarks:?string, piece_codes:?array<string>}> $items
+     * @param array<array{product_id:int, unit_id:?int, price_unit_id:?int, attribute_id:?int, quantity:?float, unit_price:float, discount:float, remarks:?string, piece_codes:?array<string>}> $items
      */
     private function syncItems(SalesOrder $so, array $items): void
     {
@@ -435,7 +443,9 @@ class SalesOrderService
                 'base_quantity'     => $converted['qty'],
                 'unit_price' => (float) ($row['unit_price'] ?? 0),
                 'discount'   => (float) ($row['discount'] ?? 0),
-                'tax'        => (float) ($row['tax'] ?? 0),
+                // SO prices already carry VAT (costing AFTER-tax); the invoice
+                // adds tax by its own type, so an SO line never adds any.
+                'tax'        => 0,
                 'line_total' => 0,
                 'remarks'    => $row['remarks'] ?? null,
             ]);
@@ -499,6 +509,21 @@ class SalesOrderService
      * it used, so rebasing is exact. Without this, a below-cost warning would compare a
      * per-yard sale price against a per-metre cost and fire at random.
      */
+    /**
+     * The roll's break-even AFTER-tax price per stocking UOM — its costing's
+     * landed cost + SSCL + VAT (no margin) — else its GRN purchase cost when the
+     * shipment was never costed. Selling below it loses money.
+     */
+    private function costFloorPerBase(GrnItemPiece $piece): float
+    {
+        // Rolls of one GRN line share a costing — look it up once per line.
+        $costing = $piece->grn_item_id !== null
+            ? ($this->costingByGrnItem[(int) $piece->grn_item_id] ??= $this->pricing->costingPricingForGrnItem((int) $piece->grn_item_id) ?? false)
+            : false;
+
+        return $costing === false ? $this->grnCostPerBase($piece) : $costing['cost_floor'];
+    }
+
     private function grnCostPerBase(GrnItemPiece $piece): float
     {
         $line = $piece->grnItem;
@@ -619,6 +644,7 @@ class SalesOrderService
             'weight'         => (float) $piece->weight,
             'taken_quantity' => $takenByRollId[$piece->id],
             'grn_unit_price' => $this->grnCostPerBase($piece),
+            'cost_floor'     => $this->costFloorPerBase($piece),
             'created_by'     => Auth::id(),
             'created_at'     => now(),
             'updated_at'     => now(),
@@ -651,9 +677,7 @@ class SalesOrderService
     {
         $gross = (float) $item->quantity * (float) $item->unit_price;
 
-        $item->line_total = $gross
-            - ($gross * (float) $item->discount / 100)
-            + ($gross * (float) $item->tax / 100);
+        $item->line_total = $gross - ($gross * (float) $item->discount / 100);
 
         $item->save();
     }

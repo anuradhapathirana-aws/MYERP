@@ -229,7 +229,6 @@ export default function SalesOrderViewPage() {
                   <th className="w-24 px-2 py-1.5 text-right text-[10px] font-bold uppercase tracking-wider text-slate-500">Quantity</th>
                   <th className="w-24 px-2 py-1.5 text-right text-[10px] font-bold uppercase tracking-wider text-green-600">Delivered</th>
                   <th className="w-16 px-2 py-1.5 text-right text-[10px] font-bold uppercase tracking-wider text-amber-500">Disc%</th>
-                  <th className="w-16 px-2 py-1.5 text-right text-[10px] font-bold uppercase tracking-wider text-sky-500">Tax%</th>
                   <th className="w-28 px-2 py-1.5 text-right text-[10px] font-bold uppercase tracking-wider text-slate-700">Amount</th>
                 </tr>
               </thead>
@@ -270,13 +269,12 @@ export default function SalesOrderViewPage() {
                         </span>
                       </td>
                       <td className="px-2 py-1.5 text-right text-amber-600 tabular-nums">{Number(it.discount) > 0 ? Number(it.discount) : '—'}</td>
-                      <td className="px-2 py-1.5 text-right text-sky-600 tabular-nums">{Number(it.tax) > 0 ? Number(it.tax) : '—'}</td>
                       <td className="px-2 py-1.5 text-right font-bold text-slate-800"><Money value={it.line_total} /></td>
                     </tr>
                     {it.is_scanned && expanded[it.id] && (
                       <tr>
                         <td></td>
-                        <td colSpan={10} className="px-2 pb-2">
+                        <td colSpan={9} className="px-2 pb-2">
                           <div className="rounded border border-indigo-100 bg-indigo-50/40 px-2 py-1">
                             <table className="w-full text-[11px]">
                               <thead>
@@ -310,7 +308,7 @@ export default function SalesOrderViewPage() {
               </tbody>
               <tfoot>
                 <tr className="bg-indigo-50 border-t border-indigo-100">
-                  <td colSpan={9} className="px-3 py-1.5">
+                  <td colSpan={8} className="px-3 py-1.5">
                     <div className="flex items-center gap-4 text-xs">
                       <span className="font-bold uppercase tracking-wider text-indigo-600">Summary</span>
                       <span className="text-slate-500">Sub Total: <Money value={so.subtotal} className="font-bold text-slate-700" /></span>

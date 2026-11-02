@@ -119,6 +119,7 @@ export default function SalesOrderRollPickerModal({
       weight:         p.weight,
       roll_no:        p.roll_no ?? '',
       grn_unit_price: p.grn_unit_price,
+      cost_floor:     p.cost_floor ?? null,
       selling_price:  p.selling_price ?? null,
       price_source:   p.price_source ?? null,
       attribute_id:   p.attribute_id ?? null,

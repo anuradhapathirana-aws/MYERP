@@ -80,6 +80,9 @@ class RolesAndPermissionsSeeder extends Seeder
         'banks'             => ['view', 'create', 'edit', 'delete'],
         'bank_branches'     => ['view', 'create', 'edit', 'delete'],
         'employees'         => ['view', 'create', 'edit', 'delete'],
+
+        // ── Tax master (VAT / SSCL rates used by every module) ───────
+        'taxes'             => ['view', 'create', 'edit', 'delete'],
     ];
 
     /**

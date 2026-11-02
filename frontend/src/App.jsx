@@ -60,6 +60,7 @@ const PaymentModesPage          = lazy(() => import('./pages/inventory/PaymentMo
 // ── Shared master data (core, not owned by a module) ──
 const SupplierGroupsPage        = lazy(() => import('./pages/master-data/SupplierGroupsPage'))
 const BanksPage                 = lazy(() => import('./pages/master-data/BanksPage'))
+const TaxesPage                 = lazy(() => import('./pages/master-data/TaxesPage'))
 const BankBranchesPage          = lazy(() => import('./pages/master-data/BankBranchesPage'))
 const EmployeesPage             = lazy(() => import('./pages/master-data/EmployeesPage'))
 
@@ -259,6 +260,7 @@ export default function App() {
         {/* ── Shared Master Data ── */}
         <Route path="/master-data/supplier-groups"             element={<Lazy component={SupplierGroupsPage} />} />
         <Route path="/master-data/banks"                       element={<Lazy component={BanksPage} />} />
+        <Route path="/master-data/taxes"                       element={<Lazy component={TaxesPage} />} />
         <Route path="/master-data/bank-branches"               element={<Lazy component={BankBranchesPage} />} />
         <Route path="/master-data/employees"                   element={<Lazy component={EmployeesPage} />} />
 

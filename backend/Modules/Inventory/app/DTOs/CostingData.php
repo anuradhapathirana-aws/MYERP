@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\DTOs;
 
+use App\Models\Tax;
+use App\Services\TaxService;
 use Modules\Inventory\Http\Requests\StoreCostingRequest;
 use Modules\Inventory\Http\Requests\UpdateCostingRequest;
 
@@ -49,9 +51,10 @@ final class CostingData
             transactionDate: $request->validated('transaction_date'),
             note:            $request->validated('note'),
             applySscl:       (bool) ($request->validated('apply_sscl') ?? true),
-            ssclPct:         (float) ($request->validated('sscl_pct') ?? 1.25),
+            // Unset rates default to Master Data > Taxes.
+            ssclPct:         (float) ($request->validated('sscl_pct') ?? app(TaxService::class)->configuredRate(Tax::SSCL)),
             applyVat:        (bool) ($request->validated('apply_vat') ?? true),
-            vatPct:          (float) ($request->validated('vat_pct') ?? 18),
+            vatPct:          (float) ($request->validated('vat_pct') ?? app(TaxService::class)->rate(Tax::VAT)),
             items:           (array) ($request->validated('items') ?? []),
         );
     }

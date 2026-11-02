@@ -60,7 +60,7 @@ class JournalEntryController extends Controller
     {
         $entry = $this->service->find($journalEntry)->load(['reverses', 'reversedBy']);
 
-        return response()->json(['data' => (new JournalEntryResource($entry))->toArray(request())]);
+        return response()->json(['data' => (new JournalEntryResource($entry))->resolve(request())]);
     }
 
     /** The dropdown values the form needs, served from the enums. */
@@ -98,7 +98,7 @@ class JournalEntryController extends Controller
     {
         $entry = $this->service->post(JournalEntryData::fromRequest($request));
 
-        return response()->json(['data' => (new JournalEntryResource($entry))->toArray($request)], 201);
+        return response()->json(['data' => (new JournalEntryResource($entry))->resolve($request)], 201);
     }
 
     /** Promote a draft to posted -- the review-mode workflow. */
@@ -106,7 +106,7 @@ class JournalEntryController extends Controller
     {
         $entry = $this->service->postDraft($journalEntry);
 
-        return response()->json(['data' => (new JournalEntryResource($entry))->toArray(request())]);
+        return response()->json(['data' => (new JournalEntryResource($entry))->resolve(request())]);
     }
 
     /**
@@ -124,7 +124,7 @@ class JournalEntryController extends Controller
             is_string($narration) && trim($narration) !== '' ? trim($narration) : null,
         );
 
-        return response()->json(['data' => (new JournalEntryResource($reversal))->toArray(request())], 201);
+        return response()->json(['data' => (new JournalEntryResource($reversal))->resolve(request())], 201);
     }
 
     /** Drafts only. The service refuses anything posted. */

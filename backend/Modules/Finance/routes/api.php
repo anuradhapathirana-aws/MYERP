@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
 use Modules\Finance\Http\Controllers\AccountCategoryController;
+use Modules\Finance\Http\Controllers\AttachmentController;
+use Modules\Finance\Http\Controllers\BankDepositController;
+use Modules\Finance\Http\Controllers\BankDepositPdfController;
+use Modules\Finance\Http\Controllers\BillController;
+use Modules\Finance\Http\Controllers\BillPaymentController;
 use Modules\Finance\Http\Controllers\ControlAccountController;
 use Modules\Finance\Http\Controllers\FinanceReportController;
 use Modules\Finance\Http\Controllers\FinanceSettingsController;
@@ -83,6 +88,113 @@ Route::middleware(['auth:sanctum', 'module:finance'])->prefix('v1')->group(funct
         ->name('finance-settings.posting-mode');
     Route::put('finance-settings/party-ledger-mode', [FinanceSettingsController::class, 'updatePartyLedgerMode'])
         ->name('finance-settings.party-ledger-mode');
+    Route::put('finance-settings/lock-date', [FinanceSettingsController::class, 'updateLockDate'])
+        ->middleware('throttle:finance-writes')
+        ->name('finance-settings.lock-date');
+    Route::put('finance-settings/maker-checker', [FinanceSettingsController::class, 'updateMakerChecker'])
+        ->middleware('throttle:finance-writes')
+        ->name('finance-settings.maker-checker');
+
+    // ── Payables: supplier bills ─────────────────────────────────────────────
+    // Reads are unthrottled beyond the app default; every write goes through
+    // the finance-writes limiter (FinanceServiceProvider).
+    Route::get('bills/options', [BillController::class, 'options'])->name('bills.options');
+    Route::get('bills/next-no', [BillController::class, 'nextNo'])->name('bills.next-no');
+    Route::get('bills/supplier-defaults/{supplier}', [BillController::class, 'supplierDefaults'])
+        ->whereNumber('supplier')
+        ->name('bills.supplier-defaults');
+    Route::get('bills/{bill}/history', [BillController::class, 'history'])
+        ->whereNumber('bill')
+        ->name('bills.history');
+
+    Route::middleware('throttle:finance-writes')->group(function (): void {
+        Route::post('bills/{bill}/confirm', [BillController::class, 'confirm'])
+            ->whereNumber('bill')
+            ->name('bills.confirm');
+        Route::post('bills/{bill}/void', [BillController::class, 'void'])
+            ->whereNumber('bill')
+            ->name('bills.void');
+        Route::post('bills', [BillController::class, 'store'])->name('bills.store');
+        Route::match(['put', 'patch'], 'bills/{bill}', [BillController::class, 'update'])
+            ->whereNumber('bill')
+            ->name('bills.update');
+        Route::delete('bills/{bill}', [BillController::class, 'destroy'])
+            ->whereNumber('bill')
+            ->name('bills.destroy');
+
+        Route::post('bill-payments/{bill_payment}/confirm', [BillPaymentController::class, 'confirm'])
+            ->whereNumber('bill_payment')
+            ->name('bill-payments.confirm');
+        Route::post('bill-payments/{bill_payment}/void', [BillPaymentController::class, 'void'])
+            ->whereNumber('bill_payment')
+            ->name('bill-payments.void');
+        Route::post('bill-payments', [BillPaymentController::class, 'store'])->name('bill-payments.store');
+        Route::match(['put', 'patch'], 'bill-payments/{bill_payment}', [BillPaymentController::class, 'update'])
+            ->whereNumber('bill_payment')
+            ->name('bill-payments.update');
+        Route::delete('bill-payments/{bill_payment}', [BillPaymentController::class, 'destroy'])
+            ->whereNumber('bill_payment')
+            ->name('bill-payments.destroy');
+
+        Route::post('bank-deposits/{bank_deposit}/confirm', [BankDepositController::class, 'confirm'])
+            ->whereNumber('bank_deposit')
+            ->name('bank-deposits.confirm');
+        Route::post('bank-deposits/{bank_deposit}/void', [BankDepositController::class, 'void'])
+            ->whereNumber('bank_deposit')
+            ->name('bank-deposits.void');
+        Route::post('bank-deposits', [BankDepositController::class, 'store'])->name('bank-deposits.store');
+        Route::match(['put', 'patch'], 'bank-deposits/{bank_deposit}', [BankDepositController::class, 'update'])
+            ->whereNumber('bank_deposit')
+            ->name('bank-deposits.update');
+        Route::delete('bank-deposits/{bank_deposit}', [BankDepositController::class, 'destroy'])
+            ->whereNumber('bank_deposit')
+            ->name('bank-deposits.destroy');
+
+        // Shared attachments for every Finance document type.
+        Route::post('finance-attachments/{type}/{id}', [AttachmentController::class, 'store'])
+            ->where('type', '[a-z_]+')->whereNumber('id')
+            ->name('finance-attachments.store');
+        Route::delete('finance-attachments/{attachment}', [AttachmentController::class, 'destroy'])
+            ->whereNumber('attachment')
+            ->name('finance-attachments.destroy');
+    });
+
+    // ── Payables: bill payments ──────────────────────────────────────────────
+    Route::get('bill-payments/options', [BillPaymentController::class, 'options'])->name('bill-payments.options');
+    Route::get('bill-payments/next-no', [BillPaymentController::class, 'nextNo'])->name('bill-payments.next-no');
+    Route::get('bill-payments/open-bills', [BillPaymentController::class, 'openBills'])->name('bill-payments.open-bills');
+    Route::get('bill-payments/{bill_payment}/history', [BillPaymentController::class, 'history'])
+        ->whereNumber('bill_payment')
+        ->name('bill-payments.history');
+    Route::get('bill-payments', [BillPaymentController::class, 'index'])->name('bill-payments.index');
+    Route::get('bill-payments/{bill_payment}', [BillPaymentController::class, 'show'])
+        ->whereNumber('bill_payment')
+        ->name('bill-payments.show');
+
+    // ── Banking: bank deposits ───────────────────────────────────────────────
+    Route::get('bank-deposits/options', [BankDepositController::class, 'options'])->name('bank-deposits.options');
+    Route::get('bank-deposits/next-no', [BankDepositController::class, 'nextNo'])->name('bank-deposits.next-no');
+    Route::get('bank-deposits/in-hand', [BankDepositController::class, 'inHand'])->name('bank-deposits.in-hand');
+    Route::get('bank-deposits/{bank_deposit}/history', [BankDepositController::class, 'history'])
+        ->whereNumber('bank_deposit')
+        ->name('bank-deposits.history');
+    Route::get('bank-deposits/{bank_deposit}/pdf', [BankDepositPdfController::class, 'download'])
+        ->whereNumber('bank_deposit')
+        ->name('bank-deposits.pdf');
+    Route::get('bank-deposits', [BankDepositController::class, 'index'])->name('bank-deposits.index');
+    Route::get('bank-deposits/{bank_deposit}', [BankDepositController::class, 'show'])
+        ->whereNumber('bank_deposit')
+        ->name('bank-deposits.show');
+
+    Route::get('bills', [BillController::class, 'index'])->name('bills.index');
+    Route::get('bills/{bill}', [BillController::class, 'show'])->whereNumber('bill')->name('bills.show');
+
+    Route::get('finance-attachments/{attachment}/download', [AttachmentController::class, 'download'])
+        ->whereNumber('attachment')
+        ->name('finance-attachments.download');
+    Route::get('finance-attachments/{type}/{id}', [AttachmentController::class, 'index'])
+        ->where('type', '[a-z_]+')->whereNumber('id')
+        ->name('finance-attachments.index');
 
     // ── Financial statements ─────────────────────────────────────────────────
     Route::get('finance-reports/trial-balance', [FinanceReportController::class, 'trialBalanceReport'])

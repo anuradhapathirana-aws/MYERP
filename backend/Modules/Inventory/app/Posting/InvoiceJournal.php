@@ -33,6 +33,11 @@ use Modules\Inventory\Models\Invoice;
  * authority. Splitting it out is what makes Output Tax Payable a usable figure
  * for a return. A client who is not tax registered has 0% lines and simply
  * gets no tax line.
+ *
+ * A Non-Tax invoice adds no VAT on top, but its price already contains it (the
+ * costing's after-tax price), so that VAT is split out the same way. SSCL sits
+ * inside every price once a rate is set and goes to SSCL Payable. Both rates
+ * are stamped on the line at issue -- see InvoiceLineSplit.
  */
 final class InvoiceJournal
 {
@@ -40,26 +45,30 @@ final class InvoiceJournal
     {
         $invoice->loadMissing(['items', 'customer']);
 
-        $tax     = 0.0;
-        $revenue = 0.0;
+        $tax  = 0.0;
+        $sscl = 0.0;
 
         foreach ($invoice->items as $item) {
-            // Mirrors InvoiceService::recalculateLineTotal exactly:
-            //   gross      = quantity x unit_price
-            //   line_total = gross - gross x discount% + gross x tax%
-            $gross   = (float) $item->quantity * (float) $item->unit_price;
-            $lineTax = $gross * ((float) $item->tax / 100);
+            $split = InvoiceLineSplit::of(
+                (float) $item->line_total,
+                (float) $item->tax,
+                (float) $item->discount,
+                $item->vat_inclusive_pct === null ? null : (float) $item->vat_inclusive_pct,
+                $item->sscl_pct === null ? null : (float) $item->sscl_pct,
+            );
 
-            $tax     += $lineTax;
-            $revenue += (float) $item->line_total - $lineTax;
+            $tax  += $split['vat'];
+            $sscl += $split['sscl'];
         }
 
-        // Transport is part of what the customer is billed, and carries no tax
-        // of its own in this schema, so it is revenue.
-        $revenue += (float) $invoice->transport_charge;
+        $tax  = round($tax, 2);
+        $sscl = round($sscl, 2);
 
-        $tax     = round($tax, 2);
-        $revenue = round($revenue, 2);
+        // Revenue is what is left of the bill once the levies are taken out:
+        // the goods net of tax and trade discount, plus transport (which
+        // carries no tax of its own in this schema). Derived rather than summed
+        // so the journal always balances to the grand total.
+        $revenue = round((float) $invoice->grand_total - $tax - $sscl, 2);
 
         $lines = [
             JournalLineRequest::debit(
@@ -75,7 +84,7 @@ final class InvoiceJournal
             JournalLineRequest::credit(
                 PostingRole::SALES_REVENUE,
                 $revenue,
-                description: 'Sales, net of tax and trade discount',
+                description: 'Sales, net of tax, SSCL and trade discount',
             ),
         ];
 
@@ -84,6 +93,14 @@ final class InvoiceJournal
                 PostingRole::OUTPUT_TAX_PAYABLE,
                 $tax,
                 description: 'Output tax collected',
+            );
+        }
+
+        if ($sscl > 0) {
+            $lines[] = JournalLineRequest::credit(
+                PostingRole::SSCL_PAYABLE,
+                $sscl,
+                description: 'SSCL inside the selling price',
             );
         }
 

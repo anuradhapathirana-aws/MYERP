@@ -14,6 +14,7 @@ import FilterSearchSelect from '../../components/ui/FilterSearchSelect'
 import Pagination from '../../components/ui/Pagination'
 import Breadcrumb from '../../components/Breadcrumb'
 import { confirmDelete, showError, showSuccess } from '../../utils/alerts'
+import { fmtMoneyWithSymbol } from '../../utils/currency'
 import { usePermissions } from '../../hooks/usePermissions'
 import { DeleteBtn } from '../../components/ui/ActionButtons'
 import {
@@ -633,6 +634,7 @@ export default function LedgerAccountsPage() {
                       <th className="px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Control</th>
                       <th className="px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Ledger Account</th>
                       <th className="px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Cash / Bank</th>
+                      <th className="px-3 py-2 text-right font-semibold uppercase tracking-wider text-slate-500">Balance</th>
                       <th className="w-20 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Status</th>
                       <th className="w-16 px-3 py-2 text-right font-semibold uppercase tracking-wider text-slate-500">Actions</th>
                     </tr>
@@ -640,7 +642,7 @@ export default function LedgerAccountsPage() {
                   <tbody className="divide-y divide-slate-100">
                     {rows.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="px-4 py-8 text-center text-sm text-slate-400">
+                        <td colSpan={9} className="px-4 py-8 text-center text-sm text-slate-400">
                           No ledger accounts yet. Use the form to create the first one.
                         </td>
                       </tr>
@@ -685,6 +687,16 @@ export default function LedgerAccountsPage() {
                                 )}
                                 {row.company_name && <span className="text-[10px] text-slate-400">{row.company_name}</span>}
                               </div>
+                            ) : (
+                              <span className="italic text-slate-300">—</span>
+                            )}
+                          </td>
+                          {/* Cash and bank only: red when overdrawn, amber when empty. */}
+                          <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">
+                            {row.balance != null ? (
+                              <span className={`font-semibold ${Number(row.balance) < 0 ? 'text-red-600' : Number(row.balance) === 0 ? 'text-amber-600' : 'text-emerald-700'}`}>
+                                {fmtMoneyWithSymbol(row.balance)}
+                              </span>
                             ) : (
                               <span className="italic text-slate-300">—</span>
                             )}

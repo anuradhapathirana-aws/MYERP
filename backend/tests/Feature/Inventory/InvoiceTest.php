@@ -269,6 +269,23 @@ class InvoiceTest extends TestCase
         $this->assertEqualsWithDelta(35400.0, (float) $response->json('data.grand_total'), 0.01);
     }
 
+    public function test_uncosted_rolls_use_the_vat_rate_from_master_data_taxes(): void
+    {
+        // VAT changed to 15% on the Taxes screen — the uncosted fallback follows it
+        \App\Models\Tax::where('code', \App\Models\Tax::VAT)->update(['rate' => 15]);
+        \Illuminate\Support\Facades\Cache::forget('core_taxes.rows');
+
+        ['so' => $so, 'pieces' => $pieces] = $this->makeConfirmedSoWithRolls([10.0, 20.0], unitPrice: 1150);
+        $doId = $this->makeConfirmedDo($so, $pieces);
+
+        $response = $this->actingAs($this->user)
+            ->postJson('/api/v1/invoices', ['do_id' => $doId, 'invoice_date' => '2026-07-11', 'invoice_type' => 'tax'])
+            ->assertCreated()
+            ->assertJsonPath('data.items.0.tax', 15);
+
+        $this->assertEqualsWithDelta(1000.0, (float) $response->json('data.items.0.unit_price'), 0.0001);
+    }
+
     public function test_invoice_type_defaults_from_customer_tin_when_not_sent(): void
     {
         // No TIN (null) → Non Tax
@@ -618,7 +635,9 @@ class InvoiceTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.source', 'do')
             ->assertJsonPath('data.guards.blocked', false)
-            ->assertJsonPath('data.items.0.quantity', 30);
+            ->assertJsonPath('data.items.0.quantity', 30)
+            // Below-cost guard basis: the uncosted rolls' GRN cost (400 per unit)
+            ->assertJsonPath('data.items.0.cost_floor', 400);
 
         $this->actingAs($this->user)
             ->getJson("/api/v1/invoices/billing-source/so/{$so->id}")

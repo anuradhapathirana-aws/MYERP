@@ -25,6 +25,8 @@ class InvoiceItem extends Model
         'unit_price',
         'discount',
         'tax',
+        'vat_inclusive_pct',
+        'sscl_pct',
         'line_total',
         'remarks',
     ];
@@ -43,6 +45,8 @@ class InvoiceItem extends Model
         'unit_price'   => 'decimal:4',
         'discount'     => 'decimal:4',
         'tax'          => 'decimal:4',
+        'vat_inclusive_pct' => 'decimal:2',
+        'sscl_pct'     => 'decimal:2',
         'line_total'   => 'decimal:4',
     ];
 

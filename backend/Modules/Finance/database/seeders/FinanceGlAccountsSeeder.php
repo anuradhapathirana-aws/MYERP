@@ -73,6 +73,8 @@ class FinanceGlAccountsSeeder extends Seeder
             AccountRole::CustomerAdvance->value      => ['Trade & Other Payables',    'Customer Advances'],
             AccountRole::RoundingDifference->value   => ['Office & Establishment',    'Rounding Difference'],
             AccountRole::OpeningBalanceEquity->value => ['Retained Earnings',         'Opening Balance Equity'],
+            AccountRole::SalesReturns->value         => ['Sales Returns & Discounts', 'Sales Returns'],
+            AccountRole::SsclPayable->value          => ['Statutory Payables',        'SSCL Payable'],
 
             // Mapped so the accounts exist and are visible, but no posting uses
             // them yet. GRNI waits on Bill Entry; Inventory and Cost of Sales
@@ -84,7 +86,13 @@ class FinanceGlAccountsSeeder extends Seeder
         ];
     }
 
-    public function run(): void
+    /**
+     * @param list<string>|null $only role values to provision; null = all. A
+     *        migration passes just the roles it introduces, so an existing
+     *        installation gains those accounts without anything else in its
+     *        chart being re-created.
+     */
+    public function run(?array $only = null): void
     {
         $ledgerService = app(LedgerAccountService::class);
 
@@ -94,7 +102,9 @@ class FinanceGlAccountsSeeder extends Seeder
         $kept    = 0;
         $skipped = [];
 
-        foreach ($this->plan() as $roleValue => [$controlName, $ledgerName]) {
+        $plan = $only === null ? $this->plan() : array_intersect_key($this->plan(), array_flip($only));
+
+        foreach ($plan as $roleValue => [$controlName, $ledgerName]) {
             $role = AccountRole::from($roleValue);
 
             $control = ControlAccount::with('category')

@@ -13,6 +13,9 @@ use Modules\Inventory\Enums\DeliveryOrderStatus;
 use Modules\Inventory\Enums\InvoiceStatus;
 use Modules\Inventory\Enums\SalesOrderStatus;
 use App\Models\Company;
+use App\Models\Tax;
+use App\Services\TaxService;
+use DateTimeInterface;
 use Modules\Inventory\Models\CustomerReturn;
 use Modules\Inventory\Models\DeliveryOrder;
 use Modules\Inventory\Models\Invoice;
@@ -37,9 +40,6 @@ use Modules\Inventory\Models\SalesOrderItem;
  */
 class InvoiceService
 {
-    /** VAT % assumed when a line's rolls carry no confirmed costing. */
-    private const FALLBACK_VAT_PCT = 18.0;
-
     /** Decimal places every invoice money amount is rounded and stored at. */
     private const MONEY_SCALE = 2;
 
@@ -47,6 +47,7 @@ class InvoiceService
         private readonly ProductPricingService $pricing,
         private readonly UnitConversionService $units,
         private readonly ProformaInvoicingTracker $proformas,
+        private readonly TaxService $taxes,
     ) {
     }
     /** @param array<string, mixed> $filters */
@@ -261,6 +262,10 @@ class InvoiceService
                 'paid_at'   => $newStatus === InvoiceStatus::Paid ? now() : $invoice->paid_at,
             ]);
 
+            if ($newStatus === InvoiceStatus::Issued) {
+                $this->stampPostingRates($invoice);
+            }
+
             $poster = app(\App\Contracts\JournalPoster::class);
 
             if ($poster->acceptsPostings()) {
@@ -291,6 +296,28 @@ class InvoiceService
 
             return $invoice;
         });
+    }
+
+    /**
+     * Freeze, per line, the rates its journal splits out of the price: the VAT
+     * inside a Non-Tax price (the costing's VAT %, else the Tax master's VAT) and
+     * the SSCL rate in force on the invoice date (Master Data > Taxes; 0 while
+     * SSCL is switched off). Stamped at issue -- even with Finance off -- so a
+     * later return reverses exactly what was charged, whatever the rates are by then.
+     */
+    private function stampPostingRates(Invoice $invoice): void
+    {
+        $on      = $invoice->invoice_date?->toDateTimeImmutable();
+        $sscl    = $this->taxes->rate(Tax::SSCL, $on);
+        $nonTax  = $invoice->invoice_type === 'non_tax';
+        $items   = $invoice->items()->with('soItem')->get();
+
+        foreach ($items as $item) {
+            $item->update([
+                'vat_inclusive_pct' => $nonTax ? $this->taxPricingForSoItem($item->soItem, $on)['tax'] : null,
+                'sscl_pct'          => $sscl,
+            ]);
+        }
     }
 
     public function delete(Invoice $invoice): void
@@ -601,7 +628,54 @@ class InvoiceService
             // Tax invoice price: costing BEFORE-tax + the VAT % to add per line
             'tax_unit_price' => $taxPricing['unit_price'],
             'tax_vat_pct'    => $taxPricing['tax'],
+            // Below-cost guard: break-even AFTER-tax price per the line's price unit
+            'cost_floor'     => $this->costFloorForSoItem($soItem),
         ];
+    }
+
+    /**
+     * The break-even AFTER-tax price of an SO line, per the unit its price is
+     * quoted in: the dearest allocated roll's snapshot (landed cost + SSCL + VAT,
+     * else GRN cost), or for a quantity line the newest costing of the product /
+     * colour / variant. Null when unknown or the unit has no conversion rate.
+     */
+    private function costFloorForSoItem(?SalesOrderItem $soItem): ?float
+    {
+        if ($soItem === null) {
+            return null;
+        }
+
+        $floor = DB::table('inv_sales_order_pieces')
+            ->where('so_item_id', $soItem->id)
+            ->max(DB::raw('COALESCE(cost_floor, grn_unit_price)'));
+
+        $floor = $floor !== null
+            ? (float) $floor
+            : $this->pricing->costFloorFor(
+                (int) $soItem->product_id,
+                $soItem->attribute_id !== null ? (int) $soItem->attribute_id : null,
+                $soItem->variant_id !== null ? (int) $soItem->variant_id : null,
+            );
+
+        if ($floor === null || $floor <= 0.0) {
+            return null;
+        }
+
+        // Per stocking UOM → per the unit the line quotes its price in (as taxPricingForSoItem).
+        $unitId     = $soItem->price_unit_id !== null
+            ? (int) $soItem->price_unit_id
+            : ($soItem->unit_id !== null ? (int) $soItem->unit_id : null);
+        $baseUnitId = Product::where('id', $soItem->product_id)->value('base_unit_type_id');
+
+        if ($unitId !== null && $baseUnitId !== null && $unitId !== (int) $baseUnitId) {
+            $rate = $this->units->tryFactor($unitId, (int) $baseUnitId);
+            if ($rate === null || $rate <= 0.0) {
+                return null;
+            }
+            $floor *= $rate;
+        }
+
+        return round($floor, 4);
     }
 
     /**
@@ -628,17 +702,18 @@ class InvoiceService
      * The Tax-invoice price pair of an SO line: its rolls' confirmed-costing
      * before-tax price (restated per the LINE's unit) and the VAT % the costing
      * applied. When the rolls carry no costing — or disagree — the SO price has
-     * the default VAT stripped out instead, so before-tax + VAT still lands on
-     * the price the SO quoted.
+     * the Tax master's VAT (in force on $on, today by default) stripped out
+     * instead, so before-tax + VAT still lands on the price the SO quoted.
      *
      * @return array{unit_price: float, tax: float}
      */
-    private function taxPricingForSoItem(?SalesOrderItem $soItem): array
+    private function taxPricingForSoItem(?SalesOrderItem $soItem, ?DateTimeInterface $on = null): array
     {
         $soPrice  = (float) ($soItem?->unit_price ?? 0);
+        $vat      = $this->taxes->rate(Tax::VAT, $on);
         $fallback = [
-            'unit_price' => $this->money($soPrice / (1 + self::FALLBACK_VAT_PCT / 100)),
-            'tax'        => self::FALLBACK_VAT_PCT,
+            'unit_price' => $this->money($soPrice / (1 + $vat / 100)),
+            'tax'        => $vat,
         ];
 
         if ($soItem === null) {

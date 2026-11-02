@@ -2,7 +2,12 @@
 
 namespace Modules\Finance\Providers;
 
+use App\Contracts\FundBalanceGuard;
 use App\Contracts\JournalPoster;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
+use Modules\Finance\Services\FundBalanceService;
 use Modules\Finance\Services\JournalPostingService;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
@@ -32,5 +37,17 @@ class FinanceServiceProvider extends ModuleServiceProvider
         parent::register();
 
         $this->app->bind(JournalPoster::class, JournalPostingService::class);
+        $this->app->bind(FundBalanceGuard::class, FundBalanceService::class);
+    }
+
+    public function boot(): void
+    {
+        parent::boot();
+
+        // Every Finance write (bills, confirm/void, attachments, controls):
+        // 60 a minute per user is far above real data entry and stops a
+        // script from flooding the books.
+        RateLimiter::for('finance-writes', fn (Request $request): Limit => Limit::perMinute(60)
+            ->by((string) ($request->user()?->id ?? $request->ip())));
     }
 }

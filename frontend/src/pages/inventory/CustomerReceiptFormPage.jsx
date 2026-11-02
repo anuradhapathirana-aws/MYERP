@@ -30,7 +30,7 @@ const EMPTY_ARRAY = []
 
 function SectionHeader({ icon: Icon, title, colorClass, right }) {
   return (
-    <div className={`flex items-center justify-between gap-1.5 px-3 py-2 border-b ${colorClass}`}>
+    <div className={`flex items-center justify-between gap-1.5 px-3 py-2 border-b rounded-t-lg ${colorClass}`}>
       <div className="flex items-center gap-1.5">
         {Icon && <Icon size={13} />}
         <h2 className="text-xs font-bold">{title}</h2>
@@ -359,7 +359,10 @@ export default function CustomerReceiptFormPage() {
   /*
    * Deposit To options, narrowed by how the money is arriving.
    *
-   * Cash lands in a cash box, a cheque or transfer in a bank. Filtered
+   * Cash lands in a cash book that takes cash; a transfer or card in a bank.
+   * A cheque goes to a cash book that takes cheques ("Cheques in Hand") until
+   * Finance > Bank Deposit banks it, so those are listed first; a bank is
+   * still offered for a cheque the customer deposited directly. Filtered
    * client-side rather than per-request: the list is small, cached once, and
    * re-fetching on every mode change would be slower for no gain.
    *
@@ -373,11 +376,17 @@ export default function CustomerReceiptFormPage() {
    */
   const depositToOptions = (() => {
     const wantsCash = ['cash', 'petty_cash'].includes(selectedMode?.code ?? '')
+    const inHand    = (a) => a.cash_book_type === 'cash_book' && a.allows_cheque
+
+    const suits = (a) => {
+      if (wantsCash)    return a.cash_book_type === 'petty_cash_book' || (a.cash_book_type === 'cash_book' && a.allows_cash)
+      if (isChequeMode) return inHand(a) || a.cash_book_type === 'bank'
+      return a.cash_book_type === 'bank'
+    }
 
     return fundSources
-      .filter((a) => (wantsCash
-        ? a.cash_book_type !== 'bank'
-        : a.cash_book_type === 'bank'))
+      .filter(suits)
+      .sort((a, b) => (isChequeMode ? Number(inHand(b)) - Number(inHand(a)) : 0))
       .map((a) => ({
         value: String(a.id),
         label: `${a.code} · ${a.ledger_account_name}`,
@@ -487,6 +496,8 @@ export default function CustomerReceiptFormPage() {
       queryClient.invalidateQueries({ queryKey: ['outstanding-invoices'] })
       queryClient.invalidateQueries({ queryKey: ['open-customer-credit-notes'] })
       queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      // The money just arrived: payment screens show account balances from this list.
+      queryClient.invalidateQueries({ queryKey: ['ledger-accounts-fund-sources'] })
     },
     onError: (e) => showError(e.response?.data?.message ?? 'Failed to confirm receipt.'),
   })
@@ -997,7 +1008,8 @@ export default function CustomerReceiptFormPage() {
 
         {/* ── Receipt Details (Cash/Cheque/Card settlement lines) ── */}
         {showSummary && (
-          <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          // No overflow-hidden here: it clipped the Deposit To dropdown panel.
+          <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
             <SectionHeader icon={Wallet} title="Receipt Details" colorClass="text-emerald-700 bg-emerald-50 border-emerald-100" />
 
             {isDraft && (

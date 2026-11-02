@@ -173,6 +173,34 @@ class JournalVoucherApiTest extends TestCase
         );
     }
 
+    /**
+     * An invoice journal (AR / Sales / Output Tax) has three lines and no
+     * From -> To pairing. The key must be absent, not an empty object: the
+     * screen treats any transfer object as a two-line view and showed blank
+     * account names.
+     */
+    public function test_a_three_line_voucher_has_no_from_to_view(): void
+    {
+        $payload = $this->voucher(8000, 5000);
+        $payload['lines'][] = [
+            'ledger_account_id' => LedgerAccount::firstWhere('ledger_account_name', 'Output Tax Payable')->id,
+            'debit'             => 0,
+            'credit'            => 3000,
+        ];
+
+        $id = (int) $this->actingAs($this->user)
+            ->postJson('/api/v1/journal-entries', $payload)
+            ->assertCreated()
+            ->assertJsonMissingPath('data.transfer')
+            ->json('data.id');
+
+        $this->actingAs($this->user)->getJson("/api/v1/journal-entries/{$id}")
+            ->assertOk()
+            ->assertJsonMissingPath('data.transfer')
+            ->assertJsonCount(3, 'data.lines')
+            ->assertJsonPath('data.lines.2.ledger_account_name', 'Output Tax Payable');
+    }
+
     public function test_the_next_number_preview_does_not_consume_it(): void
     {
         $this->actingAs($this->user)->getJson('/api/v1/journal-entries/next-no?journal_date=2026-04-30')
@@ -291,7 +319,7 @@ class JournalVoucherApiTest extends TestCase
     {
         $response = $this->actingAs($this->user)->getJson('/api/v1/finance-settings')->assertOk();
 
-        $this->assertCount(16, $response->json('data.mappings'));
+        $this->assertCount(18, $response->json('data.mappings'));
         $this->assertSame([], $response->json('data.missing_required'));
         $this->assertSame('review', $response->json('data.posting_mode'), 'Review is the safe default.');
 

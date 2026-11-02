@@ -43,6 +43,12 @@ class LedgerAccountResource extends JsonResource
             'allows_cash'          => $this->allows_cash,
             'allows_cheque'        => $this->allows_cheque,
 
+            // Set by the controller only where a screen needs it: 'balance' on
+            // the list (posted, signed), 'available' on payment pickers (cash
+            // net of unbanked cheques). Never on writes.
+            'balance'   => $this->when(array_key_exists('balance', $this->resource->getAttributes()), fn () => $this->resource->getAttribute('balance')),
+            'available' => $this->when(array_key_exists('available', $this->resource->getAttributes()), fn () => $this->resource->getAttribute('available')),
+
             // ── Party block ──────────────────────────────────────────────────
             // Set only when this account represents one specific supplier or
             // customer. Exposed so a picker can group them apart from the

@@ -179,7 +179,11 @@ class ProductPricingService
      * Tax invoices bill before_tax_price + vat_pct per line; non-tax invoices bill
      * selling_price with no VAT added. Null = this GRN item was never costed.
      *
-     * @return array{selling_price: float, before_tax_price: float, vat_pct: float}|null
+     * cost_floor is the break-even AFTER-tax price: the landed cost (purchase +
+     * expenses) with the costing's SSCL and VAT on top but no margin. Selling
+     * below it loses money on the roll — the below-cost guard compares to it.
+     *
+     * @return array{selling_price: float, before_tax_price: float, vat_pct: float, cost_floor: float}|null
      */
     public function costingPricingForGrnItem(int $grnItemId): ?array
     {
@@ -192,22 +196,60 @@ class ProductPricingService
             ->first([
                 'inv_costing_items.selling_price_base',
                 'inv_costing_items.before_tax_price_base',
+                'inv_costing_items.landed_unit_cost_base',
                 'inv_costing_items.vat_pct as line_vat_pct',
+                'inv_costing_items.sscl_pct as line_sscl_pct',
                 'inv_costings.vat_pct as header_vat_pct',
+                'inv_costings.sscl_pct as header_sscl_pct',
                 'inv_costings.apply_vat',
+                'inv_costings.apply_sscl',
             ]);
 
         if ($row === null || $row->selling_price_base === null) {
             return null;
         }
 
+        // The same per-line-override-else-header rule CostingService priced with.
+        $vatPct  = $row->apply_vat ? (float) ($row->line_vat_pct ?? $row->header_vat_pct) : 0.0;
+        $ssclPct = $row->apply_sscl ? (float) ($row->line_sscl_pct ?? $row->header_sscl_pct) : 0.0;
+
         return [
             'selling_price'    => (float) $row->selling_price_base,
             'before_tax_price' => (float) $row->before_tax_price_base,
-            'vat_pct'          => $row->apply_vat
-                ? (float) ($row->line_vat_pct ?? $row->header_vat_pct)
-                : 0.0,
+            'vat_pct'          => $vatPct,
+            'cost_floor'       => round((float) $row->landed_unit_cost_base * (1 + $ssclPct / 100) * (1 + $vatPct / 100), 8),
         ];
+    }
+
+    /**
+     * Below-cost guard basis for a manual (no-roll) line, per the stocking UOM:
+     * the newest confirmed costing's break-even price for the product (or the
+     * colour / variant, when known), else the latest GRN purchase cost.
+     */
+    public function costFloorFor(int $productId, ?int $attributeId = null, ?int $variantId = null): ?float
+    {
+        $costing = ($attributeId !== null || $variantId !== null)
+            ? $this->latestCostingPricingFor($productId, $attributeId, $variantId)
+            : null;
+
+        $costing ??= $this->newestCostingPricingFor($productId);
+
+        return $costing['cost_floor'] ?? $this->lastCostFor($productId);
+    }
+
+    /** The newest confirmed-costing price pair of a product, any colour or variant. */
+    private function newestCostingPricingFor(int $productId): ?array
+    {
+        $grnItemId = DB::table('inv_costing_items')
+            ->join('inv_costings', 'inv_costings.id', '=', 'inv_costing_items.costing_id')
+            ->where('inv_costing_items.product_id', $productId)
+            ->where('inv_costings.status', CostingStatus::Confirmed->value)
+            ->whereNull('inv_costings.deleted_at')
+            ->whereNotNull('inv_costing_items.grn_item_id')
+            ->orderByDesc('inv_costing_items.id')
+            ->value('inv_costing_items.grn_item_id');
+
+        return $grnItemId !== null ? $this->costingPricingForGrnItem((int) $grnItemId) : null;
     }
 
     /**
@@ -216,7 +258,7 @@ class ProductPricingService
      * line it costed — the quantity-tracked counterpart of costingPricingForGrnItem
      * (those products have no rolls to trace back).
      *
-     * @return array{selling_price: float, before_tax_price: float, vat_pct: float}|null
+     * @return array{selling_price: float, before_tax_price: float, vat_pct: float, cost_floor: float}|null
      */
     public function latestCostingPricingFor(int $productId, ?int $attributeId, ?int $variantId = null): ?array
     {
@@ -249,7 +291,10 @@ class ProductPricingService
      * before_tax_price / vat_pct ride along when the price came from a costing —
      * the price list holds only the one (after-tax) figure, so they stay null there.
      *
-     * @return array{price: ?float, source: 'costing'|'price_list'|null, before_tax_price: ?float, vat_pct: ?float}
+     * cost_floor (the costing's break-even price) rides along too; null on the
+     * price-list fallback, where the caller falls back to the GRN cost.
+     *
+     * @return array{price: ?float, source: 'costing'|'price_list'|null, before_tax_price: ?float, vat_pct: ?float, cost_floor: ?float}
      */
     public function resolvePieceSellingPrice(GrnItemPiece $piece): array
     {
@@ -261,6 +306,7 @@ class ProductPricingService
                     'source'           => 'costing',
                     'before_tax_price' => $costing['before_tax_price'],
                     'vat_pct'          => $costing['vat_pct'],
+                    'cost_floor'       => $costing['cost_floor'],
                 ];
             }
         }
@@ -272,6 +318,7 @@ class ProductPricingService
             'source'           => $listPrice !== null ? 'price_list' : null,
             'before_tax_price' => null,
             'vat_pct'          => null,
+            'cost_floor'       => null,
         ];
     }
 

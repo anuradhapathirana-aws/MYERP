@@ -12,6 +12,7 @@ use App\Http\Controllers\PaymentModeController;
 use App\Http\Controllers\SupplierAttachmentController;
 use App\Http\Controllers\SupplierGroupController;
 use App\Http\Controllers\SupplierMasterController;
+use App\Http\Controllers\TaxController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -75,3 +76,7 @@ Route::apiResource('bank-branches', BankBranchController::class)->names('bank-br
 
 Route::get('payment-modes/all', [PaymentModeController::class, 'all'])->name('payment-modes.all');
 Route::apiResource('payment-modes', PaymentModeController::class)->names('payment-modes');
+
+// ── Tax ──────────────────────────────────────────────────────────────────────
+Route::get('taxes/current', [TaxController::class, 'current'])->name('taxes.current');
+Route::apiResource('taxes', TaxController::class)->names('taxes');

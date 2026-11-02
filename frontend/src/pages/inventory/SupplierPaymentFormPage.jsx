@@ -18,7 +18,7 @@ import { getAllLedgerAccounts } from '../../api/ledgerAccounts'
 import FilterSearchSelect from '../../components/ui/FilterSearchSelect'
 import Breadcrumb from '../../components/Breadcrumb'
 import Money from '../../components/ui/Money'
-import { confirmAction, showError, showSuccess } from '../../utils/alerts'
+import { confirmAction, confirmBankOverdraw, showError, showSuccess } from '../../utils/alerts'
 import { fmtMoneyWithSymbol } from '../../utils/currency'
 import { INPUT_CLS, INPUT_DISABLED_CLS, LABEL_CLS, SELECT_CLS } from '../../utils/fieldStyles'
 
@@ -26,7 +26,7 @@ const EMPTY_ARRAY = []
 
 function SectionHeader({ icon: Icon, title, colorClass, right }) {
   return (
-    <div className={`flex items-center justify-between gap-1.5 px-3 py-2 border-b ${colorClass}`}>
+    <div className={`flex items-center justify-between gap-1.5 px-3 py-2 border-b rounded-t-lg ${colorClass}`}>
       <div className="flex items-center gap-1.5">
         {Icon && <Icon size={13} />}
         <h2 className="text-xs font-bold">{title}</h2>
@@ -337,13 +337,23 @@ export default function SupplierPaymentFormPage() {
         : a.cash_book_type === 'bank'))
       .map((a) => ({
         value: String(a.id),
-        label: `${a.code} · ${a.ledger_account_name}`,
+        label: `${a.code} · ${a.ledger_account_name}${a.available != null ? ` (${fmt(a.available)})` : ''}`,
         group: a.company_name ?? undefined,
       }))
     // Depends on the mode CODE rather than the mode object: selectedMode is a
     // fresh .find() result each render, which the React compiler cannot treat
     // as stable.
   })()
+
+  // Money left in the chosen Pay From account after the lines already added
+  // from it. Cash short is refused on confirm; a bank short only warns.
+  const payFromAccount = fundSources.find((a) => String(a.id) === String(settlementDraft.ledger_account_id))
+  const payFromLeft = payFromAccount?.available != null
+    ? parseFloat(payFromAccount.available) - settlements
+      .filter((s) => String(s.ledger_account_id) === String(settlementDraft.ledger_account_id))
+      .reduce((t, s) => t + (parseFloat(s.amount) || 0), 0)
+    : null
+  const payFromShort = payFromLeft !== null && (parseFloat(settlementDraft.amount) || 0) - payFromLeft > 0.005
 
   // Cheque numbers must be exactly 6 digits — validated live while typing and again on Add
   // (the backend re-validates on save as well).
@@ -413,15 +423,24 @@ export default function SupplierPaymentFormPage() {
   })
 
   const confirmMutation = useMutation({
-    mutationFn: () => confirmSupplierPayment(id),
+    mutationFn: (opts) => confirmSupplierPayment(id, opts),
     onSuccess: () => {
       showSuccess('Payment confirmed. Outstanding balances updated.')
       queryClient.invalidateQueries({ queryKey: ['supplier-payment', id] })
       queryClient.invalidateQueries({ queryKey: ['supplier-payments'] })
       queryClient.invalidateQueries({ queryKey: ['outstanding-grns'] })
       queryClient.invalidateQueries({ queryKey: ['open-credit-notes'] })
+      queryClient.invalidateQueries({ queryKey: ['ledger-accounts-fund-sources'] })
     },
-    onError: (e) => showError(e.response?.data?.message ?? 'Failed to confirm payment.'),
+    onError: async (e) => {
+      // Bank short: ask, and confirm again only on Yes. Cash short is a plain error.
+      const overdraw = e.response?.data?.errors?.bank_overdraw
+      if (overdraw) {
+        if (await confirmBankOverdraw(overdraw)) confirmMutation.mutate({ allowOverdraw: true })
+        return
+      }
+      showError(e.response?.data?.message ?? 'Failed to confirm payment.')
+    },
   })
 
   const err = (f) => errors[f]?.[0]
@@ -854,7 +873,8 @@ export default function SupplierPaymentFormPage() {
 
         {/* ── Payment Details (Cash/Cheque/Card settlement lines) ── */}
         {showSummary && (
-          <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          // No overflow-hidden here: it clipped the Pay From dropdown panel.
+          <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
             <SectionHeader icon={Wallet} title="Payment Details" colorClass="text-emerald-700 bg-emerald-50 border-emerald-100" />
 
             {isDraft && (
@@ -896,9 +916,16 @@ export default function SupplierPaymentFormPage() {
                       onChange={(v) => setSettlementDraft((d) => ({ ...d, ledger_account_id: v }))}
                       options={payFromOptions}
                     />
-                    <p className="mt-0.5 text-[10px] text-slate-400">
-                      The exact cash or bank account the money leaves
-                    </p>
+                    {payFromLeft === null ? (
+                      <p className="mt-0.5 text-[10px] text-slate-400">
+                        The exact cash or bank account the money leaves
+                      </p>
+                    ) : (
+                      <p className={`mt-0.5 text-[10px] font-semibold ${payFromShort || payFromLeft < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                        Available: {fmt(payFromLeft)}
+                        {payFromShort && (payFromAccount.cash_book_type === 'bank' ? ' — not enough, will ask on confirm' : ' — not enough cash')}
+                      </p>
+                    )}
                   </div>
                 )}
 

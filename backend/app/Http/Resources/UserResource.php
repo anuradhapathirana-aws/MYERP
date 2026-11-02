@@ -17,6 +17,10 @@ class UserResource extends JsonResource
             'email'          => $this->email,
             'roles'          => $this->roles->pluck('name')->values()->all(),
             'active_modules' => $this->active_modules ?? [],
+            // Empty = every company.
+            'company_ids'    => $this->relationLoaded('accessCompanies')
+                ? $this->accessCompanies->pluck('id')->map(fn ($id): int => (int) $id)->sort()->values()->all()
+                : [],
             'created_at'     => $this->created_at?->toISOString(),
             'updated_at'     => $this->updated_at?->toISOString(),
         ];

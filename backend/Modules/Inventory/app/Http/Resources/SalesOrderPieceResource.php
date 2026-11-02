@@ -22,6 +22,9 @@ class SalesOrderPieceResource extends JsonResource
             'taken_quantity' => (float) $this->taken_quantity,
             'is_cut'         => (float) $this->taken_quantity < (float) $this->weight - 0.000001,
             'grn_unit_price' => (float) $this->grn_unit_price,
+            // Below-cost guard basis (break-even after-tax price); rolls allocated
+            // before it was recorded fall back to the GRN cost.
+            'cost_floor'     => (float) ($this->cost_floor ?? $this->grn_unit_price),
             'roll_no'        => $this->whenLoaded('piece', fn () => $this->piece?->roll_no),
             'delivered'      => $this->whenLoaded('piece', fn () => $this->piece?->status === \Modules\Inventory\Models\GrnItemPiece::STATUS_DELIVERED),
         ];

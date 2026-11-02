@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Support\Journal;
 
 use App\Contracts\JournalPoster;
+use DateTimeInterface;
 
 /**
  * What answers when no general ledger is active.
@@ -35,8 +36,12 @@ final class NullJournalPoster implements JournalPoster
         return null;
     }
 
-    public function reverseDocument(string $sourceType, int $sourceId, ?string $narration = null): ?string
-    {
+    public function reverseDocument(
+        string $sourceType,
+        int $sourceId,
+        ?string $narration = null,
+        ?DateTimeInterface $reversalDate = null,
+    ): ?string {
         return null;
     }
 

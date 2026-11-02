@@ -78,10 +78,15 @@ class SupplierPaymentController extends Controller
         return response()->json(null, 204);
     }
 
-    /** POST /supplier-payments/{payment}/confirm */
+    /**
+     * POST /supplier-payments/{payment}/confirm
+     *
+     * allow_overdraw=1 is sent after the user said yes to the "bank will go
+     * negative" warning. It never lets a cash book go negative.
+     */
     public function confirm(SupplierPayment $supplierPayment): JsonResponse
     {
-        $payment = $this->service->confirm($supplierPayment);
+        $payment = $this->service->confirm($supplierPayment, request()->boolean('allow_overdraw'));
 
         return response()->json(
             ['data' => (new SupplierPaymentResource($payment))->toArray(request())],

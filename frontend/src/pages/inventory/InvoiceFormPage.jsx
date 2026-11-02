@@ -17,7 +17,7 @@ import Breadcrumb from '../../components/Breadcrumb'
 import KeyboardShortcuts from '../../components/ui/KeyboardShortcuts'
 import FilterSearchSelect from '../../components/ui/FilterSearchSelect'
 import Money from '../../components/ui/Money'
-import { confirmTriState, showError, showSuccess, showWarning } from '../../utils/alerts'
+import { confirmAction, confirmTriState, showError, showSuccess, showWarning } from '../../utils/alerts'
 import { NOT_VAT_REGISTERED_WARNING } from '../../utils/tin'
 import { fmtMoney } from '../../utils/currency'
 
@@ -34,6 +34,8 @@ const ERR_CLS     = 'text-[10px] text-red-500 leading-tight'
 
 const TABLE_INPUT =
   'block w-full rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-xs text-slate-800 outline-none transition-all focus:border-indigo-400 focus:bg-white'
+const TABLE_INPUT_WARN =
+  'block w-full rounded border border-amber-400 bg-amber-50 px-1.5 py-0.5 text-xs text-slate-800 outline-none transition-all focus:border-amber-500 focus:bg-white'
 const TABLE_INPUT_RO =
   'block w-full rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500 outline-none cursor-not-allowed'
 
@@ -44,6 +46,23 @@ function calcLine(row) {
   const taxPct  = parseFloat(row.tax)        || 0
   const gross   = qty * price
   return gross - (gross * discPct / 100) + (gross * taxPct / 100)
+}
+
+// Below-cost guard: what the customer pays per unit, AFTER discount and VAT,
+// against the line's break-even price (cost_floor = landed cost + SSCL + VAT,
+// no margin; the GRN cost when the stock was never costed). Both are per the
+// unit the line's price is quoted in. Warn-but-allow, like the sales order.
+function paidPerUnit(row, invoiceType) {
+  const price   = parseFloat(row.unit_price) || 0
+  const discPct = parseFloat(row.discount)   || 0
+  const taxPct  = invoiceType === 'tax' ? (parseFloat(row.tax) || 0) : 0
+  return price * (1 - discPct / 100) * (1 + taxPct / 100)
+}
+
+function isBelowCost(row, invoiceType) {
+  const floor = Number(row.cost_floor) || 0
+  const paid  = paidPerUnit(row, invoiceType)
+  return floor > 0 && paid > 0 && paid < floor - 0.005
 }
 
 export default function InvoiceFormPage() {
@@ -162,6 +181,7 @@ export default function InvoiceFormPage() {
       so_tax:         it.tax,
       tax_unit_price: it.tax_unit_price,
       tax_vat_pct:    it.tax_vat_pct,
+      cost_floor:     it.cost_floor ?? null,
     })))
     setForm((f) => ({
       ...f,
@@ -204,7 +224,7 @@ export default function InvoiceFormPage() {
     setLines((prev) => prev.map((row) => {
       const src = byId.get(row.so_item_id)
       return src
-        ? { ...row, so_unit_price: src.unit_price, so_tax: src.tax, tax_unit_price: src.tax_unit_price, tax_vat_pct: src.tax_vat_pct }
+        ? { ...row, so_unit_price: src.unit_price, so_tax: src.tax, tax_unit_price: src.tax_unit_price, tax_vat_pct: src.tax_vat_pct, cost_floor: src.cost_floor ?? null }
         : row
     }))
   }, [isEdit, source, existing])
@@ -277,7 +297,23 @@ export default function InvoiceFormPage() {
     })),
   })
 
-  const handleSubmit = () => {
+  // Selling below break-even is sometimes intentional (clearance) — confirm, don't block.
+  const confirmBelowCost = async () => {
+    const below = lines.filter((row) => isBelowCost(row, invoiceType))
+    if (below.length === 0) return true
+    // confirmAction renders HTML — escape the product names
+    const names = below.map((row) => row.product?.name).filter(Boolean).join(', ')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    return confirmAction({
+      title: 'Selling below cost',
+      message: `${below.length} line(s) are priced below cost (landed cost + SSCL + VAT)${names ? ` (${names})` : ''}. Save anyway?`,
+      confirmText: 'Yes, Save',
+      confirmColor: '#d97706',
+      icon: 'warning',
+    })
+  }
+
+  const handleSubmit = async () => {
     const clientErrors = getClientErrors()
     if (Object.keys(clientErrors).length) {
       setErrors(clientErrors)
@@ -286,6 +322,7 @@ export default function InvoiceFormPage() {
     }
 
     setErrors({})
+    if (!(await confirmBelowCost())) return
     saveMutation.mutate(buildPayload())
   }
 
@@ -305,6 +342,7 @@ export default function InvoiceFormPage() {
       return
     }
     setErrors({})
+    if (!(await confirmBelowCost())) return
 
     const choice = await confirmTriState({
       title: 'Generate a Receipt?',
@@ -592,7 +630,15 @@ export default function InvoiceFormPage() {
                       <input readOnly value={Number(row.quantity).toLocaleString(undefined, { maximumFractionDigits: 4 })} className={`${TABLE_INPUT_RO} text-right tabular-nums`} title="Quantity comes from the source document" />
                     </td>
                     <td className="px-2 py-1">
-                      <input type="number" min="0" step="0.01" value={row.unit_price} onChange={(e) => setLineField(idx, 'unit_price', e.target.value)} className={TABLE_INPUT} />
+                      <input type="number" min="0" step="0.01" value={row.unit_price} onChange={(e) => setLineField(idx, 'unit_price', e.target.value)} className={isBelowCost(row, invoiceType) ? TABLE_INPUT_WARN : TABLE_INPUT} />
+                      {isBelowCost(row, invoiceType) && (
+                        <p
+                          className="mt-0.5 text-[9px] font-semibold leading-tight text-amber-600"
+                          title="Break-even price incl. VAT: landed cost (purchase + expenses) + SSCL + VAT, no margin. You pay less than this per unit after discount and VAT."
+                        >
+                          Below cost ({fmtMoney(row.cost_floor)} incl. VAT)
+                        </p>
+                      )}
                     </td>
                     <td className="px-2 py-1">
                       <input type="number" min="0" max="100" step="0.01" placeholder="0" value={row.discount} onChange={(e) => setLineField(idx, 'discount', e.target.value)} className="block w-full rounded border border-amber-200 bg-amber-50/50 px-1.5 py-0.5 text-xs text-slate-800 outline-none transition-all focus:border-amber-400 focus:bg-white" />

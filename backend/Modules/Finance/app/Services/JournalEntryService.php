@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Modules\Finance\Services;
 
+use App\Models\User;
+use App\Services\CompanyAccessService;
 use App\Support\Journal\JournalLineRequest;
 use App\Support\Journal\JournalRequest;
 use DateTimeImmutable;
@@ -13,6 +15,7 @@ use Illuminate\Validation\ValidationException;
 use Modules\Finance\DTOs\JournalEntryData;
 use Modules\Finance\Enums\JournalStatus;
 use Modules\Finance\Models\JournalEntry;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
  * The hand-entered voucher, and the list it appears in.
@@ -30,7 +33,11 @@ class JournalEntryService
 {
     private const EAGER = ['lines.ledgerAccount', 'company', 'location'];
 
-    public function __construct(private readonly JournalPostingService $posting) {}
+    public function __construct(
+        private readonly JournalPostingService $posting,
+        private readonly FinanceControlService $controls,
+        private readonly CompanyAccessService  $companyAccess,
+    ) {}
 
     /** @param array<string, mixed> $filters */
     public function paginate(int $perPage = 50, array $filters = []): LengthAwarePaginator
@@ -41,6 +48,11 @@ class JournalEntryService
             // more often than to browse history.
             ->orderByDesc('journal_date')
             ->orderByDesc('id');
+
+        // A restricted user sees their companies' journals plus group-wide
+        // ones (company NULL), which belong to no single company.
+        $user = Auth::user();
+        $this->companyAccess->scope($query, $user instanceof User ? $user : null);
 
         if (! empty($filters['search'])) {
             $term = '%' . $filters['search'] . '%';
@@ -81,7 +93,19 @@ class JournalEntryService
 
     public function find(JournalEntry $entry): JournalEntry
     {
+        $this->assertAccessible($entry);
+
         return $entry->load(self::EAGER);
+    }
+
+    /** Another company's journal answers 404 to a restricted user. */
+    private function assertAccessible(JournalEntry $entry): void
+    {
+        $user = Auth::user();
+
+        if (! $this->companyAccess->canAccess($user instanceof User ? $user : null, $entry->company_id)) {
+            throw new NotFoundHttpException();
+        }
     }
 
     /**
@@ -146,12 +170,18 @@ class JournalEntryService
      */
     public function postDraft(JournalEntry $entry): JournalEntry
     {
+        $this->assertAccessible($entry);
+
         if ($entry->status !== JournalStatus::Draft) {
             throw ValidationException::withMessages([
                 'status' => $entry->journal_no . ' is already ' . $entry->status->label()
                     . ' and cannot be posted again.',
             ]);
         }
+
+        // A draft dated inside a closed period stays a draft: posting it would
+        // change numbers already reported.
+        $this->controls->assertOpen($entry->journal_date);
 
         if (! $entry->isBalanced()) {
             throw ValidationException::withMessages([
@@ -170,6 +200,8 @@ class JournalEntryService
 
     public function reverse(JournalEntry $entry, ?string $narration = null): JournalEntry
     {
+        $this->assertAccessible($entry);
+
         $reversalNo = $this->posting->reverse($entry, $narration);
 
         return JournalEntry::with(self::EAGER)->where('journal_no', $reversalNo)->firstOrFail();
@@ -188,6 +220,8 @@ class JournalEntryService
      */
     public function delete(JournalEntry $entry): void
     {
+        $this->assertAccessible($entry);
+
         $this->posting->discardDraft($entry);
     }
 }

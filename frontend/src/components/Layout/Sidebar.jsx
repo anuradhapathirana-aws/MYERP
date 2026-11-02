@@ -23,6 +23,7 @@ import {
   FolderTree,
   LayoutDashboard,
   Landmark,
+  Percent,
   Layers,
   ListTree,
   Lock,
@@ -55,6 +56,7 @@ import {
   Wallet,
   Warehouse,
   X,
+  PiggyBank,
 } from 'lucide-react'
 import UpgradeModal from './UpgradeModal'
 
@@ -172,6 +174,7 @@ const NAV_ITEMS = [
       { label: 'Banks',           to: '/master-data/banks',           icon: Landmark,   permissionGuard: 'view_banks' },
       { label: 'Bank Branches',   to: '/master-data/bank-branches',   icon: Building2,  permissionGuard: 'view_bank_branches' },
       { label: 'Payment Modes',   to: '/inventory/payment-modes',     icon: CreditCard, permissionGuard: 'view_payment_modes' },
+      { label: 'Taxes',           to: '/master-data/taxes',           icon: Percent,    permissionGuard: 'view_taxes' },
     ],
   },
   {
@@ -197,6 +200,23 @@ const NAV_ITEMS = [
           { label: 'Journal Vouchers', to: '/finance/journal-entries', icon: NotebookPen, permissionGuard: 'view_journal_entries' },
           { label: 'Trial Balance',    to: '/finance/trial-balance',   icon: Scale,       permissionGuard: 'view_finance_reports' },
           { label: 'Account Mapping', to: '/finance/account-mapping', icon: Settings2,   permissionGuard: 'view_finance_settings' },
+        ],
+      },
+      {
+        label: 'Payables',
+        icon: Receipt,
+        isSubgroup: true,
+        children: [
+          { label: 'Bills',         to: '/finance/bills',         icon: FileText, permissionGuard: 'view_bills' },
+          { label: 'Bill Payments', to: '/finance/bill-payments', icon: Wallet,   permissionGuard: 'view_bill_payments' },
+        ],
+      },
+      {
+        label: 'Banking',
+        icon: Landmark,
+        isSubgroup: true,
+        children: [
+          { label: 'Bank Deposits', to: '/finance/bank-deposits', icon: PiggyBank, permissionGuard: 'view_bank_deposits' },
         ],
       },
     ],

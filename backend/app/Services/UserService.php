@@ -11,9 +11,11 @@ use Illuminate\Support\Facades\Auth;
 
 class UserService
 {
+    public function __construct(private readonly CompanyAccessService $companyAccess) {}
+
     public function paginate(int $perPage = 25): LengthAwarePaginator
     {
-        $query = User::with('roles')->orderBy('name');
+        $query = User::with(['roles', 'accessCompanies'])->orderBy('name');
 
         if (! $this->callerIsSuperAdmin()) {
             $query->whereDoesntHave('roles', fn ($q) => $q->where('name', 'super_admin'));
@@ -24,7 +26,7 @@ class UserService
 
     public function find(User $user): User
     {
-        return $user->load('roles');
+        return $user->load(['roles', 'accessCompanies']);
     }
 
     public function create(UserData $data): User
@@ -40,7 +42,11 @@ class UserService
 
         $user->syncRoles($this->filterAllowedRoles($data->roles));
 
-        return $user->load('roles');
+        if ($data->companyIds !== null) {
+            $this->companyAccess->sync($user, $data->companyIds);
+        }
+
+        return $user->load(['roles', 'accessCompanies']);
     }
 
     public function update(User $user, UserData $data): User
@@ -63,7 +69,11 @@ class UserService
         $user->update($attributes);
         $user->syncRoles($this->filterAllowedRoles($data->roles));
 
-        return $user->fresh('roles');
+        if ($data->companyIds !== null) {
+            $this->companyAccess->sync($user, $data->companyIds);
+        }
+
+        return $user->fresh(['roles', 'accessCompanies']);
     }
 
     public function delete(User $user): void

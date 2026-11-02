@@ -67,7 +67,6 @@ class StoreSalesOrderRequest extends FormRequest
             'items.*.quantity'      => ['required_without:items.*.piece_codes', 'nullable', 'numeric', 'gt:0'],
             'items.*.unit_price'    => ['required', 'numeric', 'min:0'],
             'items.*.discount'      => ['nullable', 'numeric', 'min:0', 'max:100'],
-            'items.*.tax'           => ['nullable', 'numeric', 'min:0', 'max:100'],
             'items.*.remarks'       => ['nullable', 'string', 'max:255'],
             'items.*.piece_codes'   => ['nullable', 'array'],
             'items.*.piece_codes.*' => ['string', 'distinct', 'exists:inv_grn_item_pieces,piece_code'],

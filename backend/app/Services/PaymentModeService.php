@@ -47,6 +47,7 @@ class PaymentModeService
         return [
             'payment_mode_name'     => $data->payment_mode_name,
             'code'                  => $data->code,
+            'type'                  => $data->type,
             'requires_bank_details' => $data->requires_bank_details,
             'requires_reference_no' => $data->requires_reference_no,
             'requires_date'         => $data->requires_date,

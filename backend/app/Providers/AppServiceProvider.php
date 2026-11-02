@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Contracts\FundBalanceGuard;
 use App\Contracts\JournalPoster;
 use App\Models\User;
+use App\Services\CompanyAccessService;
 use App\Services\SettingsService;
+use App\Support\Journal\NullFundBalanceGuard;
 use App\Support\Journal\NullJournalPoster;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -16,6 +19,10 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(SettingsService::class);
+
+        // Scoped, not singleton: it memoises each user's companies, and that
+        // memo must not outlive the request (or leak between queue jobs).
+        $this->app->scoped(CompanyAccessService::class);
 
         // Default: no general ledger. FinanceServiceProvider binds its own
         // posting service when the module is installed, so a document can
@@ -29,6 +36,9 @@ class AppServiceProvider extends ServiceProvider
         // unconditional bind, the outcome is the same whichever order they
         // register in -- Finance always wins, core only fills the gap.
         $this->app->bindIf(JournalPoster::class, NullJournalPoster::class);
+
+        // Same pairing: no ledger, no balances, nothing to refuse.
+        $this->app->bindIf(FundBalanceGuard::class, NullFundBalanceGuard::class);
     }
 
     public function boot(): void

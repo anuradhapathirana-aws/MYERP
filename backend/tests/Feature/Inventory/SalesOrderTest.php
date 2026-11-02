@@ -206,8 +206,10 @@ class SalesOrderTest extends TestCase
             ->assertJsonPath('data.so_no', "SO-{$year}-0001")
             ->assertJsonPath('data.status', 'draft')
             ->assertJsonPath('data.subtotal', 1000)
-            // 1000 - 100 (disc) + 50 (tax) = 950 line total, + 50 transport
-            ->assertJsonPath('data.grand_total', 1000);
+            // 1000 - 100 (disc) = 900 line total, + 50 transport — the sent tax is ignored
+            ->assertJsonPath('data.grand_total', 950)
+            ->assertJsonPath('data.items.0.tax', 0)
+            ->assertJsonPath('data.items.0.line_total', 900);
     }
 
     public function test_store_with_confirmed_status_persists_confirmed(): void
@@ -261,6 +263,8 @@ class SalesOrderTest extends TestCase
                 ->count(),
         );
         $this->assertEquals(300.0, (float) SalesOrderPiece::where('so_id', $soId)->first()->grn_unit_price);
+        // Below-cost basis snapshot: no costing on these rolls, so the GRN cost
+        $this->assertEquals(300.0, (float) SalesOrderPiece::where('so_id', $soId)->first()->cost_floor);
 
         // Every roll is taken in full, so nothing will be cut at dispatch.
         SalesOrderPiece::where('so_id', $soId)->get()->each(

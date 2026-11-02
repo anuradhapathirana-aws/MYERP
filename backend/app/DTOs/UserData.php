@@ -8,12 +8,14 @@ use App\Http\Requests\UserRequest;
 
 final class UserData
 {
+    /** @param list<int>|null $companyIds null = leave unchanged; [] = every company */
     public function __construct(
         public readonly string  $name,
         public readonly string  $email,
         public readonly array   $roles,
         public readonly array   $activeModules,
         public readonly ?string $password,
+        public readonly ?array  $companyIds = null,
     ) {}
 
     public static function fromRequest(UserRequest $request): self
@@ -24,6 +26,9 @@ final class UserData
             roles:         $request->validated('roles'),
             activeModules: $request->validated('active_modules', []),
             password:      $request->validated('password'),
+            companyIds:    $request->has('company_ids')
+                ? array_map('intval', (array) $request->validated('company_ids', []))
+                : null,
         );
     }
 }

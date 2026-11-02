@@ -20,6 +20,7 @@ class SalesOrderPiece extends Model
         'weight',
         'taken_quantity',
         'grn_unit_price',
+        'cost_floor',
         'created_by',
     ];
 
@@ -31,6 +32,7 @@ class SalesOrderPiece extends Model
         'weight'         => 'decimal:6',
         'taken_quantity' => 'decimal:6',
         'grn_unit_price' => 'decimal:8',
+        'cost_floor'     => 'decimal:8',
         'created_by'     => 'integer',
     ];
 

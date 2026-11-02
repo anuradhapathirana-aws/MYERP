@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Contracts;
 
 use App\Support\Journal\JournalRequest;
+use DateTimeInterface;
 
 /**
  * The seam between a document and the general ledger.
@@ -66,10 +67,19 @@ interface JournalPoster
      * a posted entry is part of the audit trail. Safe to call when nothing was
      * ever posted for that document.
      *
+     * $reversalDate is when the mirror journal is dated. Null keeps the old
+     * behaviour (today), so existing callers are unchanged. It must fall in an
+     * open period; the implementation refuses a date on or before the lock.
+     *
      * @return string|null The reversing journal's number, or null if there was
      *                     nothing to reverse.
      */
-    public function reverseDocument(string $sourceType, int $sourceId, ?string $narration = null): ?string;
+    public function reverseDocument(
+        string $sourceType,
+        int $sourceId,
+        ?string $narration = null,
+        ?DateTimeInterface $reversalDate = null,
+    ): ?string;
 
     /**
      * Whether a live (non-reversed) journal exists for this document.

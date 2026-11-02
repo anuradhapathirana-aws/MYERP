@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Posting;
 
+use App\Contracts\JournalPoster;
 use App\Support\Journal\JournalLineRequest;
 use App\Support\Journal\JournalRequest;
 use App\Support\Journal\PostingRole;
@@ -153,19 +154,19 @@ final class CustomerReceiptJournal
      *
      *   advance / over_payment -- spending credit we were holding, which
      *                             releases the Customer Advances liability.
-     *   sales_return           -- goods the customer sent back. The revenue was
-     *                             recognised when the invoice was issued, so
-     *                             the return reverses it there. A client who
-     *                             wants returns broken out separately only has
-     *                             to re-map this role to their own Sales
-     *                             Returns account, which their chart already
-     *                             has a control account for.
+     *   sales_return           -- a return credit note. If the return posted
+     *                             its own journal it already reversed the sale
+     *                             and parked the credit in Customer Advances,
+     *                             so spending it releases that. A note from a
+     *                             return that never posted (confirmed before
+     *                             returns posted) still reverses Sales here.
      *
      * @return array<string, float> role => amount
      */
     private static function setoffTotals(CustomerReceipt $receipt): array
     {
         $totals = [];
+        $posted = self::returnNotesAlreadyPosted($receipt);
 
         foreach ($receipt->setoffs as $setoff) {
             $amount = round((float) $setoff->amount, 2);
@@ -175,6 +176,7 @@ final class CustomerReceiptJournal
             }
 
             $role = $setoff->setoff_type === CustomerSetoffType::SalesReturn
+                && ! isset($posted[(int) $setoff->credit_note_id])
                 ? PostingRole::SALES_REVENUE
                 : PostingRole::CUSTOMER_ADVANCE;
 
@@ -182,6 +184,46 @@ final class CustomerReceiptJournal
         }
 
         return $totals;
+    }
+
+    /**
+     * Sales-return credit notes whose return already posted its own journal.
+     *
+     * Since returns post, the return itself reverses the revenue and parks the
+     * paid-for part in Customer Advances -- so spending that note releases
+     * Customer Advances, like any other credit. A note from a return confirmed
+     * before then (or while Finance was off) never touched the ledger and keeps
+     * the old treatment: the set-off is what reverses the revenue.
+     *
+     * @return array<int, true> credit_note_id => true
+     */
+    private static function returnNotesAlreadyPosted(CustomerReceipt $receipt): array
+    {
+        $noteIds = $receipt->setoffs
+            ->where('setoff_type', CustomerSetoffType::SalesReturn)
+            ->pluck('credit_note_id')
+            ->filter()
+            ->unique()
+            ->all();
+
+        if ($noteIds === []) {
+            return [];
+        }
+
+        $poster = app(JournalPoster::class);
+        $posted = [];
+
+        $sources = CustomerCreditNote::whereKey($noteIds)
+            ->whereNotNull('source_return_id')
+            ->pluck('source_return_id', 'id');
+
+        foreach ($sources as $noteId => $returnId) {
+            if ($poster->hasPostingFor(PostingRole::SOURCE_CUSTOMER_RETURN, (int) $returnId)) {
+                $posted[(int) $noteId] = true;
+            }
+        }
+
+        return $posted;
     }
 
     private static function settlementNote(object $settlement): ?string

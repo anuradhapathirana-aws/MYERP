@@ -321,7 +321,7 @@ export default function JournalEntriesPage() {
                         {/* A two-line journal reads as From -> To, the way a
                             Contra voucher does. With three or more there is no
                             meaningful pairing, so every line is listed. */}
-                        {detail?.data?.transfer ? (
+                        {detail?.data?.transfer?.from_account_id ? (
                           <div className="flex flex-wrap items-center gap-2 text-xs">
                             <span className="rounded bg-white px-2 py-1 font-mono text-slate-500">
                               From

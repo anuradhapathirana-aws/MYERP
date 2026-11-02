@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Modules\Finance\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Modules\Finance\Enums\PartyLedgerMode;
 use Modules\Finance\Http\Requests\AccountMappingRequest;
 use Modules\Finance\Services\AccountMappingService;
+use Modules\Finance\Services\FinanceControlService;
 use Modules\Finance\Services\JournalPostingService;
 
 /**
@@ -23,11 +25,13 @@ use Modules\Finance\Services\JournalPostingService;
  */
 class FinanceSettingsController extends Controller
 {
-    public function __construct(private readonly AccountMappingService $service)
-    {
+    public function __construct(
+        private readonly AccountMappingService $service,
+        private readonly FinanceControlService $controls,
+    ) {
         $this->middleware('permission:view_finance_settings')->only(['index']);
         $this->middleware('permission:manage_finance_settings')
-            ->only(['update', 'updatePostingMode', 'updatePartyLedgerMode']);
+            ->only(['update', 'updatePostingMode', 'updatePartyLedgerMode', 'updateLockDate', 'updateMakerChecker']);
     }
 
     public function index(): JsonResponse
@@ -39,6 +43,10 @@ class FinanceSettingsController extends Controller
                 'mappings'         => $this->service->all($companyId),
                 'missing_required' => $this->service->missingRequired($companyId),
                 'posting_mode'     => $this->service->postingMode(),
+
+                // Period lock and maker-checker (FinanceControlService).
+                'lock_date'        => $this->controls->lockDate()?->toDateString(),
+                'maker_checker'    => $this->controls->makerCheckerEnabled(),
 
                 // Which side of the chart keeps one account per party, and the
                 // two choices with the reasoning behind each.
@@ -84,6 +92,32 @@ class FinanceSettingsController extends Controller
         $mode = $this->service->setPostingMode((string) request()->input('posting_mode'));
 
         return response()->json(['data' => ['posting_mode' => $mode]]);
+    }
+
+    /**
+     * Set the last closed day, or clear it with null. Never in the future.
+     * Moving it back reopens a period, which the audit trail records.
+     */
+    public function updateLockDate(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'lock_date' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:today'],
+        ], [
+            'lock_date.before_or_equal' => 'The lock date cannot be in the future.',
+        ]);
+
+        $date = $this->controls->setLockDate($validated['lock_date'] ?? null);
+
+        return response()->json(['data' => ['lock_date' => $date?->toDateString()]]);
+    }
+
+    public function updateMakerChecker(Request $request): JsonResponse
+    {
+        $validated = $request->validate(['enabled' => ['required', 'boolean']]);
+
+        return response()->json([
+            'data' => ['maker_checker' => $this->controls->setMakerChecker((bool) $validated['enabled'])],
+        ]);
     }
 
     public function updatePartyLedgerMode(): JsonResponse

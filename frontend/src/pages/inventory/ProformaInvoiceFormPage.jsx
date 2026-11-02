@@ -12,6 +12,7 @@ import {
   updateProformaInvoiceStatus,
 } from '../../api/proformaInvoices'
 import { getAllCompanies } from '../../api/companies'
+import { currentTaxesQuery } from '../../api/taxes'
 import { getAllCustomers } from '../../api/customers'
 import { getProduct, getProducts } from '../../api/products'
 import { getAllUnitTypesFlat } from '../../api/unitTypes'
@@ -43,8 +44,6 @@ const CELL_SELECT = `${CELL_INPUT} cursor-pointer`
 
 /** Offer validity used when the user hasn't picked a date (mirrors the backend default). */
 const DEFAULT_VALID_DAYS = 14
-/** VAT % assumed when a line's price set does not carry one (same as the invoice). */
-const FALLBACK_VAT_PCT = 18
 
 const round2 = (n) => String(Number((Number(n) || 0).toFixed(2)))
 
@@ -105,6 +104,9 @@ function calcLine(line, isTax) {
 
 export default function ProformaInvoiceFormPage() {
   const { id }   = useParams()
+  // VAT % for a line whose price set carries none — Master Data > Taxes (same as the invoice)
+  const { data: currentTaxes } = useQuery(currentTaxesQuery)
+  const fallbackVat = currentTaxes?.vat ?? 18
   const isEdit   = Boolean(id)
   const navigate = useNavigate()
 
@@ -193,8 +195,8 @@ export default function ProformaInvoiceFormPage() {
           }
         : {
             so_unit_price:  Number(it.unit_price),
-            tax_vat_pct:    FALLBACK_VAT_PCT,
-            tax_unit_price: Number(it.unit_price) / (1 + FALLBACK_VAT_PCT / 100),
+            tax_vat_pct:    fallbackVat,
+            tax_unit_price: Number(it.unit_price) / (1 + fallbackVat / 100),
           }),
     }))
     setLines(hydrated.length ? hydrated : [emptyLine()])
@@ -375,7 +377,7 @@ export default function ProformaInvoiceFormPage() {
   const changePrice = (key, value) => setLines((prev) => prev.map((l) => {
     if (l._key !== key) return l
     const price = parseFloat(value)
-    const vat   = l.tax_vat_pct ?? FALLBACK_VAT_PCT
+    const vat   = l.tax_vat_pct ?? fallbackVat
     if (!(price >= 0)) return { ...l, unit_price: value }
     return invoiceTypeRef.current === 'tax'
       ? { ...l, unit_price: value, tax_unit_price: price, so_unit_price: price * (1 + vat / 100), tax_vat_pct: vat }

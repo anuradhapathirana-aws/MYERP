@@ -236,6 +236,62 @@ class ProductPricingTest extends TestCase
         $this->assertSame('price_list', $pieces[$new['piece']->piece_code]['price_source']);
     }
 
+    // ── Below-cost guard basis: break-even price = landed + SSCL + VAT ──────
+
+    /** A confirmed costing with real cost figures: landed 1,357.20, SSCL 1.25 %, VAT 18 %. */
+    private function giveCostedShipment(int $grnId, int $grnItemId, int $productId): void
+    {
+        $this->giveConfirmedCosting($grnId, $grnItemId, $productId, 1634.536);
+
+        DB::table('inv_costings')->where('document_no', 'CST-T-' . $grnItemId)->update([
+            'apply_sscl' => true, 'sscl_pct' => 1.25, 'apply_vat' => true, 'vat_pct' => 18,
+        ]);
+        DB::table('inv_costing_items')->where('grn_item_id', $grnItemId)->update([
+            'landed_unit_cost_base' => 1357.20,
+            'before_tax_price_base' => 1385.20,
+        ]);
+    }
+
+    public function test_a_costed_roll_carries_its_break_even_price(): void
+    {
+        $product = Product::factory()->create();
+        $seed    = $this->makeGrn($product, unitPrice: 1327.20);
+        $this->giveCostedShipment($seed['grn']->id, $seed['item']->id, $product->id);
+
+        // 1,357.20 × 1.0125 × 1.18 = 1,621.5147 — no margin, so selling below it loses money
+        $scan = $this->actingAs($this->user)
+            ->getJson('/api/v1/sales-orders/scan-piece/' . $seed['piece']->piece_code)
+            ->assertOk();
+        $this->assertEqualsWithDelta(1621.5147, $scan->json('data.cost_floor'), 0.0001);
+        $this->assertEquals(1327.20, $scan->json('data.grn_unit_price')); // unchanged meaning
+
+        $rolls = $this->actingAs($this->user)
+            ->getJson("/api/v1/sales-orders/available-pieces/{$product->id}")
+            ->assertOk();
+        $this->assertEqualsWithDelta(1621.5147, $rolls->json('data.pieces.0.cost_floor'), 0.0001);
+
+        $price = $this->actingAs($this->user)
+            ->getJson("/api/v1/sales-orders/product-price/{$product->id}")
+            ->assertOk();
+        $this->assertEqualsWithDelta(1621.5147, $price->json('data.cost_floor'), 0.0001);
+    }
+
+    public function test_an_uncosted_roll_falls_back_to_its_grn_cost(): void
+    {
+        $product = Product::factory()->create();
+        $seed    = $this->makeGrn($product, unitPrice: 1100);
+
+        $this->actingAs($this->user)
+            ->getJson('/api/v1/sales-orders/scan-piece/' . $seed['piece']->piece_code)
+            ->assertOk()
+            ->assertJsonPath('data.cost_floor', 1100);
+
+        $this->actingAs($this->user)
+            ->getJson("/api/v1/sales-orders/product-price/{$product->id}")
+            ->assertOk()
+            ->assertJsonPath('data.cost_floor', 1100);
+    }
+
     // ── GRN confirm syncs last cost onto the price list ─────────────────────
 
     public function test_grn_confirm_updates_price_list_cost_and_never_selling_price(): void

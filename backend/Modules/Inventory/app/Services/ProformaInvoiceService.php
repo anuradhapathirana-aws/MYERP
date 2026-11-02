@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Modules\Inventory\Services;
 
 use App\Models\Company;
+use App\Models\Tax;
+use App\Services\TaxService;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -41,14 +43,12 @@ class ProformaInvoiceService
 
     private const EPSILON = 0.0001;
 
-    /** VAT % assumed when a product carries no confirmed costing (same as InvoiceService). */
-    private const FALLBACK_VAT_PCT = 18.0;
-
     public function __construct(
         private readonly ProformaInvoicingTracker $tracker,
         private readonly ProformaStockService $stock,
         private readonly ProductPricingService $pricing,
         private readonly UnitConversionService $units,
+        private readonly TaxService $taxes,
     ) {
     }
 
@@ -179,17 +179,19 @@ class ProformaInvoiceService
                 ];
             }
 
+            // No costing: the price list's VAT-inclusive price, with the Tax master's VAT.
+            $vat  = $this->taxes->rate(Tax::VAT);
             $list = $this->pricing->sellingPriceFor($productId, $variantId);
             if ($list === null) {
-                return ['unit_price' => null, 'tax_unit_price' => null, 'tax_vat_pct' => self::FALLBACK_VAT_PCT, 'source' => null];
+                return ['unit_price' => null, 'tax_unit_price' => null, 'tax_vat_pct' => $vat, 'source' => null];
             }
 
             $nonTax = $list * $factor;
 
             return [
                 'unit_price'     => $this->money($nonTax),
-                'tax_unit_price' => $this->money($nonTax / (1 + self::FALLBACK_VAT_PCT / 100)),
-                'tax_vat_pct'    => self::FALLBACK_VAT_PCT,
+                'tax_unit_price' => $this->money($nonTax / (1 + $vat / 100)),
+                'tax_vat_pct'    => $vat,
                 'source'         => 'price_list',
             ];
         }, array_values($lines));

@@ -118,6 +118,8 @@ class SalesOrderController extends Controller
             // re-express them in whatever unit the line actually sells in.
             'unit_price'        => $pricing['selling_price'],
             'cost_price'        => $pricing['cost_price'],
+            // Below-cost guard: break-even after-tax price (landed + SSCL + VAT), else GRN cost.
+            'cost_floor'        => $pricing['cost_floor'],
             'base_unit_type_id' => $pricing['base_unit_type_id'],
             'base_uom'          => $pricing['base_uom'],
         ]]);

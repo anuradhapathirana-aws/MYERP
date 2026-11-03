@@ -49,6 +49,15 @@ class GoodsReceivedNoteResource extends JsonResource
                 'name' => $this->location->name ?? $this->location->location_name ?? '',
             ] : null),
 
+            'returns' => $this->whenLoaded('supplierReturns', fn () => $this->supplierReturns->map(fn ($r) => [
+                'id'             => $r->id,
+                'return_no'      => $r->return_no,
+                'return_date'    => $r->return_date?->toDateString(),
+                'total_amount'   => (float) $r->total_amount,
+                'applied_to_grn' => (float) $r->applied_to_grn,
+                'credit_note_no' => $r->creditNote?->credit_note_no,
+            ])->values()),
+
             'items' => $this->whenLoaded('items', fn ($items) => GoodsReceivedNoteItemResource::collection($items)),
 
             'created_at' => $this->created_at?->toDateTimeString(),

@@ -160,16 +160,18 @@ final class SupplierPaymentJournal
     /**
      * Set-off amounts grouped by the account they consume.
      *
-     * Three types, two meanings:
+     * Four types, two meanings:
      *
      *   advance / over_payment  -- spending a prepayment we already made, so it
-     *                              releases the Supplier Advances asset.
-     *   customer_return         -- goods sent back to the supplier. Under the
+     *   / supplier_return          releases the Supplier Advances asset. A
+     *                              supplier_return note was put there by the
+     *                              Supplier Return's own journal, which already
+     *                              credited Purchase Returns.
+     *   customer_return         -- legacy manual set-off for goods sent back,
+     *                              with no Supplier Return behind it. Under the
      *                              periodic stock method the original cost went
-     *                              to Purchases, so the return reverses it
-     *                              there. Were stock ever moved to perpetual
-     *                              valuation this would credit Inventory
-     *                              instead.
+     *                              to Purchases, so it reverses it there. Only
+     *                              old drafts can still carry it.
      *
      * @return array<string, float> role => amount
      */

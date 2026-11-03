@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\Inventory\Enums\GrnStatus;
+use Modules\Inventory\Enums\SupplierReturnStatus;
 
 class GoodsReceivedNote extends Model
 {
@@ -80,6 +81,14 @@ class GoodsReceivedNote extends Model
     public function location(): BelongsTo
     {
         return $this->belongsTo(Location::class, 'location_id');
+    }
+
+    /** Confirmed supplier returns raised against this GRN — the GRN view's returns panel. */
+    public function supplierReturns(): HasMany
+    {
+        return $this->hasMany(SupplierReturn::class, 'grn_id')
+            ->where('status', SupplierReturnStatus::Confirmed->value)
+            ->orderBy('id');
     }
 
     public function receivedBy(): BelongsTo

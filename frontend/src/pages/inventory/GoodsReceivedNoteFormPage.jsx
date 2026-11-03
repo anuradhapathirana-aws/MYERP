@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Boxes, ChevronDown, ClipboardList, Download, FileText, Layers, PackageCheck, Plus, Printer, QrCode, ShoppingCart, Trash2, Weight, X } from 'lucide-react'
+import { AlertTriangle, Boxes, ChevronDown, ClipboardList, Download, FileText, Layers, PackageCheck, PackageMinus, Plus, Printer, QrCode, ShoppingCart, Trash2, Weight, X } from 'lucide-react'
 import {
   checkShippingCode,
   confirmGoodsReceivedNote,
@@ -33,6 +33,8 @@ import BatchAssignModal from '../../components/inventory/BatchAssignModal'
 import RollAssignModal from '../../components/inventory/RollAssignModal'
 import VariantSelect from '../../components/inventory/VariantSelect'
 import VariantLabelsModal from '../../components/inventory/VariantLabelsModal'
+import GrnSupplierReturns from '../../components/inventory/GrnSupplierReturns'
+import { usePermissions } from '../../hooks/usePermissions'
 import { getProductVariants } from '../../api/variants'
 import { showError, showSuccess } from '../../utils/alerts'
 import { printPdfBlob } from '../../utils/pdf'
@@ -412,6 +414,7 @@ export default function GoodsReceivedNoteFormPage() {
   const isEdit      = Boolean(id)
   const navigate    = useNavigate()
   const queryClient = useQueryClient()
+  const { can }     = usePermissions()
   const [search]    = useSearchParams()
   const poIdFromUrl = search.get('po_id')
   const fileRef     = useRef(null)
@@ -2336,6 +2339,17 @@ export default function GoodsReceivedNoteFormPage() {
                   Variant Labels
                 </button>
               )}
+              {isEdit && existingGRN?.data?.status === 'confirmed' && can('create_supplier_returns') && (
+                // Opens a new Supplier Return with this GRN (and its supplier) pre-selected.
+                <button
+                  type="button"
+                  onClick={() => navigate(`/inventory/supplier-returns/create?grn=${id}`)}
+                  className="flex items-center gap-1.5 rounded border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition-colors"
+                >
+                  <PackageMinus size={12} />
+                  Create Return
+                </button>
+              )}
               {variantLabelsOpen && (
                 <VariantLabelsModal grnId={id} grnNo={existingGRN?.data?.grn_no} onClose={closeVariantLabels} />
               )}
@@ -2385,6 +2399,8 @@ export default function GoodsReceivedNoteFormPage() {
         </div>
 
       </div>
+
+      {isEdit && <GrnSupplierReturns returns={existingGRN?.data?.returns} />}
 
       {/* Keyboard Shortcuts Reference */}
       <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">

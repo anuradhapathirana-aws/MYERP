@@ -132,6 +132,10 @@ class PieceLabelController extends Controller
 
         return GrnItemPiece::query()
             ->whereNotNull('piece_code')
+            // A roll sent back to the supplier is no longer on our shelf — its sticker
+            // left with it. A partial return's remnant (-C#) is a new in-stock roll and
+            // still lists, naming the sticker it replaces.
+            ->where('status', '!=', GrnItemPiece::STATUS_RETURNED)
             ->whereHas('grn', function (Builder $query) use ($filters): void {
                 $query->where('status', GrnStatus::Confirmed);
                 if (!empty($filters['shipping_code'])) {

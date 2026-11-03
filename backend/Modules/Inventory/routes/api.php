@@ -44,6 +44,8 @@ use Modules\Inventory\Http\Controllers\CostingController;
 use Modules\Inventory\Http\Controllers\CostingExpenseTypeController;
 use Modules\Inventory\Http\Controllers\ReportController;
 use Modules\Inventory\Http\Controllers\SupplierPaymentController;
+use Modules\Inventory\Http\Controllers\SupplierReturnController;
+use Modules\Inventory\Http\Controllers\SupplierReturnPdfController;
 use Modules\Inventory\Http\Controllers\SupplierCreditNoteController;
 use Modules\Inventory\Http\Controllers\CustomerReceiptController;
 use Modules\Inventory\Http\Controllers\CustomerReceiptPdfController;
@@ -270,6 +272,22 @@ Route::middleware(['auth:sanctum', 'module:inventory'])->prefix('v1')->group(fun
         ->name('inventory.grns.variant-labels.pdf');
     Route::apiResource('goods-received-notes', GoodsReceivedNoteController::class)
         ->names('inventory.grns');
+
+    // ── Supplier Returns (purchase returns against a confirmed GRN) ──────────
+    Route::get('supplier-returns/next-return-no', [SupplierReturnController::class, 'nextReturnNo'])
+        ->name('inventory.supplier-returns.next-return-no');
+    Route::get('supplier-returns/returnable-grns/{supplierId}', [SupplierReturnController::class, 'returnableGrns'])
+        ->whereNumber('supplierId')
+        ->name('inventory.supplier-returns.returnable-grns');
+    Route::get('supplier-returns/returnable-items/{grnId}', [SupplierReturnController::class, 'returnableItems'])
+        ->whereNumber('grnId')
+        ->name('inventory.supplier-returns.returnable-items');
+    Route::post('supplier-returns/{supplier_return}/confirm', [SupplierReturnController::class, 'confirm'])
+        ->name('inventory.supplier-returns.confirm');
+    Route::get('supplier-returns/{supplier_return}/pdf', [SupplierReturnPdfController::class, 'download'])
+        ->name('inventory.supplier-returns.pdf');
+    Route::apiResource('supplier-returns', SupplierReturnController::class)
+        ->names('inventory.supplier-returns');
 
     // ── Piece Labels (cross-GRN QR label printing) ───────────────────────────
     Route::get('piece-labels', [PieceLabelController::class, 'index'])

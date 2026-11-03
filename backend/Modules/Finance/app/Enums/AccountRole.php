@@ -47,6 +47,7 @@ enum AccountRole: string
     case RoundingDifference   = 'rounding_difference';
     case OpeningBalanceEquity = 'opening_balance_equity';
     case SalesReturns         = 'sales_returns';
+    case PurchaseReturns      = 'purchase_returns';
 
     // ── Used only when switched on (SSCL rate above zero) ────────────────────
     case SsclPayable          = 'sscl_payable';
@@ -73,6 +74,7 @@ enum AccountRole: string
             self::RoundingDifference   => 'Rounding Difference',
             self::OpeningBalanceEquity => 'Opening Balance Equity',
             self::SalesReturns         => 'Sales Returns',
+            self::PurchaseReturns      => 'Purchase Returns',
             self::SsclPayable          => 'SSCL Payable',
             self::BankCharges          => 'Bank Charges',
             self::GrniClearing         => 'Goods Received Not Invoiced',
@@ -98,6 +100,7 @@ enum AccountRole: string
             self::RoundingDifference   => 'Absorbs sub-cent residue so the ledger agrees with the documents.',
             self::OpeningBalanceEquity => 'The balancing side of the opening-balance journal.',
             self::SalesReturns         => 'Goods customers sent back, net of tax. Debited by a Customer Return.',
+            self::PurchaseReturns      => 'Goods sent back to suppliers, net of tax. Credited by a Supplier Return.',
             self::SsclPayable          => 'SSCL inside the selling price, owed to the revenue authority. Used when an SSCL rate is set.',
             self::BankCharges          => 'Bank fees. Not yet posted by any document.',
             self::GrniClearing         => 'Used only once Bill Entry exists: a GRN credits this, the Bill moves it to Payables.',
@@ -130,6 +133,7 @@ enum AccountRole: string
             self::SalesRevenue         => [AccountType::Income],
 
             self::Purchases,
+            self::PurchaseReturns,
             self::BankCharges,
             self::CostOfSales          => [AccountType::Expense],
 

@@ -83,8 +83,10 @@ class StockMovementSummaryService
                  MAX(ow.wac) as opening_wac,
                  MAX(cw.wac) as closing_wac,
                  {$openingSql} as opening_qty,
-                 SUM(CASE WHEN {$periodSql} AND st.reference_type = ? THEN st.qty_in ELSE 0 END) as purchase_qty,
-                 SUM(CASE WHEN {$periodSql} AND st.reference_type = ? THEN st.qty_in * st.unit_price ELSE 0 END) as purchase_value,
+                 SUM(CASE WHEN {$periodSql} AND st.reference_type = ? THEN st.qty_in
+                          WHEN {$periodSql} AND st.reference_type = ? THEN -st.qty_out ELSE 0 END) as purchase_qty,
+                 SUM(CASE WHEN {$periodSql} AND st.reference_type = ? THEN st.qty_in * st.unit_price
+                          WHEN {$periodSql} AND st.reference_type = ? THEN -st.qty_out * st.unit_price ELSE 0 END) as purchase_value,
                  SUM(CASE WHEN {$periodSql} AND st.reference_type IN (?, ?) THEN st.qty_out
                           WHEN {$periodSql} AND st.reference_type = ? THEN -st.qty_in ELSE 0 END) as sales_qty,
                  SUM(CASE WHEN {$periodSql} AND st.reference_type IN (?, ?) THEN st.qty_out * st.unit_price
@@ -92,8 +94,13 @@ class StockMovementSummaryService
                  SUM(CASE WHEN {$periodSql} THEN st.qty_in - st.qty_out ELSE 0 END) as period_net",
                 [
                     ...$openingBindings,
+                    // Purchases are NET of supplier returns: a return row carries the same base
+                    // cost its GRN received at (SupplierReturnService), so it reverses both the
+                    // quantity and the value of the purchase it undoes.
                     ...$periodBindings, StockReferenceType::CODE_GRN,
+                    ...$periodBindings, StockReferenceType::CODE_SUPPLIER_RETURN,
                     ...$periodBindings, StockReferenceType::CODE_GRN,
+                    ...$periodBindings, StockReferenceType::CODE_SUPPLIER_RETURN,
                     // Sales are NET of customer returns: a return row carries the same selling
                     // price its delivery went out at (CustomerReturnService), so it reverses
                     // both the quantity and the revenue of the sale it undoes.

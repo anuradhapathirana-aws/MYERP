@@ -22,6 +22,7 @@ class SupplierCreditNote extends Model
         'remark',
         'status',
         'source_payment_id',
+        'source_return_id',
         'created_by',
     ];
 
@@ -30,6 +31,7 @@ class SupplierCreditNote extends Model
         'amount'             => 'decimal:4',
         'remaining_balance'  => 'decimal:4',
         'source_payment_id'  => 'integer',
+        'source_return_id'   => 'integer',
         'created_by'         => 'integer',
         'credit_type'        => CreditNoteType::class,
         'status'             => CreditNoteStatus::class,

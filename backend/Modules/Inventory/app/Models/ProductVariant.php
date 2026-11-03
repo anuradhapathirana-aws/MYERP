@@ -33,6 +33,7 @@ class ProductVariant extends Model
         'inv_invoice_items',
         'inv_proforma_invoice_items',
         'inv_customer_return_items',
+        'inv_supplier_return_items',
         'inv_costing_items',
         'inv_stock_reconciliations',
     ];

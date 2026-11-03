@@ -83,6 +83,8 @@ class GoodsReceivedNoteService
             'supplier',
             'store',
             'location',
+            'supplierReturns:id,grn_id,return_no,return_date,total_amount,applied_to_grn,credit_note_id',
+            'supplierReturns.creditNote:id,credit_note_no',
         ])->findOrFail($id);
     }
 

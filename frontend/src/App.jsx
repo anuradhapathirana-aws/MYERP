@@ -96,6 +96,8 @@ const CustomerReceiptsPage      = lazy(() => import('./pages/inventory/CustomerR
 const CustomerReceiptFormPage   = lazy(() => import('./pages/inventory/CustomerReceiptFormPage'))
 const CustomerReturnsPage       = lazy(() => import('./pages/inventory/CustomerReturnsPage'))
 const CustomerReturnFormPage    = lazy(() => import('./pages/inventory/CustomerReturnFormPage'))
+const SupplierReturnsPage       = lazy(() => import('./pages/inventory/SupplierReturnsPage'))
+const SupplierReturnFormPage    = lazy(() => import('./pages/inventory/SupplierReturnFormPage'))
 const CustomerCreditNotesPage   = lazy(() => import('./pages/inventory/CustomerCreditNotesPage'))
 // Inventory Reports
 const StockLevelsReport        = lazy(() => import('./pages/inventory/reports/StockLevelsReport'))
@@ -237,6 +239,9 @@ export default function App() {
         <Route path="/inventory/customer-returns"              element={<Lazy component={CustomerReturnsPage} />} />
         <Route path="/inventory/customer-returns/create"       element={<Lazy component={CustomerReturnFormPage} />} />
         <Route path="/inventory/customer-returns/:id/edit"     element={<Lazy component={CustomerReturnFormPage} />} />
+        <Route path="/inventory/supplier-returns"              element={<Lazy component={SupplierReturnsPage} />} />
+        <Route path="/inventory/supplier-returns/create"       element={<Lazy component={SupplierReturnFormPage} />} />
+        <Route path="/inventory/supplier-returns/:id/edit"     element={<Lazy component={SupplierReturnFormPage} />} />
         <Route path="/inventory/customer-credit-notes"         element={<Lazy component={CustomerCreditNotesPage} />} />
         <Route path="/inventory/goods-received-notes"          element={<Lazy component={GoodsReceivedNotesPage} />} />
         <Route path="/inventory/goods-received-notes/create"   element={<Lazy component={GoodsReceivedNoteFormPage} />} />

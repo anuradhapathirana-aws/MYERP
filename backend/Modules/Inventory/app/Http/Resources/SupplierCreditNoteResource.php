@@ -24,6 +24,7 @@ class SupplierCreditNoteResource extends JsonResource
             'status'             => $this->status->value,
             'status_label'       => $this->status->label(),
             'source_payment_id'  => $this->source_payment_id,
+            'source_return_id'   => $this->source_return_id,
             'created_at'         => $this->created_at?->toDateTimeString(),
         ];
     }

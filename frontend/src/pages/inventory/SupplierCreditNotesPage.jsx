@@ -19,6 +19,7 @@ const CRUMBS = [
 const INITIAL_FILTERS = { supplier_id: '', credit_type: '', status: '' }
 
 const TYPE_STYLES = {
+  supplier_return: 'bg-rose-100 text-rose-700',
   customer_return: 'bg-sky-100 text-sky-700',
   over_payment:    'bg-purple-100 text-purple-700',
   advance:         'bg-indigo-100 text-indigo-700',
@@ -74,7 +75,8 @@ export default function SupplierCreditNotesPage() {
         <FilterField label="Type">
           <select className={FILTER_SELECT_CLS} value={draft.credit_type} onChange={(e) => setDraft((d) => ({ ...d, credit_type: e.target.value }))}>
             <option value="">All types</option>
-            <option value="customer_return">Customer Return</option>
+            <option value="supplier_return">Supplier Return</option>
+            <option value="customer_return">Customer Return (manual, legacy)</option>
             <option value="over_payment">Over Payment</option>
             <option value="advance">Advance</option>
           </select>

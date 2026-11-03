@@ -27,6 +27,10 @@ use Modules\Inventory\Posting\SupplierPaymentJournal;
 
 class SupplierPaymentService
 {
+    public function __construct(private readonly GrnBalanceService $balances)
+    {
+    }
+
     /** @param array<string, mixed> $filters */
     public function paginate(int $perPage = 50, array $filters = []): LengthAwarePaginator
     {
@@ -105,23 +109,13 @@ class SupplierPaymentService
             return [];
         }
 
-        $paidByGrn = DB::table('inv_supplier_payment_allocations as a')
-            ->join('inv_supplier_payments as p', 'p.id', '=', 'a.payment_id')
-            ->whereIn('a.reference_id', $grns->pluck('id')->all())
-            ->where('a.reference_type', 'grn')
-            ->where('p.status', SupplierPaymentStatus::Confirmed->value)
-            ->groupBy('a.reference_id')
-            // payment_amount + discount: a discount is a permanent write-off, so it must
-            // reduce outstanding exactly like a cash payment does.
-            ->select('a.reference_id', DB::raw('SUM(a.payment_amount + a.discount) as paid'))
-            ->get()
-            ->pluck('paid', 'reference_id');
+        // Net of confirmed payments (and their discounts) and of supplier returns.
+        $outstandingByGrn = $this->balances->outstandingFor($grns->pluck('total_amount', 'id')->all());
 
         $result = [];
 
         foreach ($grns as $grn) {
-            $paid        = (float) ($paidByGrn[$grn->id] ?? 0);
-            $outstanding = (float) $grn->total_amount - $paid;
+            $outstanding = $outstandingByGrn[$grn->id];
 
             if ($outstanding <= 0) {
                 continue;
@@ -299,6 +293,8 @@ class SupplierPaymentService
                 $amount = (float) $setoff->amount;
                 $setoffAmountTotal += $amount;
 
+                // Legacy manual set-off, kept only so a draft saved before Supplier Returns
+                // existed can still be confirmed. New payments can no longer choose it.
                 if ($setoff->setoff_type === SetoffType::CustomerReturn) {
                     $creditNote = SupplierCreditNote::create([
                         'credit_note_no'    => $this->generateCreditNoteNo(),
@@ -316,13 +312,19 @@ class SupplierPaymentService
                     continue;
                 }
 
-                // over_payment / advance setoffs consume an existing credit note's balance
+                // over_payment / advance / supplier_return setoffs consume an existing credit
+                // note's balance
                 $creditNote = SupplierCreditNote::whereKey($setoff->credit_note_id)
                     ->lockForUpdate()
                     ->first();
 
                 if (!$creditNote) {
                     abort(422, 'Referenced credit note no longer exists.');
+                }
+
+                if ((int) $creditNote->supplier_id !== (int) $payment->supplier_id
+                    || $creditNote->credit_type->value !== $setoff->setoff_type->value) {
+                    abort(422, "Credit note {$creditNote->credit_note_no} cannot be set off on this payment.");
                 }
 
                 if ((float) $creditNote->remaining_balance < $amount) {
@@ -558,40 +560,13 @@ class SupplierPaymentService
     /** Atomically generate the next credit note number (must be called inside a DB transaction) */
     private function generateCreditNoteNo(): string
     {
-        $prefix = 'CN-';
-
-        $last = SupplierCreditNote::where('credit_note_no', 'like', $prefix . '%')
-            ->orderByDesc('id')
-            ->lockForUpdate()
-            ->value('credit_note_no');
-
-        $next = $last
-            ? (int) substr($last, strlen($prefix)) + 1
-            : 1;
-
-        return $prefix . str_pad((string) $next, 4, '0', STR_PAD_LEFT);
+        return $this->balances->generateCreditNoteNo();
     }
 
-    /** Outstanding for a single GRN, based only on confirmed payments — reused by the list endpoint and confirm(). */
+    /** Outstanding for a single GRN (net of confirmed payments and supplier returns) — reused by syncAllocations() and confirm(). */
     private function computeOutstanding(int $grnId): float
     {
-        $grn = DB::table('inv_goods_received_notes')->where('id', $grnId)->first(['total_amount']);
-
-        if (!$grn) {
-            return 0.0;
-        }
-
-        // payment_amount + discount: a discount is a permanent write-off, so it must
-        // reduce outstanding exactly like a cash payment does.
-        $paid = DB::table('inv_supplier_payment_allocations as a')
-            ->join('inv_supplier_payments as p', 'p.id', '=', 'a.payment_id')
-            ->where('a.reference_type', 'grn')
-            ->where('a.reference_id', $grnId)
-            ->where('p.status', SupplierPaymentStatus::Confirmed->value)
-            ->selectRaw('COALESCE(SUM(a.payment_amount + a.discount), 0) as total')
-            ->value('total');
-
-        return (float) $grn->total_amount - (float) $paid;
+        return $this->balances->outstanding($grnId);
     }
 
     /**

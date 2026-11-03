@@ -153,12 +153,34 @@ class RollService
      */
     public function shipOrCut(GrnItemPiece $roll, float $taken): ?GrnItemPiece
     {
+        return $this->retireOrCut($roll, $taken, GrnItemPiece::STATUS_DELIVERED);
+    }
+
+    /**
+     * Send a roll back to the supplier — whole, or cut when only part of it goes back.
+     *
+     * Exactly the mechanics of shipOrCut(): the part leaving is retired (here as Returned
+     * rather than Delivered, so it can never be mistaken for a sale or returned against a
+     * delivery), and an offcut worth keeping stays in stock as a new "-C" roll. The caller
+     * posts the outbound ledger row for the returned part only.
+     *
+     * @param  float $returned quantity going back, in the stocking UOM
+     * @return GrnItemPiece|null the remnant left in stock, or null when the roll went whole
+     */
+    public function returnToSupplier(GrnItemPiece $roll, float $returned): ?GrnItemPiece
+    {
+        return $this->retireOrCut($roll, $returned, GrnItemPiece::STATUS_RETURNED);
+    }
+
+    /** Retire a roll under $status, cutting off the remnant that stays behind (if any). */
+    private function retireOrCut(GrnItemPiece $roll, float $taken, string $status): ?GrnItemPiece
+    {
         $remainder = Quantity::round($this->weightOf($roll) - $taken);
 
         // A leftover too small to type is not a remnant — it is conversion dust. Labelling
         // it would create a roll that can never be sold and clutters the picker forever.
         if (! Quantity::isSellable($remainder)) {
-            $roll->update(['status' => GrnItemPiece::STATUS_DELIVERED]);
+            $roll->update(['status' => $status]);
 
             return null;
         }
@@ -185,7 +207,7 @@ class RollService
             'created_by'           => Auth::id(),
         ]);
 
-        $roll->update(['status' => GrnItemPiece::STATUS_DELIVERED]);
+        $roll->update(['status' => $status]);
 
         return $remnant;
     }

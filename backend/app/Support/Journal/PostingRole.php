@@ -42,6 +42,7 @@ final class PostingRole
     public const COST_OF_SALES         = 'cost_of_sales';
     public const SALES_RETURNS         = 'sales_returns';
     public const SSCL_PAYABLE          = 'sscl_payable';
+    public const PURCHASE_RETURNS      = 'purchase_returns';
 
     /** Party kinds a journal line may be tagged with -- the subledger dimension. */
     public const PARTY_SUPPLIER = 'supplier';
@@ -57,6 +58,7 @@ final class PostingRole
     public const SOURCE_BILL_PAYMENT     = 'bill_payment';
     public const SOURCE_BANK_DEPOSIT     = 'bank_deposit';
     public const SOURCE_CUSTOMER_RETURN  = 'customer_return';
+    public const SOURCE_SUPPLIER_RETURN  = 'supplier_return';
 
     /** @return list<string> Every role key, for the contract test. */
     public static function all(): array
@@ -80,6 +82,7 @@ final class PostingRole
             self::COST_OF_SALES,
             self::SALES_RETURNS,
             self::SSCL_PAYABLE,
+            self::PURCHASE_RETURNS,
         ];
     }
 }

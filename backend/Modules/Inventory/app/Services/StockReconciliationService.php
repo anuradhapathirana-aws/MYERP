@@ -319,6 +319,9 @@ class StockReconciliationService
     /**
      * Rolls of a product that are still in stock, for the "attach a roll to correct"
      * picker — same in_stock filter used by SalesOrderService::availablePieces().
+     * Returns every such roll, uncapped (like availablePieces()): the modal filters
+     * and builds its colour list client-side, so a capped list silently hides newer
+     * GRNs' rolls and colours on products with many rolls in stock.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -336,7 +339,6 @@ class StockReconciliationService
                    ->orWhere('roll_no', 'like', "%{$search}%");
             }))
             ->orderBy('id')
-            ->limit(200)
             ->get()
             ->map(fn (GrnItemPiece $p) => [
                 'id'           => $p->id,

@@ -461,4 +461,67 @@ class StockReconciliationTest extends TestCase
             ],
         ])->assertStatus(422);
     }
+
+    public function test_available_rolls_lists_every_in_stock_roll_beyond_two_hundred(): void
+    {
+        $black = $this->makeColourAttribute('Black');
+        $green = $this->makeColourAttribute('Light Green');
+
+        ['product' => $product, 'grn' => $grn, 'item' => $item] = $this->wrongRollScenario(25.0, attributeId: $black->id);
+
+        // 204 more Black rolls on the same GRN line → 205 Black rolls in stock.
+        for ($n = 2; $n <= 205; $n++) {
+            GrnItemPiece::create([
+                'grn_item_id' => $item->id,
+                'grn_id'      => $grn->id,
+                'product_id'  => $product->id,
+                'store_id'    => $this->storeId,
+                'location_id' => $this->locationId,
+                'piece_no'    => $n,
+                'roll_no'     => "R-{$n}",
+                'weight'      => 25,
+                'piece_code'  => sprintf('%s-I001-P%03d', $grn->grn_no, $n),
+                'status'      => GrnItemPiece::STATUS_IN_STOCK,
+            ]);
+        }
+
+        // A newer GRN's colour — its roll sorts after all 205 Black rolls.
+        $greenGrn = GoodsReceivedNote::create([
+            'grn_no'      => 'GRN-SR-GREEN',
+            'grn_date'    => '2026-08-02',
+            'status'      => 'confirmed',
+            'store_id'    => $this->storeId,
+            'location_id' => $this->locationId,
+        ]);
+        $greenItem = GoodsReceivedNoteItem::create([
+            'grn_id'            => $greenGrn->id,
+            'product_id'        => $product->id,
+            'attribute_id'      => $green->id,
+            'quantity_received' => 24.4,
+            'base_quantity'     => 24.4,
+            'conversion_factor' => 1,
+            'unit_price'        => 100,
+        ]);
+        GrnItemPiece::create([
+            'grn_item_id' => $greenItem->id,
+            'grn_id'      => $greenGrn->id,
+            'product_id'  => $product->id,
+            'store_id'    => $this->storeId,
+            'location_id' => $this->locationId,
+            'piece_no'    => 1,
+            'roll_no'     => 'R-GREEN-1',
+            'weight'      => 24.4,
+            'piece_code'  => 'GRN-SR-GREEN-I001-P001',
+            'status'      => GrnItemPiece::STATUS_IN_STOCK,
+        ]);
+
+        $rolls = $this->actingAs($this->maker)
+            ->getJson("/api/v1/stock-reconciliations/available-rolls/{$product->id}")
+            ->assertOk()
+            ->json('data');
+
+        $this->assertCount(206, $rolls);
+        $this->assertContains($green->id, array_column($rolls, 'attribute_id'));
+        $this->assertContains('Light Green', array_column($rolls, 'color'));
+    }
 }

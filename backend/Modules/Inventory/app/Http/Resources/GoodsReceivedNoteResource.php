@@ -26,6 +26,7 @@ class GoodsReceivedNoteResource extends JsonResource
             'status'           => $this->status->value,
             'status_label'     => $this->status->label(),
             'total_amount'     => (float) $this->total_amount,
+            'prices_include_tax' => (bool) $this->prices_include_tax,
             'remarks'          => $this->remarks,
             'payment_terms'    => $this->payment_terms,
             'attachments'      => $this->attachments ?? [],

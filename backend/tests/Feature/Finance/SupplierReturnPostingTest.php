@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Finance;
 
+use App\Models\TaxCode;
 use App\Services\SettingsService;
 use App\Support\Journal\PostingRole;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -61,21 +62,39 @@ class SupplierReturnPostingTest extends TestCase
 
     public function test_a_return_on_an_unpaid_grn_clears_payables_and_reverses_tax(): void
     {
-        // 10 x 100 + 10% tax = 1100
-        [$grnId, $itemId] = $this->receivedGrn(10, 100, 10);
+        // 10 x 100 + 18% VAT = 1180
+        [$grnId, $itemId] = $this->receivedGrn(10, 100, 'VAT-IN');
 
         $return = $this->confirmedReturn($grnId, $itemId, 3);
 
         $this->assertSame([
-            AccountRole::AccountsPayable->value     => 330.0,
+            AccountRole::AccountsPayable->value     => 354.0,
             AccountRole::PurchaseReturns->value     => -300.0,
-            AccountRole::InputTaxRecoverable->value => -30.0,
+            AccountRole::InputTaxRecoverable->value => -54.0,
         ], $this->journalFor($return));
 
         $apLine = JournalEntry::forSource(PostingRole::SOURCE_SUPPLIER_RETURN, $return->id)->sole()
             ->lines()->where('ledger_account_id', $this->mapped(AccountRole::AccountsPayable))->sole();
         $this->assertSame(PostingRole::SOURCE_GRN, $apLine->source_type);
         $this->assertSame($grnId, (int) $apLine->source_id);
+    }
+
+    /**
+     * SSCL a supplier charged was a cost, never claimed -- so a return gives
+     * back only the VAT share as Input Tax; the SSCL share reduces purchases.
+     */
+    public function test_a_return_reverses_only_the_claimable_vat_not_the_supplier_sscl(): void
+    {
+        // 10 x 100 = 1000; SSCL 2.5% = 25; VAT 18% on 1025 = 184.50; total 1209.50
+        [$grnId, $itemId] = $this->receivedGrn(10, 100, 'SSCL-VAT-IN');
+
+        $return = $this->confirmedReturn($grnId, $itemId, 3);
+
+        $this->assertSame([
+            AccountRole::AccountsPayable->value     => 362.85,
+            AccountRole::PurchaseReturns->value     => -307.5,
+            AccountRole::InputTaxRecoverable->value => -55.35,
+        ], $this->journalFor($return));
     }
 
     public function test_a_return_on_a_paid_grn_is_held_as_a_supplier_advance_and_a_payment_releases_it(): void
@@ -123,13 +142,14 @@ class SupplierReturnPostingTest extends TestCase
     // ── Helpers ─────────────────────────────────────────────────────────────
 
     /** @return array{0: int, 1: int} [grnId, grnItemId] */
-    private function receivedGrn(float $qty, float $price, float $tax = 0): array
+    private function receivedGrn(float $qty, float $price, ?string $taxCode = null): array
     {
         static $seq = 0;
         $seq++;
 
         $product = Product::factory()->quantityTracked()->create();
-        $grnId   = $this->receive([$this->grnLine($product, $qty, null, $price, ['tax' => $tax])], "SHIP-P{$seq}");
+        $extra   = $taxCode !== null ? ['tax_code_id' => TaxCode::where('code', $taxCode)->value('id')] : [];
+        $grnId   = $this->receive([$this->grnLine($product, $qty, null, $price, $extra)], "SHIP-P{$seq}");
 
         return [$grnId, (int) DB::table('inv_goods_received_note_items')->where('grn_id', $grnId)->value('id')];
     }

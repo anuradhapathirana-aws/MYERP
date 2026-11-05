@@ -6,11 +6,13 @@ namespace App\Providers;
 
 use App\Contracts\FundBalanceGuard;
 use App\Contracts\JournalPoster;
+use App\Contracts\TaxCodeUsage;
 use App\Models\User;
 use App\Services\CompanyAccessService;
 use App\Services\SettingsService;
 use App\Support\Journal\NullFundBalanceGuard;
 use App\Support\Journal\NullJournalPoster;
+use App\Support\Tax\SupplierDefaultTaxCodeUsage;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
@@ -39,6 +41,10 @@ class AppServiceProvider extends ServiceProvider
 
         // Same pairing: no ledger, no balances, nothing to refuse.
         $this->app->bindIf(FundBalanceGuard::class, NullFundBalanceGuard::class);
+
+        // Where a tax code can be in use. Modules add their own documents under
+        // the same tag (see InventoryServiceProvider); tags accumulate.
+        $this->app->tag([SupplierDefaultTaxCodeUsage::class], TaxCodeUsage::TAG);
     }
 
     public function boot(): void

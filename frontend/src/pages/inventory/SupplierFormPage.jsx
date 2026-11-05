@@ -15,6 +15,7 @@ import Breadcrumb from '../../components/Breadcrumb'
 import { showError, showSuccess } from '../../utils/alerts'
 
 import { getAllSupplierGroups } from '../../api/supplierGroups'
+import { purchaseTaxCodesQuery } from '../../api/taxCodes'
 
 const EMPTY_FORM = {
   supplier_code:    '',
@@ -39,6 +40,7 @@ const EMPTY_FORM = {
   tax_type:    '',
   tax_no:      '',
   tax_regis_no:'',
+  default_tax_code_id: '',
   credit_limit:        '',
   credit_period:       '',
   privileges_discount: '',
@@ -208,6 +210,9 @@ export default function SupplierFormPage() {
     queryFn:  getAllSupplierGroups,
   })
 
+  // The tax code this supplier's new GRN lines start with.
+  const { data: taxCodeOptions = [] } = useQuery(purchaseTaxCodesQuery())
+
   /* ── Existing attachments query (edit mode) ──────────────────── */
   const {
     data: attachmentsData,
@@ -328,6 +333,7 @@ export default function SupplierFormPage() {
       tax_type:    str(form.tax_type),
       tax_no:      str(form.tax_no),
       tax_regis_no: str(form.tax_regis_no),
+      default_tax_code_id: int(form.default_tax_code_id),
       credit_limit:        num(form.credit_limit),
       credit_period:       int(form.credit_period),
       privileges_discount: num(form.privileges_discount),
@@ -554,6 +560,21 @@ export default function SupplierFormPage() {
                   <input type="text" placeholder="Reg. number" maxLength={50} {...inp('tax_regis_no')} />
                   <FieldError errors={errors} touched={touched} name="tax_regis_no" />
                 </div>
+              </div>
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                <div>
+                  <Label>Default Purchase Tax</Label>
+                  <select {...inp('default_tax_code_id')}>
+                    <option value="">No tax (as before)</option>
+                    {taxCodeOptions.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                  <FieldError errors={errors} touched={touched} name="default_tax_code_id" />
+                </div>
+                <p className="col-span-2 self-end rounded border border-amber-100 bg-amber-50 px-2 py-1 text-[10px] leading-snug text-amber-800">
+                  Fills in on every new GRN line of this supplier (staff can still change it per line).
+                  Pick <b>VAT (Tax Invoice)</b> only if the supplier is VAT-registered and gives Tax Invoices;
+                  otherwise <b>No tax / No Tax Invoice</b>. Foreign suppliers: <b>Import</b>.
+                </p>
               </div>
             </SectionCard>
 

@@ -99,7 +99,7 @@ class DocumentPostingTest extends TestCase
     public function test_a_grn_splits_input_tax_out_of_purchases(): void
     {
         $grn = $this->confirmedGrn([
-            ['quantity_received' => 1, 'unit_price' => 100000, 'tax' => 18, 'line_total' => 118000],
+            ['quantity_received' => 1, 'unit_price' => 100000, 'tax' => 18, 'tax_amount' => 18000, 'recoverable_tax' => 18000, 'line_total' => 118000],
         ], total: 118000);
 
         app(JournalPoster::class)->post(GoodsReceivedNoteJournal::build($grn));

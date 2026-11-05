@@ -6,6 +6,7 @@ namespace App\Services;
 
 use App\DTOs\TaxData;
 use App\Models\Tax;
+use App\Models\TaxCodeComponent;
 use DateTimeInterface;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
@@ -46,6 +47,15 @@ class TaxService
     public function configuredRate(string $code, ?DateTimeInterface $on = null): float
     {
         return (float) ($this->rowInForce($code, $on)['rate'] ?? 0.0);
+    }
+
+    /** The display name of a tax code (its latest rate period's name), or null when unknown. */
+    public function name(string $code): ?string
+    {
+        return $this->rows()
+            ->where('code', strtoupper($code))
+            ->sortByDesc('effective_from')
+            ->first()['name'] ?? null;
     }
 
     /** Whether a tax code is switched on for a date. */
@@ -152,6 +162,15 @@ class TaxService
             ]);
         }
 
+        // The last period of a tax that a tax code is built on would leave that
+        // code charging 0 % without anyone noticing.
+        $lastPeriod = ! Tax::where('code', $tax->code)->whereKeyNot($tax->id)->exists();
+        if ($lastPeriod && TaxCodeComponent::where('tax_code_ref', $tax->code)->exists()) {
+            throw ValidationException::withMessages([
+                'id' => "Tax {$tax->code} is used by a tax code. Remove it from the code first, or switch the tax off.",
+            ]);
+        }
+
         DB::transaction(function () use ($tax): void {
             $this->audit->record(Tax::class, (int) $tax->id, 'deleted', $this->snapshot($tax));
             $tax->delete();
@@ -175,10 +194,11 @@ class TaxService
     private function rows(): Collection
     {
         $rows = Cache::rememberForever(self::CACHE_KEY, fn (): array => Tax::query()
-            ->get(['id', 'code', 'rate', 'effective_from', 'is_active'])
+            ->get(['id', 'code', 'name', 'rate', 'effective_from', 'is_active'])
             ->map(fn (Tax $t) => [
                 'id'             => (int) $t->id,
                 'code'           => $t->code,
+                'name'           => $t->name,
                 'rate'           => (float) $t->rate,
                 'effective_from' => $t->effective_from->format('Y-m-d'),
                 'is_active'      => (bool) $t->is_active,

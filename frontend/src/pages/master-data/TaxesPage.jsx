@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Edit2, Lock, Percent, Save, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Edit2, Info, Lock, Percent, Save, X } from 'lucide-react'
 import { createTax, deleteTax, getTax, getTaxes, updateTax } from '../../api/taxes'
 import Pagination from '../../components/ui/Pagination'
 import Breadcrumb from '../../components/Breadcrumb'
@@ -218,7 +219,13 @@ function TaxForm({ editId, onDone, onCancel }) {
         </div>
       </div>
 
-      {form.tax_type === 'sscl' && (
+      {form.tax_type === 'sscl' && form.code.toUpperCase() === 'SSCL_PUR' && (
+        <p className="rounded border border-orange-100 bg-orange-50 px-2 py-1 text-[10px] leading-snug text-orange-800">
+          <b>SSCL charged by suppliers</b> on their invoices (normally 2.5%). Used by the "SSCL + VAT" tax code on GRNs.
+          It is a cost of the goods, never claimed back, and separate from your own SSCL on sales.
+        </p>
+      )}
+      {form.tax_type === 'sscl' && form.code.toUpperCase() !== 'SSCL_PUR' && (
         <p className="rounded border border-sky-100 bg-sky-50 px-2 py-1 text-[10px] leading-snug text-sky-700">
           Enter the <b>effective</b> rate on turnover, e.g. 1.25 = 2.5% on 50% of a trader's turnover.
           While Active, each new invoice splits this SSCL out of Sales into SSCL Payable. Costings use it as their default SSCL %.
@@ -300,6 +307,15 @@ export default function TaxesPage() {
           <h1 className="text-xl font-bold leading-none text-slate-800">Taxes</h1>
           <Breadcrumb crumbs={CRUMBS} />
         </div>
+      </div>
+
+      <div className="mt-2 flex items-start gap-2 rounded-lg border border-sky-100 bg-sky-50 px-3 py-1.5 text-[11px] leading-snug text-sky-800">
+        <Info size={13} className="mt-0.5 shrink-0" />
+        <span>
+          These are the <b>rates set by law</b>, by date. Staff don't pick them directly: on a GRN they pick a{' '}
+          <Link to="/master-data/tax-codes" className="font-semibold text-indigo-700 underline">Tax Code</Link>, which says which of these
+          taxes apply and whether each can be claimed back.
+        </span>
       </div>
 
       <div className="mt-2 grid grid-cols-1 gap-2 lg:grid-cols-3">

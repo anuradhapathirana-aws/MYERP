@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Boxes, ChevronDown, ClipboardList, Download, FileText, Layers, PackageCheck, PackageMinus, Plus, Printer, QrCode, ShoppingCart, Trash2, Weight, X } from 'lucide-react'
+import { AlertTriangle, Boxes, ChevronDown, ClipboardList, Download, FileText, Info, Layers, PackageCheck, PackageMinus, Plus, Printer, QrCode, ShoppingCart, Trash2, Weight, X } from 'lucide-react'
 import {
   checkShippingCode,
   confirmGoodsReceivedNote,
@@ -19,6 +19,8 @@ import {
 import { getGrnAttachments, uploadGrnAttachments, deleteGrnAttachment } from '../../api/grnAttachments'
 import { getPurchaseOrders } from '../../api/purchaseOrders'
 import { getAllSuppliers } from '../../api/suppliers'
+import { purchaseTaxCodesQuery } from '../../api/taxCodes'
+import { calculateTax } from '../../utils/taxCalc'
 import { getAllLocations } from '../../api/locations'
 import { getAllStores } from '../../api/stores'
 import { getProducts, getProduct } from '../../api/products'
@@ -262,16 +264,49 @@ function isColorAttributeTypeName(name) {
 }
 
 /* ── Line item calculator ─────────────────────────────────────── */
-function calcItem(row, discountEnabled = true) {
-  const qty      = parseFloat(row.quantity_received) || 0
-  const price    = parseFloat(row.unit_price)        || 0
-  const discPct  = discountEnabled ? (parseFloat(row.discount) || 0) : 0
-  const gross    = qty * price
-  const discAmt  = gross * (discPct / 100)
-  const taxAmt   = 0 // item-wise tax feature hidden — always inert
-  const amount   = gross - discAmt + taxAmt
-  return { gross, discAmt, taxAmt, amount }
+const NO_TAX = { components: [], inclusive: false }
+
+/**
+ * A line's value as the server will price it (GoodsReceivedNoteService →
+ * PurchaseLinePricer): tax is charged AFTER the discount, and with "Prices
+ * include VAT" the typed price already holds the tax. taxCtx = { components, inclusive }.
+ */
+function calcItem(row, discountEnabled = true, taxCtx = NO_TAX) {
+  const qty       = parseFloat(row.quantity_received) || 0
+  const price     = parseFloat(row.unit_price)        || 0
+  const discPct   = discountEnabled ? (parseFloat(row.discount) || 0) : 0
+  const gross     = qty * price
+  const discAmt   = gross * (discPct / 100)
+  const afterDisc = gross - discAmt
+
+  if (!taxCtx.components.length) {
+    return { gross, discAmt, taxAmt: 0, recoverable: 0, nonRecoverable: 0, base: afterDisc, taxLines: [], amount: afterDisc }
+  }
+
+  const t = calculateTax(taxCtx.components, afterDisc, taxCtx.inclusive)
+  return {
+    gross,
+    discAmt,
+    taxAmt:         t.taxTotal,
+    recoverable:    t.recoverable,
+    nonRecoverable: t.nonRecoverable,
+    base:           t.base,
+    taxLines:       t.lines,
+    amount:         t.total,
+  }
 }
+
+/** Hover text for a line's total: what is goods, what is claimable, what is cost. */
+function taxBreakdownTitle(calc) {
+  if (!calc.taxLines.length) return undefined
+  const parts = [`Before tax: ${fmtMoney(calc.base)}`]
+  for (const l of calc.taxLines) {
+    parts.push(`${l.ref} ${l.rate}% on ${fmtMoney(l.base)} = ${fmtMoney(l.amount)} ${l.recoverable ? '(claimable)' : '(cost)'}`)
+  }
+  return parts.join('\n')
+}
+
+const TAX_NOTICE_KEY = 'grn.taxNotice.dismissed'
 
 /* ── Helpers ──────────────────────────────────────────────────── */
 const STATUS_BADGE = {
@@ -464,6 +499,10 @@ export default function GoodsReceivedNoteFormPage() {
   const [batchConfirmModal,  setBatchConfirmModal] = useState({ open: false, firstIdx: null })
   const [rollModalIdx,       setRollModalIdx]      = useState(null)
   const [discountEnabled,    setDiscountEnabled]   = useState(false)
+  const [pricesIncludeTax,   setPricesIncludeTax]  = useState(false)
+  const [taxNoticeOpen,      setTaxNoticeOpen]     = useState(() => {
+    try { return localStorage.getItem(TAX_NOTICE_KEY) !== '1' } catch { return true }
+  })
 
   /* ── Real-time validation state ───────────────────────────── */
   const [touched,     setTouched]     = useState({})
@@ -509,6 +548,25 @@ export default function GoodsReceivedNoteFormPage() {
     queryKey: ['suppliers-all'],
     queryFn:  getAllSuppliers,
   })
+
+  // Tax codes with each tax's rate on the GRN date — the server prices with the same rates.
+  const { data: taxCodeOptions = [] } = useQuery(purchaseTaxCodesQuery(form.grn_date))
+  const taxCodesById = useMemo(() => new Map(taxCodeOptions.map((c) => [String(c.id), c])), [taxCodeOptions])
+  const taxCtxFor = (row) => ({
+    components: taxCodesById.get(String(row.tax_code_id))?.components ?? [],
+    inclusive:  pricesIncludeTax,
+  })
+
+  // New lines start with the supplier's default tax code (Supplier master).
+  // The ref lets the row factories (stable callbacks) read the current default.
+  const defaultTaxFor = useCallback((supplierId) => {
+    const sup = suppliers.find((s) => String(s.id) === String(supplierId))
+    return sup?.default_tax_code_id ? String(sup.default_tax_code_id) : ''
+  }, [suppliers])
+  const defaultTaxRef = useRef('')
+  useEffect(() => {
+    defaultTaxRef.current = defaultTaxFor(form.supplier_id)
+  }, [defaultTaxFor, form.supplier_id])
   // Flat, cross-category list — a product's UOM (from its sales channel) may belong
   // to any unit category, not just the system default one.
   const { data: unitTypes = [] } = useQuery({
@@ -707,12 +765,15 @@ export default function GoodsReceivedNoteFormPage() {
     queryFn:  () => getGoodsReceivedNote(id),
     enabled:  isEdit,
   })
+  // A confirmed GRN has posted its tax; its codes are shown, not changed.
+  const isConfirmedGrn = isEdit && existingGRN?.data?.status === 'confirmed'
 
   useEffect(() => {
     if (!existingGRN?.data) return
     const grn = existingGRN.data
     setGrnNoPreview(grn.grn_no ?? '')
     setSaveStatus(grn.status === 'confirmed' ? 'confirmed' : 'draft')
+    setPricesIncludeTax(Boolean(grn.prices_include_tax))
     setTouched({})
     setItemTouched({})
     originalShippingCodeRef.current = (grn.shipping_code ?? '').trim()
@@ -749,9 +810,11 @@ export default function GoodsReceivedNoteFormPage() {
         already_received:   null,
         remaining_qty:      null,
         quantity_received:  it.quantity_received,
-        unit_price:         toPrice(it.unit_price),
+        // A VAT-inclusive GRN shows the price as it was typed off the invoice
+        unit_price:         toPrice(grn.prices_include_tax && it.unit_price_incl != null ? it.unit_price_incl : it.unit_price),
         discount:           it.discount ?? '',
-        tax:                it.tax      ?? '',
+        tax_code_id:        it.tax_code_id != null ? String(it.tax_code_id) : '',
+        tax_code:           it.tax_code ?? null,
         is_batch:           it.product?.is_batch ?? false,
         stock_tracking:     it.product?.stock_tracking ?? 'roll',
         batch_no:           it.batch_no    ?? '',
@@ -823,9 +886,15 @@ export default function GoodsReceivedNoteFormPage() {
 
   /* ── Supplier change ──────────────────────────────────────── */
   const handleSupplierChange = (supplierId) => {
+    const defaultTax = defaultTaxFor(supplierId)
+    defaultTaxRef.current = defaultTax
     setForm((f) => ({ ...f, supplier_id: supplierId }))
     setSelectedPoIds(new Set())
-    setItems((prev) => prev.filter((it) => !it.po_item_id)) // keep manual rows
+    // Keep manual rows. Rows added here that nobody gave a tax code follow the
+    // new supplier's default; lines loaded from a saved GRN are never changed.
+    setItems((prev) => prev
+      .filter((it) => !it.po_item_id)
+      .map((it) => (it._new && !it._taxTouched ? { ...it, tax_code_id: defaultTax } : it)))
     setTimeout(() => locationFieldRef.current?.focus(), 50)
   }
 
@@ -853,7 +922,8 @@ export default function GoodsReceivedNoteFormPage() {
     quantity_received: it.remaining_qty,
     unit_price:        toPrice(it.unit_price),
     discount:          it.discount ?? '',
-    tax:               it.tax      ?? '',
+    tax_code_id:       defaultTaxRef.current,
+    _new:              true,
     is_batch:          it.product?.is_batch ?? false,
     stock_tracking:    it.product?.stock_tracking ?? 'roll',
     batch_no:          '',
@@ -974,7 +1044,8 @@ export default function GoodsReceivedNoteFormPage() {
       quantity_received: '',
       unit_price:        '',
       discount:          '',
-      tax:               '',
+      tax_code_id:       defaultTaxRef.current,
+      _new:              true,
       is_batch:          false,
       stock_tracking:    'roll',
       batch_no:          '',
@@ -1142,10 +1213,17 @@ export default function GoodsReceivedNoteFormPage() {
   /* ── Totals ───────────────────────────────────────────────── */
   const totals = items.reduce(
     (acc, r) => {
-      const { gross, discAmt, taxAmt, amount } = calcItem(r, discountEnabled)
-      return { gross: acc.gross + gross, disc: acc.disc + discAmt, tax: acc.tax + taxAmt, total: acc.total + amount }
+      const c = calcItem(r, discountEnabled, taxCtxFor(r))
+      return {
+        gross:     acc.gross + c.gross,
+        disc:      acc.disc + c.discAmt,
+        tax:       acc.tax + c.taxAmt,
+        claimable: acc.claimable + c.recoverable,
+        taxToCost: acc.taxToCost + c.nonRecoverable,
+        total:     acc.total + c.amount,
+      }
     },
-    { gross: 0, disc: 0, tax: 0, total: 0 },
+    { gross: 0, disc: 0, tax: 0, claimable: 0, taxToCost: 0, total: 0 },
   )
 
   /* ── Per-product qty summary — rolls up every color/row of the same
@@ -1364,6 +1442,7 @@ export default function GoodsReceivedNoteFormPage() {
       payment_terms:    form.payment_terms    || null,
       location_id:      parseInt(form.location_id) || null,
       store_id:         parseInt(form.store_id)    || null,
+      prices_include_tax: pricesIncludeTax,
       items: validItems.map((r) => ({
         po_item_id:        r.po_item_id ? parseInt(r.po_item_id) : null,
         product_id:        parseInt(r.product_id),
@@ -1373,7 +1452,7 @@ export default function GoodsReceivedNoteFormPage() {
         quantity_received: parseFloat(r.quantity_received),
         unit_price:        parseFloat(r.unit_price) || 0,
         discount:          discountEnabled ? (parseFloat(r.discount) || 0) : 0,
-        tax:               0, // item-wise tax feature hidden
+        tax_code_id:       r.tax_code_id ? parseInt(r.tax_code_id) : null,
         batch_no:          r.batch_no    || null,
         expiry_date:       r.expiry_date || null,
         batches:           r.is_batch && r.batches?.length
@@ -1861,6 +1940,17 @@ export default function GoodsReceivedNoteFormPage() {
                     )
                     : null}
                 <CheckToggle checked={discountEnabled} onChange={setDiscountEnabled} label="Discount %" title="Show/hide the line discount column" />
+                <CheckToggle
+                  checked={pricesIncludeTax}
+                  onChange={(v) => { if (!isConfirmedGrn) setPricesIncludeTax(v) }}
+                  label="Prices include VAT"
+                  title="Tick when the supplier's invoice prices already include VAT — type them as printed and the system splits out the VAT"
+                />
+                {!taxNoticeOpen && (
+                  <button type="button" onClick={() => setTaxNoticeOpen(true)} title="How tax works on a GRN" className="rounded p-0.5 text-sky-500 hover:bg-sky-50">
+                    <Info size={12} />
+                  </button>
+                )}
                 <div className="h-4 w-px bg-blue-200" />
                 <button
                   type="button"
@@ -1875,6 +1965,27 @@ export default function GoodsReceivedNoteFormPage() {
               </div>
             }
           />
+
+          {taxNoticeOpen && (
+            <div className="flex items-start gap-2 border-b border-sky-100 bg-sky-50 px-3 py-1.5 text-[11px] leading-snug text-sky-800">
+              <Info size={13} className="mt-0.5 shrink-0" />
+              <span className="flex-1">
+                <b>Tax is recorded here on the GRN, never on the Supplier Payment.</b>{' '}
+                Pick <b>VAT (Tax Invoice)</b> only when the supplier gave a valid VAT Tax Invoice: that VAT is{' '}
+                <span className="font-semibold text-green-700">claimable</span>. No Tax Invoice → <b>No tax / No Tax Invoice</b> (the whole price is cost).
+                Foreign supplier → <b>Import</b>: import VAT and duties go on the Customs bill, not here.
+                If the invoice prices already include VAT, tick <b>Prices include VAT</b> and type them as printed.
+              </span>
+              <button
+                type="button"
+                title="Hide this note"
+                onClick={() => { setTaxNoticeOpen(false); try { localStorage.setItem(TAX_NOTICE_KEY, '1') } catch { /* private window */ } }}
+                className="rounded p-0.5 text-sky-500 hover:bg-sky-100"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          )}
 
           {items.length === 0 && !loadingItems ? (
             <div className="py-8 text-center text-sm text-slate-400">
@@ -1901,8 +2012,11 @@ export default function GoodsReceivedNoteFormPage() {
                     <th className="w-20 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">UOM</th>
                     <th className="w-28 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Qty Received</th>
                     <th className="w-24 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Rolls</th>
-                    <th className="w-32 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Purchasing Unit Price ({CURRENCY})</th>
+                    <th className="w-32 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                      Purchasing Unit Price ({CURRENCY}){pricesIncludeTax && <span className="ml-0.5 normal-case text-sky-600">incl. VAT</span>}
+                    </th>
                     {discountEnabled && <th className="w-20 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-600 text-center">Disc %</th>}
+                    <th className="w-36 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-sky-600">Tax</th>
                     <th className="w-20 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Batch</th>
                     <th className="w-24 px-2 py-1.5 text-[10px] text-right font-bold uppercase tracking-wider text-slate-500">Total</th>
                     <th className="w-8 px-2 py-1.5"></th>
@@ -1910,7 +2024,8 @@ export default function GoodsReceivedNoteFormPage() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {items.map((row, idx) => {
-                    const { amount } = calcItem(row, discountEnabled)
+                    const calc     = calcItem(row, discountEnabled, taxCtxFor(row))
+                    const { amount } = calc
                     const isManual = !row.po_item_id
                     return (
                       <tr key={row._key} className={`hover:bg-slate-50/60 transition-colors ${isManual ? 'bg-green-50/20' : ''}`}>
@@ -2124,7 +2239,7 @@ export default function GoodsReceivedNoteFormPage() {
                                       if (e.key === 'Enter') {
                                         e.preventDefault()
                                         if (discountEnabled) focusCell(row._key, 'disc')
-                                        else if (row.is_batch) focusCell(row._key, 'batch')
+                                        else focusCell(row._key, 'tax')
                                       }
                                     }}
                                   />
@@ -2167,12 +2282,46 @@ export default function GoodsReceivedNoteFormPage() {
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
                                   e.preventDefault()
-                                  if (row.is_batch) focusCell(row._key, 'batch')
+                                  focusCell(row._key, 'tax')
                                 }
                               }}
                             />
                           </td>
                         )}
+
+                        {/* Tax code — what the supplier charged on this line */}
+                        <td className="px-2 py-1">
+                          <div className="flex flex-col gap-0.5">
+                            <select
+                              ref={setCellRef(row._key, 'tax')}
+                              value={row.tax_code_id ?? ''}
+                              disabled={isConfirmedGrn}
+                              onChange={(e) => setItems((prev) => prev.map((r, i) => (i === idx ? { ...r, tax_code_id: e.target.value, _taxTouched: true } : r)))}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  if (row.is_batch) focusCell(row._key, 'batch')
+                                }
+                              }}
+                              title={taxCodesById.get(String(row.tax_code_id))?.name ?? 'No tax on this line'}
+                              className="block w-full cursor-pointer rounded border border-sky-200 bg-sky-50/50 px-1 py-0.5 text-[11px] text-slate-800 outline-none transition-all focus:border-sky-400 focus:bg-white disabled:cursor-not-allowed disabled:opacity-70"
+                            >
+                              <option value="">— None —</option>
+                              {taxCodeOptions.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                              {/* A saved line whose code was switched off since still shows it */}
+                              {row.tax_code_id && !taxCodesById.has(String(row.tax_code_id)) && row.tax_code && (
+                                <option value={row.tax_code_id}>{row.tax_code.name} (inactive)</option>
+                              )}
+                            </select>
+                            {calc.taxAmt > 0 && (
+                              <span className="text-[9px] leading-none tabular-nums" title={taxBreakdownTitle(calc)}>
+                                {calc.recoverable > 0 && <span className="text-green-600">claim {fmtMoney(calc.recoverable)}</span>}
+                                {calc.recoverable > 0 && calc.nonRecoverable > 0 && <span className="text-slate-300"> · </span>}
+                                {calc.nonRecoverable > 0 && <span className="text-orange-600">cost {fmtMoney(calc.nonRecoverable)}</span>}
+                              </span>
+                            )}
+                          </div>
+                        </td>
 
                         {/* Batch */}
                         <td className="px-2 py-1">
@@ -2196,8 +2345,11 @@ export default function GoodsReceivedNoteFormPage() {
                         </td>
 
                         {/* Total */}
-                        <td className="px-2 py-1 text-right font-bold text-slate-800 tabular-nums">
+                        <td className="px-2 py-1 text-right font-bold text-slate-800 tabular-nums" title={taxBreakdownTitle(calc)}>
                           {amount > 0 ? fmtMoney(amount) : <span className="text-slate-300 font-normal">—</span>}
+                          {calc.taxAmt > 0 && (
+                            <span className="block text-[9px] font-medium leading-none text-sky-600">incl. tax {fmtMoney(calc.taxAmt)}</span>
+                          )}
                         </td>
 
                         {/* Delete */}
@@ -2216,15 +2368,17 @@ export default function GoodsReceivedNoteFormPage() {
                 </tbody>
                 <tfoot>
                   <tr className="border-t border-slate-200 bg-slate-50/50">
-                    <td colSpan={discountEnabled ? 10 : 11} />
+                    {/* # … Unit Price, then Disc % (when shown), Tax, Batch, Total, delete */}
+                    <td colSpan={10} />
                     {discountEnabled && (
-                      <>
-                        <td className="px-1.5 py-1.5 text-center text-xs font-bold text-amber-600 tabular-nums">
-                          -{fmtMoney(totals.disc)}
-                        </td>
-                        <td colSpan={1} />
-                      </>
+                      <td className="px-1.5 py-1.5 text-center text-xs font-bold text-amber-600 tabular-nums">
+                        -{fmtMoney(totals.disc)}
+                      </td>
                     )}
+                    <td className="px-2 py-1.5 text-xs font-bold text-sky-600 tabular-nums">
+                      {totals.tax > 0 ? fmtMoney(totals.tax) : ''}
+                    </td>
+                    <td />
                     <td className="px-2 py-1.5 text-right text-sm font-black text-slate-800 tabular-nums">
                       {fmtMoney(totals.total)}
                     </td>
@@ -2232,11 +2386,22 @@ export default function GoodsReceivedNoteFormPage() {
                   </tr>
                   {/* Net total stays pinned to the bottom edge while the lines scroll */}
                   <tr className="bg-indigo-50 border-t border-indigo-100">
-                    <td colSpan={discountEnabled ? 12 : 11} className={`px-3 py-1.5 ${footCell}`}>
-                      <div className="flex items-center gap-4 text-xs">
+                    <td colSpan={discountEnabled ? 13 : 12} className={`px-3 py-1.5 ${footCell}`}>
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 text-xs">
                         <span className="font-bold uppercase tracking-wider text-indigo-600">Summary</span>
                         <span className="text-slate-500">Gross: <Money value={totals.gross} className="font-bold text-slate-700" /></span>
                         {discountEnabled && <span className="text-amber-600">Disc: -<Money value={totals.disc} className="font-bold" /></span>}
+                        {totals.claimable > 0 && (
+                          <span className="text-green-700" title="Goes to Input VAT — reduces the VAT you pay. Not part of the goods' cost.">
+                            VAT claimable: <Money value={totals.claimable} className="font-bold" />
+                          </span>
+                        )}
+                        {totals.taxToCost > 0 && (
+                          <span className="text-orange-700" title="Tax that cannot be claimed back (e.g. supplier SSCL) — added to the cost of the goods.">
+                            Tax added to cost: <Money value={totals.taxToCost} className="font-bold" />
+                          </span>
+                        )}
+                        {pricesIncludeTax && <span className="rounded bg-sky-100 px-1.5 py-px text-[10px] font-semibold text-sky-700">Prices include VAT</span>}
                       </div>
                     </td>
                     <td className={`px-3 py-1.5 text-right ${footCell}`}>

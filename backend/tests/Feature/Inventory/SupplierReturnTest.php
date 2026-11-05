@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Inventory;
 
 use App\Models\PaymentMode;
+use App\Models\TaxCode;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -57,10 +58,11 @@ class SupplierReturnTest extends TestCase
     // ── Fixtures ────────────────────────────────────────────────────────────
 
     /** A quantity-tracked product received on a confirmed GRN. */
-    private function receivedQuantity(float $qty = 10, float $price = 100, float $tax = 0): array
+    private function receivedQuantity(float $qty = 10, float $price = 100, ?string $taxCode = null): array
     {
         $product = Product::factory()->quantityTracked()->create();
-        $grnId   = $this->receive([$this->grnLine($product, $qty, null, $price, ['tax' => $tax])], $this->shippingCode());
+        $extra   = $taxCode !== null ? ['tax_code_id' => TaxCode::where('code', $taxCode)->value('id')] : [];
+        $grnId   = $this->receive([$this->grnLine($product, $qty, null, $price, $extra)], $this->shippingCode());
 
         return [$product, $grnId, $this->grnItemId($grnId)];
     }
@@ -187,16 +189,16 @@ class SupplierReturnTest extends TestCase
 
     public function test_a_draft_is_numbered_priced_off_the_grn_and_moves_nothing(): void
     {
-        [$product, $grnId, $itemId] = $this->receivedQuantity(10, 100, tax: 10);
+        [$product, $grnId, $itemId] = $this->receivedQuantity(10, 100, taxCode: 'VAT-IN');
 
         $return = $this->createReturn($this->payload($grnId, [['grn_item_id' => $itemId, 'quantity' => 3, 'reason' => 'damaged']]));
 
         $this->assertSame('PRN-0001', $return->return_no);
         $this->assertSame('draft', $return->status->value);
-        // 3 of 10 received at 1100 (1000 + 10% tax) = 330
-        $this->assertSame(330.0, (float) $return->total_amount);
+        // 3 of 10 received at 1180 (1000 + 18% VAT) = 354
+        $this->assertSame(354.0, (float) $return->total_amount);
         $this->assertSame(10.0, $this->stockAt($product));
-        $this->assertSame(1100.0, $this->outstanding($grnId));
+        $this->assertSame(1180.0, $this->outstanding($grnId));
     }
 
     public function test_a_draft_can_be_edited_and_deleted_but_a_confirmed_return_cannot(): void

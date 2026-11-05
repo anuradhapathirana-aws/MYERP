@@ -24,6 +24,7 @@ import {
   LayoutDashboard,
   Landmark,
   Percent,
+  Tags,
   Layers,
   ListTree,
   Lock,
@@ -177,6 +178,7 @@ const NAV_ITEMS = [
       { label: 'Bank Branches',   to: '/master-data/bank-branches',   icon: Building2,  permissionGuard: 'view_bank_branches' },
       { label: 'Payment Modes',   to: '/inventory/payment-modes',     icon: CreditCard, permissionGuard: 'view_payment_modes' },
       { label: 'Taxes',           to: '/master-data/taxes',           icon: Percent,    permissionGuard: 'view_taxes' },
+      { label: 'Tax Codes',       to: '/master-data/tax-codes',       icon: Tags,       permissionGuard: 'view_taxes' },
     ],
   },
   {

@@ -6,6 +6,9 @@ namespace Modules\Inventory\Services;
 
 use Illuminate\Pagination\LengthAwarePaginator;
 use App\Contracts\JournalPoster;
+use App\DTOs\TaxBreakdown;
+use App\Models\TaxCode;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\DTOs\GoodsReceivedNoteData;
 use Modules\Inventory\Enums\BatchStatus;
@@ -16,6 +19,7 @@ use Modules\Inventory\Models\GoodsReceivedNote;
 use Modules\Inventory\Models\GoodsReceivedNoteItem;
 use Modules\Inventory\Models\GrnItemBatch;
 use Modules\Inventory\Models\GrnItemPiece;
+use Modules\Inventory\Models\GrnItemTax;
 use Modules\Inventory\Models\Product;
 use Modules\Inventory\Models\ProductLocationStore;
 use Modules\Inventory\Models\PurchaseOrder;
@@ -29,6 +33,7 @@ class GoodsReceivedNoteService
     public function __construct(
         private readonly ProductPricingService $pricing,
         private readonly UnitConversionService $units,
+        private readonly PurchaseLinePricer $linePricer,
     ) {
     }
 
@@ -79,6 +84,8 @@ class GoodsReceivedNoteService
             'items.poItem',
             'items.batchAssignments.batch',
             'items.pieces',
+            'items.taxCode:id,code,name',
+            'items.taxes',
             'purchaseOrder.items.product.baseUnit',
             'supplier',
             'store',
@@ -280,6 +287,7 @@ class GoodsReceivedNoteService
                 'remarks'          => $data->remarks,
                 'payment_terms'    => $data->paymentTerms,
                 'attachments'      => $data->attachments,
+                'prices_include_tax' => $data->pricesIncludeTax,
                 'total_amount'     => 0,
                 'received_by'      => auth()->id(),
             ]);
@@ -287,7 +295,7 @@ class GoodsReceivedNoteService
             $this->syncItems($grn, $data->items);
             $this->recalculateTotal($grn);
 
-            return $grn->load(['items.product.baseUnit', 'items.unit', 'items.attribute', 'items.variant', 'purchaseOrder', 'supplier', 'store', 'location']);
+            return $grn->load(['items.product.baseUnit', 'items.unit', 'items.attribute', 'items.variant', 'items.taxCode:id,code,name', 'items.taxes', 'purchaseOrder', 'supplier', 'store', 'location']);
         });
     }
 
@@ -309,12 +317,13 @@ class GoodsReceivedNoteService
                 'remarks'          => $data->remarks,
                 'payment_terms'    => $data->paymentTerms,
                 'attachments'      => $data->attachments,
+                'prices_include_tax' => $data->pricesIncludeTax,
             ]);
 
             $this->syncItems($grn, $data->items);
             $this->recalculateTotal($grn);
 
-            return $grn->load(['items.product.baseUnit', 'items.unit', 'items.attribute', 'items.variant', 'purchaseOrder', 'supplier', 'store', 'location']);
+            return $grn->load(['items.product.baseUnit', 'items.unit', 'items.attribute', 'items.variant', 'items.taxCode:id,code,name', 'items.taxes', 'purchaseOrder', 'supplier', 'store', 'location']);
         });
     }
 
@@ -599,6 +608,7 @@ class GoodsReceivedNoteService
         $oldItemIds = $grn->items()->pluck('id');
         if ($oldItemIds->isNotEmpty()) {
             GrnItemBatch::whereIn('grn_item_id', $oldItemIds)->delete();
+            GrnItemTax::whereIn('grn_item_id', $oldItemIds)->delete();
         }
         // By grn_id (not item ids) so pieces orphaned from earlier item syncs can't
         // linger and collide on piece_code when the GRN is confirmed.
@@ -618,6 +628,16 @@ class GoodsReceivedNoteService
             ->get()
             ->keyBy('id');
 
+        // Each line's tax code, with its taxes, in one query. Rates are taken
+        // for the GRN date, so a draft saved after a rate change prices at the
+        // rate that applied when the goods arrived.
+        $taxCodes = TaxCode::with('components')
+            ->whereIn('id', $validItems->pluck('tax_code_id')->filter()->unique())
+            ->get()
+            ->keyBy('id');
+        $grnDate   = CarbonImmutable::parse($grn->grn_date);
+        $inclusive = (bool) $grn->prices_include_tax;
+
         foreach ($validItems as $row) {
             $product = $products[(int) $row['product_id']];
             $hasPoItem   = !empty($row['po_item_id']);
@@ -629,20 +649,22 @@ class GoodsReceivedNoteService
             // Priced per the line's receiving UOM — straight off the supplier invoice
             // (250 per Kg). It is rebased to the stocking UOM only when it reaches the
             // stock ledger; see confirm().
-            $unitPrice   = (float) ($row['unit_price'] ?? 0);
             $discountPct = (float) ($row['discount'] ?? 0);
-            $taxPct      = (float) ($row['tax'] ?? 0);
+            $taxCode     = !empty($row['tax_code_id']) ? $taxCodes->get((int) $row['tax_code_id']) : null;
+            $priced      = $this->linePricer->price(
+                $qtyRcv,
+                (float) ($row['unit_price'] ?? 0),
+                $discountPct,
+                $taxCode,
+                $inclusive,
+                $grnDate,
+            );
+            $unitPrice   = $priced->unitPrice;
 
             // Resolved at draft time so an unconvertible UOM is rejected while the user
             // is still on the form, not at confirm. Re-resolved on confirm — that is the
             // value that actually posts.
             $line = $this->units->toBase($product, $unitId, $qtyRcv);
-
-            // Quantity and price are both in the line's UOM, so this is the invoice value.
-            $gross     = $qtyRcv * $unitPrice;
-            $discAmt   = $gross * ($discountPct / 100);
-            $taxAmt    = $gross * ($taxPct / 100);
-            $lineTotal = $gross - $discAmt + $taxAmt;
 
             $batches   = $row['batches'] ?? [];
             // Derive first batch's no/expiry for the denormalized columns (backward compat display)
@@ -680,12 +702,18 @@ class GoodsReceivedNoteService
                 'base_quantity'     => $line['qty'],
                 'no_of_pieces'      => $noOfPieces,
                 'unit_price'        => $unitPrice,
+                'unit_price_incl'   => $priced->unitPriceIncl,
                 'discount'          => $discountPct,
-                'tax'               => $taxPct,
-                'line_total'        => $lineTotal,
+                'tax_code_id'       => $taxCode?->id,
+                'tax'               => $priced->effectiveRate,
+                'tax_amount'        => $priced->taxAmount,
+                'recoverable_tax'   => $priced->recoverableTax,
+                'line_total'        => $priced->lineTotal,
                 'batch_no'          => $batchNoSnap,
                 'expiry_date'       => !empty($expirySnap) ? $expirySnap : null,
             ]);
+
+            $this->storeLineTaxes($grnItem, $priced->breakdown);
 
             // Create batch master + bridge records for batch-tracked products
             if (!empty($batches)) {
@@ -795,6 +823,25 @@ class GoodsReceivedNoteService
         }
 
         return $result;
+    }
+
+    /** Each non-zero tax of the line, kept for the journal and the VAT return. */
+    private function storeLineTaxes(GoodsReceivedNoteItem $item, TaxBreakdown $breakdown): void
+    {
+        foreach ($breakdown->lines as $tax) {
+            if ($tax->amount == 0.0) {
+                continue;
+            }
+
+            GrnItemTax::create([
+                'grn_item_id'    => $item->id,
+                'tax_code_ref'   => $tax->taxCodeRef,
+                'rate'           => $tax->rate,
+                'base'           => $tax->base,
+                'amount'         => $tax->amount,
+                'is_recoverable' => $tax->isRecoverable,
+            ]);
+        }
     }
 
     private function recalculateTotal(GoodsReceivedNote $grn): void

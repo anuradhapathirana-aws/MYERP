@@ -2,6 +2,8 @@
 
 namespace Modules\Inventory\Providers;
 
+use App\Contracts\TaxCodeUsage;
+use Modules\Inventory\Support\GrnTaxCodeUsage;
 use Modules\Inventory\Console\Commands\RecalculateStockBalances;
 use Modules\Inventory\Console\Commands\VerifyVariantBackfill;
 use Modules\Inventory\Console\Commands\WarmPieceQrCodes;
@@ -24,4 +26,12 @@ class InventoryServiceProvider extends ModuleServiceProvider
         EventServiceProvider::class,
         RouteServiceProvider::class,
     ];
+
+    public function register(): void
+    {
+        parent::register();
+
+        // GRN lines reference core tax codes; the master asks before deleting one.
+        $this->app->tag([GrnTaxCodeUsage::class], TaxCodeUsage::TAG);
+    }
 }

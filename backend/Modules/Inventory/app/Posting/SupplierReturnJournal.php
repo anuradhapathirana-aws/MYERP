@@ -23,21 +23,25 @@ use Modules\Inventory\Models\SupplierReturn;
  *   Cr  Input Tax Recoverable   the tax the GRN claimed on them
  *
  * Purchase Returns rather than a credit to Purchases, so the P&L shows how much
- * went back. Tax is recomputed with the GRN's own formula (on gross, not net of
- * discount -- see GoodsReceivedNoteJournal), so the return undoes exactly what
- * the GRN claimed.
+ * went back. The Input VAT reversed is the GRN line's own claimable tax
+ * (recoverable_tax), pro rata to the quantity returned -- the same share the
+ * return's value takes of the line -- so the return undoes exactly what the
+ * GRN claimed, and never claims back tax that was a cost.
  */
 final class SupplierReturnJournal
 {
     public static function build(SupplierReturn $return): JournalRequest
     {
-        $return->loadMissing(['items', 'supplier', 'grn:id,grn_no,location_id']);
+        $return->loadMissing(['items.grnItem', 'supplier', 'grn:id,grn_no,location_id']);
 
         $tax = 0.0;
 
         foreach ($return->items as $item) {
-            $gross = (float) $item->quantity * (float) $item->unit_price;
-            $tax  += $gross * ((float) $item->tax / 100);
+            $received = (float) ($item->grnItem?->quantity_received ?? 0);
+
+            if ($received > 0) {
+                $tax += (float) $item->grnItem->recoverable_tax * (float) $item->quantity / $received;
+            }
         }
 
         $total   = round((float) $return->total_amount, 2);

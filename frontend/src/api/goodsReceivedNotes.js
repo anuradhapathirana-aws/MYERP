@@ -71,3 +71,7 @@ export const getLastGrnProductPrices = (productIds = []) =>
     params: { product_ids: productIds },
     paramsSerializer: { indexes: null },
   }).then((r) => r.data.data ?? {})
+
+/** Supplier bills (freight, duty, clearing...) linked to this GRN in Finance: { available, charges }. */
+export const getGrnLandedCharges = (id) =>
+  api.get(`/api/v1/goods-received-notes/${id}/landed-charges`).then((r) => r.data?.data ?? { available: false, charges: [] })

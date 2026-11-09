@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDown, ArrowUp, Edit2, Info, Lock, Plus, Receipt, Save, Trash2, X } from 'lucide-react'
 import { createTaxCode, deleteTaxCode, getTaxCode, getTaxCodes, updateTaxCode } from '../../api/taxCodes'
 import { getTaxes } from '../../api/taxes'
+import HelpTip from '../../components/ui/HelpTip'
 import Pagination from '../../components/ui/Pagination'
 import Breadcrumb from '../../components/Breadcrumb'
 import { confirmDelete, showError, showSuccess } from '../../utils/alerts'
@@ -233,7 +234,7 @@ function TaxCodeForm({ editId, categories, taxOptions, onDone, onCancel }) {
           {errors.code && touched.code && <p className={ERR_CLS}>{errors.code}</p>}
         </div>
         <div>
-          <label className={LABEL_CLS}>VAT Category <span className="text-red-500">*</span></label>
+          <label className={LABEL_CLS}>VAT Category <span className="text-red-500">*</span> <HelpTip text="The kind of tax this code is. Standard rated charges the taxes listed below. Zero rated, Exempt, No Tax Invoice and Import charge no tax on the document." /></label>
           <select
             name="vat_category" value={form.vat_category} disabled={locked}
             onChange={(e) => {
@@ -265,7 +266,7 @@ function TaxCodeForm({ editId, categories, taxOptions, onDone, onCancel }) {
       {/* ── Taxes in this code ─────────────────────────────────────────────── */}
       <div className="rounded border border-slate-200">
         <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-2 py-1">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Taxes, in order</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Taxes, in order <HelpTip text="The taxes this code applies, from top to bottom. Order matters: a tax ticked 'On top of taxes above' includes only the taxes listed above it." /></span>
           {carriesTax && !locked && form.components.length < MAX_COMPONENTS && (
             <button
               type="button"
@@ -297,13 +298,15 @@ function TaxCodeForm({ editId, categories, taxOptions, onDone, onCancel }) {
                     ))}
                   </select>
                   <div className="flex flex-wrap items-center gap-3 text-[10px] text-slate-600">
-                    <label className={`flex items-center gap-1 ${i === 0 ? 'opacity-40' : ''}`} title="Charged on the price plus every tax above it (e.g. VAT on price + SSCL)">
+                    <label className={`flex items-center gap-1 ${i === 0 ? 'opacity-40' : ''}`}>
                       <input type="checkbox" checked={c.is_compound} disabled={locked || i === 0} onChange={(e) => setComponent(i, { is_compound: e.target.checked })} />
                       On top of taxes above
+                      <HelpTip text="Not ticked: this tax is calculated on the price only. Ticked: on the price plus the taxes above it. Example on 100,000: SSCL 2,500, then VAT 18% on 102,500 = 18,450. Tick only if the supplier's invoice calculates it this way." />
                     </label>
-                    <label className="flex items-center gap-1" title="Claimable as Input VAT. Untick for taxes that are a cost (SSCL, VAT without a Tax Invoice).">
+                    <label className="flex items-center gap-1">
                       <input type="checkbox" checked={c.is_recoverable} disabled={locked} onChange={(e) => setComponent(i, { is_recoverable: e.target.checked })} />
                       Claimable
+                      <HelpTip text="Ticked: this tax goes to Input VAT and is claimed back. Not ticked: it is added to the cost of the goods. Untick for SSCL, and for VAT without a valid Tax Invoice." />
                     </label>
                   </div>
                 </div>
@@ -333,7 +336,7 @@ function TaxCodeForm({ editId, categories, taxOptions, onDone, onCancel }) {
           </label>
         </div>
         <div>
-          <label className={LABEL_CLS}>Order</label>
+          <label className={LABEL_CLS}>Order <HelpTip text="Position of this code in the Tax dropdown. Lower numbers appear first." /></label>
           <input type="number" min="0" max="999" value={form.sort_order} onChange={(e) => setField('sort_order', e.target.value)} className={`${inputBase} text-right`} />
         </div>
       </div>

@@ -9,6 +9,7 @@ use Modules\Finance\Http\Controllers\BankDepositController;
 use Modules\Finance\Http\Controllers\BankDepositPdfController;
 use Modules\Finance\Http\Controllers\BillController;
 use Modules\Finance\Http\Controllers\BillPaymentController;
+use Modules\Finance\Http\Controllers\ChargeTypeController;
 use Modules\Finance\Http\Controllers\ControlAccountController;
 use Modules\Finance\Http\Controllers\FinanceReportController;
 use Modules\Finance\Http\Controllers\FinanceSettingsController;
@@ -98,7 +99,21 @@ Route::middleware(['auth:sanctum', 'module:finance'])->prefix('v1')->group(funct
     // ── Payables: supplier bills ─────────────────────────────────────────────
     // Reads are unthrottled beyond the app default; every write goes through
     // the finance-writes limiter (FinanceServiceProvider).
+    // ── Payables: charge types (what a bill line is for) ─────────────────────
+    Route::get('charge-types/options', [ChargeTypeController::class, 'options'])->name('charge-types.options');
+    Route::get('charge-types', [ChargeTypeController::class, 'index'])->name('charge-types.index');
+    Route::middleware('throttle:finance-writes')->group(function (): void {
+        Route::post('charge-types', [ChargeTypeController::class, 'store'])->name('charge-types.store');
+        Route::match(['put', 'patch'], 'charge-types/{charge_type}', [ChargeTypeController::class, 'update'])
+            ->whereNumber('charge_type')
+            ->name('charge-types.update');
+        Route::delete('charge-types/{charge_type}', [ChargeTypeController::class, 'destroy'])
+            ->whereNumber('charge_type')
+            ->name('charge-types.destroy');
+    });
+
     Route::get('bills/options', [BillController::class, 'options'])->name('bills.options');
+    Route::get('bills/grn-options', [BillController::class, 'grnOptions'])->name('bills.grn-options');
     Route::get('bills/next-no', [BillController::class, 'nextNo'])->name('bills.next-no');
     Route::get('bills/supplier-defaults/{supplier}', [BillController::class, 'supplierDefaults'])
         ->whereNumber('supplier')

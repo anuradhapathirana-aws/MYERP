@@ -42,6 +42,7 @@ import {
   NotebookPen,
   Search,
   Settings2,
+  Ship,
   Shield,
   ShoppingBag,
   ShoppingCart,
@@ -213,6 +214,7 @@ const NAV_ITEMS = [
         children: [
           { label: 'Bills',         to: '/finance/bills',         icon: FileText, permissionGuard: 'view_bills' },
           { label: 'Bill Payments', to: '/finance/bill-payments', icon: Wallet,   permissionGuard: 'view_bill_payments' },
+          { label: 'Charge Types',  to: '/finance/charge-types',  icon: Ship,     permissionGuard: 'view_charge_types' },
         ],
       },
       {

@@ -15,6 +15,7 @@ import Breadcrumb from '../../components/Breadcrumb'
 import { showError, showSuccess } from '../../utils/alerts'
 
 import { getAllSupplierGroups } from '../../api/supplierGroups'
+import HelpTip from '../../components/ui/HelpTip'
 import { purchaseTaxCodesQuery } from '../../api/taxCodes'
 
 const EMPTY_FORM = {
@@ -365,6 +366,8 @@ export default function SupplierFormPage() {
 
       queryClient.invalidateQueries({ queryKey: ['suppliers'] })
       queryClient.invalidateQueries({ queryKey: ['suppliers-all'] })
+      // Saving a supplier can create its ledger account (Finance).
+      queryClient.invalidateQueries({ queryKey: ['ledger-accounts'] })
       if (isEditing) queryClient.invalidateQueries({ queryKey: ['supplier', id] })
       showSuccess(isEditing ? 'Supplier updated successfully.' : 'Supplier created successfully.')
       navigate('/inventory/suppliers')
@@ -563,7 +566,7 @@ export default function SupplierFormPage() {
               </div>
               <div className="mt-2 grid grid-cols-3 gap-2">
                 <div>
-                  <Label>Default Purchase Tax</Label>
+                  <Label>Default Purchase Tax <HelpTip text="Fills in the Tax column on new GRN lines for this supplier. You can still change it on a line." /></Label>
                   <select {...inp('default_tax_code_id')}>
                     <option value="">No tax (as before)</option>
                     {taxCodeOptions.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}

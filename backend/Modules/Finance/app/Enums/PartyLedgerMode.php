@@ -47,7 +47,8 @@ enum PartyLedgerMode: string
                 . 'and is told apart by the party recorded on each journal line. This is how '
                 . 'SAP, Oracle and Odoo work, and it keeps the chart of accounts small.',
             self::PerParty => 'Each supplier or customer gets its own ledger account under the '
-                . 'same control account, created automatically the first time they are posted to. '
+                . 'same control account, created automatically when a supplier is saved, or the '
+                . 'first time a customer is posted to. '
                 . 'This is how Tally works, so every party balance is a ledger you can open directly.',
         };
     }

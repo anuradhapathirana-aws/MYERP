@@ -11,9 +11,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * One typed expense amount of a costing line — PER BASE (stocking) UNIT of the
  * product, against one expense type of the costing's FOB/CIF list. Rebuilt
  * together with its parent inv_costing_items row on every draft edit.
+ *
+ * source: 'manual' — typed on the form (an estimate until the bill arrives);
+ *         'bill'   — this line's share of the bills pulled into the costing.
  */
 class CostingItemExpense extends Model
 {
+    public const SOURCE_MANUAL = 'manual';
+    public const SOURCE_BILL   = 'bill';
+
     protected $table = 'inv_costing_item_expenses';
 
     protected $fillable = [
@@ -21,6 +27,7 @@ class CostingItemExpense extends Model
         'costing_item_id',
         'grn_item_id',
         'expense_type_id',
+        'source',
         'amount',
     ];
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Http\Controllers;
 
+use App\Contracts\LandedChargeSource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -19,7 +20,7 @@ class GoodsReceivedNoteController extends Controller
 {
     public function __construct(private readonly GoodsReceivedNoteService $service)
     {
-        $this->middleware('permission:view_grns')->only(['index', 'show', 'all', 'poOutstandingItems', 'poOutstandingItemsMultiple', 'nextGrnNo', 'lastGrn', 'lastProductPrices', 'checkShippingCode']);
+        $this->middleware('permission:view_grns')->only(['index', 'show', 'all', 'poOutstandingItems', 'poOutstandingItemsMultiple', 'nextGrnNo', 'lastGrn', 'lastProductPrices', 'checkShippingCode', 'landedCharges']);
         $this->middleware('permission:create_grns')->only(['store']);
         $this->middleware('permission:edit_grns')->only(['update']);
         $this->middleware('permission:confirm_grns')->only(['confirm']);
@@ -50,6 +51,22 @@ class GoodsReceivedNoteController extends Controller
             ['data' => (new GoodsReceivedNoteResource($grn))->toArray($request)],
             201,
         );
+    }
+
+    /**
+     * GET /goods-received-notes/{id}/landed-charges -- supplier bills (freight,
+     * duty, clearing...) linked to this GRN in Finance. Read through the core
+     * port: with Finance off the list is empty and the panel stays hidden.
+     */
+    public function landedCharges(GoodsReceivedNote $goodsReceivedNote, LandedChargeSource $source): JsonResponse
+    {
+        return response()->json(['data' => [
+            'available' => $source->isAvailable(),
+            'charges'   => array_map(
+                fn ($c) => $c->toArray(),
+                $source->chargesForGrns([(int) $goodsReceivedNote->id]),
+            ),
+        ]]);
     }
 
     public function show(GoodsReceivedNote $goodsReceivedNote): JsonResponse

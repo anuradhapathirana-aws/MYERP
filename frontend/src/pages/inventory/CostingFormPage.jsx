@@ -2,12 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
+  AlertTriangle,
   Calculator,
   CheckCircle,
   ChevronDown,
   ChevronRight,
   ClipboardList,
+  Download,
   Package,
+  Receipt,
   RotateCcw,
   Save,
   Table2,
@@ -17,6 +20,7 @@ import {
   confirmCosting,
   createCosting,
   getCosting,
+  getCostingBillCharges,
   getCostingExpenseTypes,
   getNextDocumentNo,
   getNextReferenceNo,
@@ -27,8 +31,9 @@ import { getAllSuppliers } from '../../api/suppliers'
 import { currentTaxesQuery } from '../../api/taxes'
 import Breadcrumb from '../../components/Breadcrumb'
 import { usePermissions } from '../../hooks/usePermissions'
-import { confirmAction, showError, showSuccess } from '../../utils/alerts'
+import { confirmAction, showError, showSuccess, showWarning } from '../../utils/alerts'
 import { CURRENCY } from '../../utils/currency'
+import HelpTip from '../../components/ui/HelpTip'
 import Money from '../../components/ui/Money'
 
 /* ── Style tokens ───────────────────────────────────────────── */
@@ -136,7 +141,8 @@ function QtyChips({ groups }) {
  * per the product's BASE (stocking) unit, the denomination the user types in:
  *
  *   fob/cif    = grn unit_price ÷ conversion_factor
- *   expenses   = Σ typed amounts per expense type
+ *   expenses   = Σ typed amounts per expense type + the line's share of pulled
+ *                bills (by value: fob/cif × bill amount ÷ purchase value)
  *   sscl       = sscl% × (fob/cif + expenses + margin); default 1.25 — rounded UP to the whole rupee
  *   before_tax = fob/cif + expenses + margin + sscl
  *   after_tax  = before_tax + VAT%
@@ -148,7 +154,9 @@ function groupKeyOf(line) {
   return `${line.product_id}|${line.grn_id}`
 }
 
-function calcBreakdown(lines, cfg, lineCosting) {
+function calcBreakdown(lines, cfg, lineCosting, billRates = {}) {
+  const billRateTotal = Object.values(billRates).reduce((s, r) => s + r, 0)
+
   const items = lines.map((line) => {
     const qty       = parseFloat(line.quantity) || 0
     const unitPrice = parseFloat(line.unit_price) || 0
@@ -158,8 +166,10 @@ function calcBreakdown(lines, cfg, lineCosting) {
     const lc      = lineCosting[groupKeyOf(line)] ?? {}
     const numOr   = (v, fallback) => (v !== undefined && v !== null && v !== '' && !Number.isNaN(parseFloat(v)) ? parseFloat(v) : fallback)
 
-    const fobBase = factor > 0 ? unitPrice / factor : unitPrice
-    const expBase = Object.values(lc.expenses ?? {}).reduce((s, v) => s + (parseFloat(v) || 0), 0)
+    const fobBase   = factor > 0 ? unitPrice / factor : unitPrice
+    const typedBase = Object.values(lc.expenses ?? {}).reduce((s, v) => s + (parseFloat(v) || 0), 0)
+    const billBase  = fobBase * billRateTotal
+    const expBase   = typedBase + billBase
 
     const effSsclPct = cfg.applySscl ? numOr(lc.sscl_pct, cfg.ssclPct) : 0
     const effVatPct  = cfg.applyVat ? numOr(lc.vat_pct, cfg.vatPct) : 0
@@ -180,6 +190,7 @@ function calcBreakdown(lines, cfg, lineCosting) {
       conversion_factor:     factor,
       base_quantity:         baseQty,
       fob_base:              fobBase,
+      bill_expense_base:     billBase,
       expense_total_base:    expBase,
       eff_sscl_pct:          effSsclPct,
       sscl_amount_base:      ssclBase,
@@ -247,7 +258,9 @@ function buildGroups(items) {
       totalBaseQty:       lines.reduce((s, l) => s + l.base_quantity, 0),
       anyConverted:       lines.some((l) => Math.abs(l.conversion_factor - 1) > 1e-9),
       fob:                range('fob_base'),
-      expense_total_base: first.expense_total_base, // per base unit — identical across the group
+      expense_total_base: first.expense_total_base, // per base unit — the first line's (bills follow each line's price)
+      expense:            range('expense_total_base'),
+      bill:               range('bill_expense_base'),
       margin_amount_base: first.margin_amount_base, // per base unit — identical across the group
       sscl:               range('sscl_amount_base'),
       vat:                range('vat_amount_base'),
@@ -335,6 +348,13 @@ export default function CostingFormPage() {
   const [lineCosting,  setLineCosting]  = useState({})
   const [expandedRows, setExpandedRows] = useState(new Set())
 
+  /* ── Pulled supplier bills (Finance) ─────────────────────────
+     Each { source_id, bill_no, party_name, charge_name, grn_id, amount,
+     expense_type_id } — amounts are re-read by the server on save. */
+  const [pulledBills, setBillCharges] = useState([])
+  // A deselected GRN takes its bills with it.
+  const billCharges = pulledBills.filter((c) => selectedGrnIds.has(c.grn_id))
+
   /* ── Expense types for the selected FOB/CIF list ──────────── */
   const { data: expenseTypes = [] } = useQuery({
     queryKey: ['costing-expense-types', form.costing_type],
@@ -354,12 +374,21 @@ export default function CostingFormPage() {
     (g.items ?? []).map((it) => ({ ...it, grn_no: g.grn_no, grn_id: g.id }))
   )
 
+  // Pulled bills spread by value: each expense row's bill total as a share of the purchase value.
+  const purchaseValue = grnLines.reduce((s, l) => s + (parseFloat(l.quantity) || 0) * (parseFloat(l.unit_price) || 0), 0)
+  const billRates = {}
+  const billByType = {}
+  for (const c of billCharges) {
+    billByType[c.expense_type_id] = (billByType[c.expense_type_id] ?? 0) + Number(c.amount)
+    if (purchaseValue > 0) billRates[c.expense_type_id] = (billRates[c.expense_type_id] ?? 0) + Number(c.amount) / purchaseValue
+  }
+
   const breakdown = calcBreakdown(grnLines, {
     applySscl: form.apply_sscl,
     ssclPct:   parseFloat(form.sscl_pct) || 0,
     applyVat:  form.apply_vat,
     vatPct:    parseFloat(form.vat_pct) || 0,
-  }, lineCosting)
+  }, lineCosting, billRates)
   const { items: breakdownItems, totals } = breakdown
 
   // One row per product per GRN — its colour lines share one costing panel.
@@ -473,7 +502,8 @@ export default function CostingFormPage() {
       const key = `${item.product_id}|${item.grn_id}`
       if (restored[key]) continue
       const expenses = {}
-      for (const e of item.expenses ?? []) expenses[e.expense_type_id] = String(e.amount)
+      // Only typed amounts go back into the inputs; bill shares are recomputed from the pulled bills.
+      for (const e of item.expenses ?? []) if ((e.source ?? 'manual') === 'manual') expenses[e.expense_type_id] = String(e.amount)
       const entry = {
         expenses,
         sscl_pct: item.sscl_pct != null ? String(item.sscl_pct) : '',
@@ -483,7 +513,34 @@ export default function CostingFormPage() {
       if (lineHasData(entry)) restored[key] = entry
     }
     setLineCosting(restored)
+    setBillCharges(c.bill_charges ?? [])
   }, [existingData])
+
+  /* ── Pull from bills ──────────────────────────────────────── */
+  const grnIdList = [...selectedGrnIds].sort((a, b) => a - b)
+  const { data: billOffer, isFetching: loadingBills } = useQuery({
+    queryKey: ['costing-bill-charges', grnIdList, form.costing_type, id ?? null],
+    queryFn:  () => getCostingBillCharges({ grnIds: grnIdList, costingType: form.costing_type, costingId: id }),
+    enabled:  grnIdList.length > 0,
+    staleTime: 30 * 1000,
+  })
+  const pulledIds     = new Set(billCharges.map((c) => c.source_id))
+  const offeredBills  = billOffer?.charges ?? []
+  const pullable      = offeredBills.filter((c) => c.status === 'available' && !pulledIds.has(c.source_id))
+  const notPullable   = offeredBills.filter((c) => c.status !== 'available')
+  const lateBills     = existingData?.data?.bills_not_included ?? []
+  const expenseName   = (typeId) => expenseTypes.find((t) => t.id === typeId)?.name ?? '—'
+
+  const pullBills = (charges) => {
+    if (!charges.length) return
+    const adding = new Set(charges.map((c) => c.source_id))
+    setBillCharges((prev) => [...prev.filter((c) => !adding.has(c.source_id)), ...charges.map((c) => ({
+      source_id: c.source_id, bill_no: c.bill_no, bill_date: c.bill_date, party_name: c.party_name,
+      charge_name: c.charge_name, grn_id: c.grn_id, amount: c.amount, expense_type_id: c.expense_type_id,
+    }))])
+    showSuccess(`${charges.length} bill line${charges.length !== 1 ? 's' : ''} pulled — spread over the products by value.`)
+  }
+  const removeBill = (sourceId) => setBillCharges((prev) => prev.filter((c) => c.source_id !== sourceId))
 
   /* ── GRN checkbox toggle ──────────────────────────────────── */
   function toggleGrn(grnId) {
@@ -524,6 +581,11 @@ export default function CostingFormPage() {
       for (const [key, lc] of Object.entries(prev)) next[key] = { ...lc, expenses: {} }
       return next
     })
+    // A bill fills a different row on the other list, so it is pulled again.
+    if (billCharges.length) {
+      setBillCharges([])
+      showWarning(`Pulled bills were removed — pull them again for the ${type.toUpperCase()} list.`)
+    }
     setField('costing_type', type)
   }
 
@@ -571,6 +633,7 @@ export default function CostingFormPage() {
       sscl_pct:         parseFloat(form.sscl_pct) || 0,
       apply_vat:        form.apply_vat,
       vat_pct:          parseFloat(form.vat_pct) || 0,
+      bill_charge_ids:  billCharges.map((c) => c.source_id),
       // The group's inputs are replicated onto EVERY colour line of that
       // product+GRN — the backend keeps pricing per GRN line, so confirming
       // applies the shared price build-up to all colour rolls.
@@ -696,6 +759,7 @@ export default function CostingFormPage() {
                     linkedGrnsRef.current = []
                     setSelectedGrnIds(new Set())
                     setLineCosting({})
+                    setBillCharges([])
                     setExpandedRows(new Set())
                     setField('supplier_id', e.target.value)
                   }}
@@ -807,6 +871,109 @@ export default function CostingFormPage() {
             </div>
           </div>
 
+          {/* Section 2b — Charges from supplier bills (Finance) */}
+          {(billCharges.length > 0 || billOffer?.available || lateBills.length > 0) && (
+            <div className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+              <SectionHeader
+                icon={Receipt}
+                title="Charges from Bills"
+                colorClass="text-sky-700 bg-sky-50 border-sky-100"
+                extra={
+                  <div className="flex items-center gap-2 text-[10px]">
+                    <span className="text-slate-500">
+                      Pulled: <span className="font-bold text-sky-700"><Money value={billCharges.reduce((s, c) => s + Number(c.amount), 0)} /></span>
+                    </span>
+                    <HelpTip text="Adds every confirmed freight, duty and clearing bill linked to these GRNs. Only the cost part comes in; claimable VAT does not." />
+                    {!readOnly && (
+                      <button
+                        type="button"
+                        onClick={() => pullBills(pullable)}
+                        disabled={!pullable.length}
+                        className="flex items-center gap-1 rounded bg-sky-600 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <Download size={10} /> Pull from bills{pullable.length ? ` (${pullable.length})` : ''}
+                      </button>
+                    )}
+                  </div>
+                }
+              />
+              {lateBills.length > 0 && (
+                <div className="flex items-start gap-1.5 border-b border-amber-100 bg-amber-50 px-3 py-1.5 text-[10px] text-amber-800">
+                  <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                  <span>
+                    <b>Bills not included:</b> {lateBills.map((b) => `${b.bill_no} ${b.charge_name} ${fmt(b.amount)}`).join(' · ')}.
+                    {' '}They arrived after this costing was {isConfirmed ? 'confirmed, so its prices do not include them' : 'built — pull them to include them'}.
+                  </span>
+                </div>
+              )}
+              <p className="px-3 pt-1.5 text-[10px] leading-snug text-slate-500">
+                Confirmed bills linked to these GRNs in <b>Finance › Bills</b> are spread over the products <b>by value</b> into their expense row.
+                Only the cost part comes in — claimable VAT never reaches a price. Typed expense amounts stay as <b>estimates</b> beside them;
+                clear an estimate once its real bill is pulled.
+              </p>
+              <table className="mt-1 w-full text-xs">
+                <thead>
+                  <tr className="border-y border-slate-100 bg-slate-50 text-left text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                    <th className="px-3 py-1">Bill</th>
+                    <th className="px-3 py-1">From</th>
+                    <th className="px-3 py-1">Charge</th>
+                    <th className="px-3 py-1">Costing row</th>
+                    <th className="px-3 py-1 text-right">Cost</th>
+                    <th className="w-24 px-3 py-1" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {billCharges.map((c) => (
+                    <tr key={`p-${c.source_id}`} className="bg-sky-50/40">
+                      <td className="px-3 py-1 font-mono text-slate-700">{c.bill_no}</td>
+                      <td className="max-w-[10rem] truncate px-3 py-1 text-slate-600" title={c.party_name ?? ''}>{c.party_name ?? '—'}</td>
+                      <td className="px-3 py-1 text-slate-700">{c.charge_name}</td>
+                      <td className="px-3 py-1 text-slate-600">{c.expense_type_name ?? expenseName(c.expense_type_id)}</td>
+                      <td className="px-3 py-1 text-right font-semibold tabular-nums"><Money value={c.amount} /></td>
+                      <td className="px-3 py-1 text-right">
+                        {readOnly ? <span className="text-[10px] font-semibold text-sky-700">Included</span> : (
+                          <button type="button" onClick={() => removeBill(c.source_id)} className="rounded p-0.5 text-red-600 hover:bg-red-50" title="Remove from this costing">
+                            <X size={12} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {!readOnly && pullable.map((c) => (
+                    <tr key={`a-${c.source_id}`}>
+                      <td className="px-3 py-1 font-mono text-slate-500">{c.bill_no}</td>
+                      <td className="max-w-[10rem] truncate px-3 py-1 text-slate-500" title={c.party_name ?? ''}>{c.party_name ?? '—'}</td>
+                      <td className="px-3 py-1 text-slate-600">{c.charge_name}</td>
+                      <td className="px-3 py-1 text-slate-500">{c.expense_type_name}</td>
+                      <td className="px-3 py-1 text-right tabular-nums text-slate-600"><Money value={c.amount} /></td>
+                      <td className="px-3 py-1 text-right">
+                        <button type="button" onClick={() => pullBills([c])} className="rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-bold text-sky-700 hover:bg-sky-100">Pull</button>
+                      </td>
+                    </tr>
+                  ))}
+                  {!readOnly && notPullable.map((c) => (
+                    <tr key={`n-${c.source_id}`} className="text-slate-400">
+                      <td className="px-3 py-1 font-mono">{c.bill_no}</td>
+                      <td className="max-w-[10rem] truncate px-3 py-1">{c.party_name ?? '—'}</td>
+                      <td className="px-3 py-1">{c.charge_name}</td>
+                      <td className="px-3 py-1 text-[10px]" colSpan={2}>
+                        {c.status === 'elsewhere'
+                          ? `Already in ${c.elsewhere}`
+                          : `No ${typeLabel} costing row — set it in Finance › Charge Types`}
+                      </td>
+                      <td className="px-3 py-1 text-right tabular-nums"><Money value={c.amount} /></td>
+                    </tr>
+                  ))}
+                  {billCharges.length === 0 && !pullable.length && !notPullable.length && (
+                    <tr><td colSpan={6} className="px-3 py-3 text-center text-[11px] text-slate-400">
+                      {loadingBills ? 'Looking for bills…' : 'No confirmed bills are linked to these GRNs yet.'}
+                    </td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           {/* Section 3 — Product Cost Build-up (the heart of the costing) */}
           <div className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
             <SectionHeader
@@ -908,8 +1075,10 @@ export default function CostingFormPage() {
                               )}
                             </td>
                             <td className="px-2 py-1 text-right"><RangeUnit range={group.fob} symbol={baseSym} className="text-slate-700 font-medium" /></td>
-                            <td className={`px-2 py-1 text-right ${group.expense_total_base > 0 ? 'text-emerald-600' : 'text-slate-300'}`}>
-                              +<PerUnit value={group.expense_total_base} symbol={baseSym} />
+                            <td className={`px-2 py-1 text-right ${group.expense.max > 0 ? 'text-emerald-600' : 'text-slate-300'}`}
+                              title={group.bill.max > 0 ? 'Includes this product\'s share of the pulled bills' : undefined}>
+                              +<RangeUnit range={group.expense} symbol={baseSym} />
+                              {group.bill.max > 0 && <Receipt size={9} className="ml-0.5 inline text-indigo-400" />}
                             </td>
                             <td className={`px-2 py-1 text-right ${group.margin_amount_base > 0 ? 'text-slate-600' : 'text-slate-300'}`}>
                               +<PerUnit value={group.margin_amount_base} symbol={baseSym} />
@@ -929,6 +1098,7 @@ export default function CostingFormPage() {
                               <td colSpan={COLS} className="px-3 py-2 border-l-2 border-indigo-400">
                                 <GroupCostingPanel
                                   group={group}
+                                  billRates={billRates}
                                   lc={lc}
                                   baseSym={baseSym}
                                   typeLabel={typeLabel}
@@ -1137,7 +1307,7 @@ function RowGroup({ children }) {
  * line of the group. Everything is typed PER BASE UNIT; the grey figure beside
  * each field is the same money for the group's FULL quantity. The colour lines
  * are listed read-only underneath with their exact per-line prices. */
-function GroupCostingPanel({ group, lc, baseSym, typeLabel, expenseTypes, form, readOnly, hasData, onExpense, onField, onReset }) {
+function GroupCostingPanel({ group, billRates = {}, lc, baseSym, typeLabel, expenseTypes, form, readOnly, hasData, onExpense, onField, onReset }) {
   const perUnitTag = <span className="text-[9px] font-normal text-slate-400">/{baseSym || 'unit'}</span>
   const baseQty    = group.totalBaseQty
   const rep        = group.rep
@@ -1182,10 +1352,13 @@ function GroupCostingPanel({ group, lc, baseSym, typeLabel, expenseTypes, form, 
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-1.5">
               {expenseTypes.map((t) => {
-                const val = lc.expenses?.[t.id] ?? ''
+                const val      = lc.expenses?.[t.id] ?? ''
+                const fromBill = (billRates[t.id] ?? 0) * rep.fob_base
                 return (
                   <div key={t.id} className="min-w-0">
-                    <label className="block truncate text-[9px] font-semibold uppercase tracking-wider text-slate-500" title={t.name}>{t.name}</label>
+                    <label className="block truncate text-[9px] font-semibold uppercase tracking-wider text-slate-500" title={t.name}>
+                      {t.name}{fromBill > 0 && <span className="ml-0.5 font-normal normal-case text-amber-600">{val !== '' && parseFloat(val) > 0 ? '(estimate)' : ''}</span>}
+                    </label>
                     <input
                       type="number" min="0" step="0.01"
                       placeholder="0.00"
@@ -1195,7 +1368,8 @@ function GroupCostingPanel({ group, lc, baseSym, typeLabel, expenseTypes, form, 
                       disabled={readOnly}
                     />
                     <div className="mt-px text-right text-[9px] tabular-nums text-slate-400">
-                      {val !== '' && parseFloat(val) > 0 ? `= ${total(val)}` : ' '}
+                      {fromBill > 0 && <span className="mr-1 font-semibold text-sky-700" title="This product's share of the pulled bills (first colour line)">+{fmt(fromBill)} bill</span>}
+                      {val !== '' && parseFloat(val) > 0 ? `= ${total(val)}` : (fromBill > 0 ? '' : ' ')}
                     </div>
                   </div>
                 )

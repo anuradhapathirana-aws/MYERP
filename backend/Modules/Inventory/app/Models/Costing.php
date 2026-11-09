@@ -96,6 +96,12 @@ class Costing extends Model
         return $this->hasMany(CostingItem::class, 'costing_id');
     }
 
+    /** Supplier-bill lines pulled in ("Pull from bills"). */
+    public function billCharges(): HasMany
+    {
+        return $this->hasMany(CostingBillCharge::class, 'costing_id')->orderBy('id');
+    }
+
     /** Per-line expense amounts across all items (flat, for bulk operations). */
     public function itemExpenses(): HasMany
     {

@@ -229,7 +229,10 @@ export default function BillsPage() {
                       <td className="whitespace-nowrap px-3 py-2 text-slate-500">{b.transaction_date}</td>
                       <td className="max-w-[180px] truncate px-3 py-2 font-medium text-slate-700" title={b.supplier_name}>{b.supplier_name}</td>
                       <td className="max-w-[120px] truncate px-3 py-2 font-mono text-slate-600" title={b.document_no}>{b.document_no}</td>
-                      <td className="max-w-[200px] truncate px-3 py-2 text-slate-600" title={b.ledger_account_name}>{b.ledger_account_name}</td>
+                      <td className="max-w-[200px] truncate px-3 py-2 text-slate-600" title={b.ledger_account_name}>
+                        {b.ledger_account_name}
+                        {b.line_count > 1 && <span className="ml-1 rounded bg-slate-100 px-1 text-[10px] font-semibold text-slate-500">+{b.line_count - 1} more</span>}
+                      </td>
                       <td className="px-3 py-2 text-right font-medium text-slate-700"><Money value={b.total_amount} /></td>
                       <td className={`whitespace-nowrap px-3 py-2 ${b.is_overdue ? 'font-semibold text-red-600' : 'text-slate-500'}`}>
                         {b.due_date}

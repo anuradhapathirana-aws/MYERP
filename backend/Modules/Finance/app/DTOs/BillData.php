@@ -14,7 +14,12 @@ use Modules\Finance\Http\Requests\BillRequest;
  */
 final class BillData
 {
-    /** @param list<array{ledger_account_id:int, amount:string, description:?string}> $lines */
+    /**
+     * @param list<array{
+     *     charge_type_id:?int, ledger_account_id:int, amount:string,
+     *     tax_code_id:?int, grn_id:?int, description:?string
+     * }> $lines amount as typed: before tax, or tax-inclusive when $prices_include_tax
+     */
     public function __construct(
         public readonly ?string $request_id,
         public readonly int     $supplier_id,
@@ -25,6 +30,7 @@ final class BillData
         public readonly int     $company_id,
         public readonly ?int    $location_id,
         public readonly ?string $description,
+        public readonly bool    $prices_include_tax,
         public readonly array   $lines,
         public readonly ?string $updated_at,
     ) {}
@@ -39,9 +45,12 @@ final class BillData
             $description = $line['description'] ?? null;
 
             $lines[] = [
+                'charge_type_id'    => self::idOrNull($line['charge_type_id'] ?? null),
                 'ledger_account_id' => (int) $line['ledger_account_id'],
                 // Kept as a 2-dp string; money never travels as a float.
                 'amount'            => number_format((float) $line['amount'], 2, '.', ''),
+                'tax_code_id'       => self::idOrNull($line['tax_code_id'] ?? null),
+                'grn_id'            => self::idOrNull($line['grn_id'] ?? null),
                 'description'       => is_string($description) && $description !== '' ? $description : null,
             ];
         }
@@ -56,8 +65,14 @@ final class BillData
             company_id:       (int) $v['company_id'],
             location_id:      isset($v['location_id']) ? (int) $v['location_id'] : null,
             description:      isset($v['description']) && $v['description'] !== '' ? $v['description'] : null,
+            prices_include_tax: (bool) ($v['prices_include_tax'] ?? false),
             lines:            $lines,
             updated_at:       $v['updated_at'] ?? null,
         );
+    }
+
+    private static function idOrNull(mixed $value): ?int
+    {
+        return $value === null || $value === '' ? null : (int) $value;
     }
 }

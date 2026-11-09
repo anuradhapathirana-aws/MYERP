@@ -489,9 +489,9 @@ export default function FinanceSettingsPage() {
 
               <p className="border-t border-slate-100 pt-1.5 text-[10px] leading-snug text-slate-500">
                 <span className="font-semibold text-slate-700">One account per party</span> creates
-                a ledger for each supplier or customer the first time they are posted to — Tally&rsquo;s
-                shape. They are hidden from account dropdowns, because documents pick them
-                automatically.
+                a ledger for each supplier when it is saved, and each customer the first time they
+                are posted to — Tally&rsquo;s shape. They are hidden from account dropdowns, because
+                documents pick them automatically.
               </p>
             </div>
           </div>

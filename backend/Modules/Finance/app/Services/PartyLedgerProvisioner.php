@@ -18,22 +18,22 @@ use Modules\Finance\Models\LedgerAccount;
  * In shared mode every method returns null and resolution falls straight
  * through to fin_account_defaults, exactly as before this class existed.
  *
- * ── Created lazily, on first posting ────────────────────────────────────────
- * Not when a supplier or customer is saved, for two reasons.
+ * ── When the account is created ─────────────────────────────────────────────
+ * A SUPPLIER gets it on save (SupplierLedgerObserver), so a Journal Voucher can
+ * name a supplier nothing has posted to yet. SupplierMaster is core, which is
+ * what lets Finance watch it without Inventory changing.
  *
- * The decisive one is the Golden Rule: provisioning at save time would mean
- * Inventory's CustomerService calling into Finance, and Inventory has to run
- * with Finance uninstalled. Creating the account at POSTING time keeps the
- * whole feature inside Finance -- not one line of Inventory changes.
+ * A CUSTOMER gets it at first posting. CustomerMaster belongs to Inventory, so
+ * Finance watching it would break the Golden Rule. It also keeps the chart as
+ * small as the business: import 4,000 customers and the chart grows as they
+ * trade, not by 4,000 rows.
  *
- * The happy accident is that it is also better behaviour. A party who has
- * never transacted gets no account, so the chart stays as small as the
- * business actually is. Import 4,000 customers and the chart does not grow by
- * 4,000 rows; it grows as they trade.
+ * resolve() still creates on first posting for either side. That covers
+ * suppliers saved before per-party mode was switched on, and any whose account
+ * could not be created at save time.
  *
- * It is safe inside the document's transaction: the code generator takes
- * lockForUpdate(), and if the document later fails to post, the account
- * creation rolls back with it.
+ * Both are safe inside a transaction: the code generator takes lockForUpdate(),
+ * and if the supplier or document fails, the account creation rolls back too.
  *
  * ── Where the account is placed ─────────────────────────────────────────────
  * Under the SAME control account as the shared role account. So if
@@ -127,6 +127,31 @@ final class PartyLedgerProvisioner
         }
 
         return $this->create($role, $partyType, $partyId, $partyName);
+    }
+
+    /**
+     * Create the party's account ahead of any posting, if it should have one.
+     *
+     * Unlike resolve(), an existing account is left exactly as it is: nothing
+     * is being posted here, so an inactive one is not an error. withTrashed()
+     * because the unique index on (party_type, party_id) still counts an
+     * account someone deleted from the chart.
+     *
+     * @throws ValidationException when the account cannot be created.
+     */
+    public function provision(string $partyType, int $partyId, ?string $partyName = null): void
+    {
+        $role = self::PARTY_ROLES[$partyType] ?? null;
+
+        if ($role === null || $this->modeFor($partyType) !== PartyLedgerMode::PerParty) {
+            return;
+        }
+
+        if (LedgerAccount::withTrashed()->forParty($partyType, $partyId)->exists()) {
+            return;
+        }
+
+        $this->create($role, $partyType, $partyId, $partyName);
     }
 
     /**

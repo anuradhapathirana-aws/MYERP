@@ -112,6 +112,11 @@ class RolesAndPermissionsSeeder extends Seeder
         // it, so both are separate from create/edit for the same reason.
         'bills' => ['view', 'create', 'edit', 'delete', 'confirm', 'void'],
 
+        // Charge Types: what a bill line is for (Freight, Customs Duty, Import
+        // VAT...) and so where it posts. Admin-only by default like every
+        // Finance screen.
+        'charge_types' => ['view', 'create', 'edit', 'delete'],
+
         // Bill Payment: same split. confirm pays out money, void puts it back.
         'bill_payments' => ['view', 'create', 'edit', 'delete', 'confirm', 'void'],
 

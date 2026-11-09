@@ -6,12 +6,16 @@ namespace App\Providers;
 
 use App\Contracts\FundBalanceGuard;
 use App\Contracts\JournalPoster;
+use App\Contracts\LandedChargeSource;
+use App\Contracts\LandedCostTargets;
 use App\Contracts\TaxCodeUsage;
 use App\Models\User;
 use App\Services\CompanyAccessService;
 use App\Services\SettingsService;
 use App\Support\Journal\NullFundBalanceGuard;
 use App\Support\Journal\NullJournalPoster;
+use App\Support\Landed\NullLandedChargeSource;
+use App\Support\Landed\NullLandedCostTargets;
 use App\Support\Tax\SupplierDefaultTaxCodeUsage;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -45,6 +49,13 @@ class AppServiceProvider extends ServiceProvider
         // Where a tax code can be in use. Modules add their own documents under
         // the same tag (see InventoryServiceProvider); tags accumulate.
         $this->app->tag([SupplierDefaultTaxCodeUsage::class], TaxCodeUsage::TAG);
+
+        // Landed costs cross the module line both ways: bills (Finance) feed
+        // costings (Inventory), and bill lines link to GRNs. Each module binds
+        // its own side; with one missing, its null answers "nothing" and the
+        // other module works on its own. bindIf for the reason given above.
+        $this->app->bindIf(LandedChargeSource::class, NullLandedChargeSource::class);
+        $this->app->bindIf(LandedCostTargets::class, NullLandedCostTargets::class);
     }
 
     public function boot(): void

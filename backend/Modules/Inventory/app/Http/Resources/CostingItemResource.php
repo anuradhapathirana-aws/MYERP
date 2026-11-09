@@ -55,6 +55,7 @@ class CostingItemResource extends JsonResource
             // Typed per-base-unit expense amounts, one per expense type
             'expenses' => $this->whenLoaded('expenses', fn () => $this->expenses->map(fn ($e) => [
                 'expense_type_id' => $e->expense_type_id,
+                'source'          => $e->source ?? 'manual',
                 'amount'          => (float) $e->amount,
                 'name'            => $e->relationLoaded('expenseType') ? $e->expenseType?->name : null,
             ])),

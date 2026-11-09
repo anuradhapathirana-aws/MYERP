@@ -4,13 +4,16 @@ declare(strict_types=1);
 
 namespace Modules\Finance\Http\Requests;
 
+use App\Contracts\LandedCostTargets;
 use App\Services\CompanyAccessService;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Modules\Finance\Enums\BillStatus;
+use Modules\Finance\Enums\ChargeTreatment;
 use Modules\Finance\Models\Bill;
+use Modules\Finance\Models\ChargeType;
 use Modules\Finance\Models\LedgerAccount;
 use Modules\Finance\Services\FinanceControlService;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -31,6 +34,9 @@ class BillRequest extends FormRequest
 {
     /** 9,999,999,999.99 -- the largest value decimal(15,2) holds comfortably. */
     public const MAX_AMOUNT = 9999999999.99;
+
+    /** More lines than a CusDec or an agent's bill ever carries. */
+    public const MAX_LINES = 50;
 
     /**
      * Another company's bill answers 404 before any validation runs, so field
@@ -102,13 +108,25 @@ class BillRequest extends FormRequest
 
             'description'      => ['nullable', 'string', 'max:1000'],
 
-            // An array so a later release can split a bill across accounts
-            // without an API change. The screen sends exactly one line today.
-            'lines'                     => ['required', 'array', 'min:1', 'max:50'],
-            'lines.*.ledger_account_id' => ['required', 'integer', 'distinct'],
+            // Typed amounts already include VAT (as printed on the invoice).
+            'prices_include_tax'        => ['boolean'],
+
+            // One line per charge: a clearing agent's bill carries the fee, the
+            // duty paid for us and the import VAT as separate lines. The same
+            // account may appear twice (duty and SSCL to one import account).
+            'lines'                     => ['required', 'array', 'min:1', 'max:' . self::MAX_LINES],
+            'lines.*.charge_type_id'    => ['nullable', 'integer'],
+            'lines.*.ledger_account_id' => ['required', 'integer'],
             'lines.*.amount'            => [
                 'required', 'numeric', 'decimal:0,2', 'gt:0', 'max:' . self::MAX_AMOUNT,
             ],
+            'lines.*.tax_code_id'       => [
+                'nullable',
+                'integer',
+                Rule::exists('core_tax_codes', 'id')->where('is_active', true)->where('scope', 'purchase'),
+            ],
+            // The shipment the charge belongs to (Inventory GRN, soft link).
+            'lines.*.grn_id'            => ['nullable', 'integer'],
             'lines.*.description'       => ['nullable', 'string', 'max:500'],
 
             // Optimistic lock: the updated_at the editor loaded. Checked in the
@@ -126,6 +144,7 @@ class BillRequest extends FormRequest
 
             $this->checkCompanyAccess($v);
             $this->checkAccounts($v);
+            $this->checkChargesAndLinks($v);
             $this->checkLockDate($v);
             $this->checkDuplicate($v);
         });
@@ -163,6 +182,51 @@ class BillRequest extends FormRequest
 
             if ($account->company_id !== null && $account->company_id !== $companyId) {
                 $v->errors()->add("lines.{$i}.ledger_account_id", 'This account belongs to another company.');
+            }
+        }
+    }
+
+    /**
+     * Each line's charge type must be active; Import VAT carries no tax code
+     * (it IS the tax); only a landed cost or a claimable tax can belong to a
+     * shipment, and the shipment must be a confirmed GRN.
+     */
+    private function checkChargesAndLinks(Validator $v): void
+    {
+        $lines = (array) $this->input('lines', []);
+
+        $typeIds = collect($lines)->pluck('charge_type_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $types   = ChargeType::query()->active()->whereKey($typeIds)->get()->keyBy('id');
+
+        $grnIds = collect($lines)->pluck('grn_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $grns   = $grnIds === [] ? [] : app(LandedCostTargets::class)->grnsByIds($grnIds);
+
+        foreach ($lines as $i => $line) {
+            $typeId    = isset($line['charge_type_id']) && $line['charge_type_id'] !== '' ? (int) $line['charge_type_id'] : null;
+            $type      = $typeId === null ? null : $types->get($typeId);
+            $treatment = $type?->treatment;
+
+            if ($typeId !== null && $type === null) {
+                $v->errors()->add("lines.{$i}.charge_type_id", 'Choose an active charge type.');
+
+                continue;
+            }
+
+            if ($treatment === ChargeTreatment::RecoverableTax && ! empty($line['tax_code_id'])) {
+                $v->errors()->add("lines.{$i}.tax_code_id", "{$type->name} is the tax itself. Leave the tax empty and enter the amount from the CusDec.");
+            }
+
+            if (empty($line['grn_id'])) {
+                continue;
+            }
+
+            if ($treatment === null || ! $treatment->linksToGrn()) {
+                $v->errors()->add(
+                    "lines.{$i}.grn_id",
+                    'Only a landed cost (freight, duty, clearing...) or Import VAT can be linked to a GRN. Pick a charge type first.',
+                );
+            } elseif (! isset($grns[(int) $line['grn_id']])) {
+                $v->errors()->add("lines.{$i}.grn_id", 'Choose a confirmed GRN.');
             }
         }
     }
@@ -217,6 +281,9 @@ class BillRequest extends FormRequest
             'company_id'                => 'company',
             'location_id'               => 'location',
             'lines.*.ledger_account_id' => 'account',
+            'lines.*.charge_type_id'    => 'charge type',
+            'lines.*.tax_code_id'       => 'tax',
+            'lines.*.grn_id'            => 'GRN',
             'lines.*.amount'            => 'amount',
             'lines.*.description'       => 'line description',
         ];
@@ -233,7 +300,8 @@ class BillRequest extends FormRequest
             'lines.*.amount.gt'           => 'The amount must be greater than zero.',
             'lines.*.amount.decimal'      => 'The amount can have at most 2 decimal places.',
             'lines.*.amount.max'          => 'The amount is too large.',
-            'lines.*.ledger_account_id.distinct' => 'Each account may appear only once on a bill.',
+            'lines.max'                   => 'A bill can have at most ' . self::MAX_LINES . ' lines.',
+            'lines.*.tax_code_id.exists'  => 'Choose an active purchase tax.',
         ];
     }
 }

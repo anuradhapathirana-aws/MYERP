@@ -77,6 +77,7 @@ const TrialBalancePage          = lazy(() => import('./pages/finance/TrialBalanc
 const FinanceSettingsPage       = lazy(() => import('./pages/finance/FinanceSettingsPage'))
 const BillsPage                 = lazy(() => import('./pages/finance/BillsPage'))
 const BillFormPage              = lazy(() => import('./pages/finance/BillFormPage'))
+const ChargeTypesPage           = lazy(() => import('./pages/finance/ChargeTypesPage'))
 const BillPaymentsPage          = lazy(() => import('./pages/finance/BillPaymentsPage'))
 const BillPaymentFormPage       = lazy(() => import('./pages/finance/BillPaymentFormPage'))
 const BankDepositsPage          = lazy(() => import('./pages/finance/BankDepositsPage'))
@@ -281,6 +282,7 @@ export default function App() {
         <Route path="/finance/journal-voucher"                 element={<Lazy component={JournalVoucherFormPage} />} />
         <Route path="/finance/trial-balance"                   element={<Lazy component={TrialBalancePage} />} />
         <Route path="/finance/account-mapping"                 element={<Lazy component={FinanceSettingsPage} />} />
+        <Route path="/finance/charge-types"                    element={<Lazy component={ChargeTypesPage} />} />
         <Route path="/finance/bills"                           element={<Lazy component={BillsPage} />} />
         <Route path="/finance/bills/create"                    element={<Lazy component={BillFormPage} />} />
         <Route path="/finance/bills/:id"                       element={<Lazy component={BillFormPage} />} />

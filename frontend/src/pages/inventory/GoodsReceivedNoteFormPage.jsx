@@ -29,6 +29,7 @@ import { getAllAttributeTypes } from '../../api/attributeTypes'
 import { getAllAttributes } from '../../api/attributes'
 import Breadcrumb from '../../components/Breadcrumb'
 import KeyboardShortcuts from '../../components/ui/KeyboardShortcuts'
+import HelpTip from '../../components/ui/HelpTip'
 import Money from '../../components/ui/Money'
 import { CURRENCY, fmtMoney, fmtMoneyWithSymbol } from '../../utils/currency'
 import BatchAssignModal from '../../components/inventory/BatchAssignModal'
@@ -36,6 +37,7 @@ import RollAssignModal from '../../components/inventory/RollAssignModal'
 import VariantSelect from '../../components/inventory/VariantSelect'
 import VariantLabelsModal from '../../components/inventory/VariantLabelsModal'
 import GrnSupplierReturns from '../../components/inventory/GrnSupplierReturns'
+import GrnLandedCharges from '../../components/inventory/GrnLandedCharges'
 import { usePermissions } from '../../hooks/usePermissions'
 import { getProductVariants } from '../../api/variants'
 import { showError, showSuccess } from '../../utils/alerts'
@@ -1943,8 +1945,7 @@ export default function GoodsReceivedNoteFormPage() {
                 <CheckToggle
                   checked={pricesIncludeTax}
                   onChange={(v) => { if (!isConfirmedGrn) setPricesIncludeTax(v) }}
-                  label="Prices include VAT"
-                  title="Tick when the supplier's invoice prices already include VAT — type them as printed and the system splits out the VAT"
+                  label={<>Prices include VAT <HelpTip text="Tick when the supplier's invoice prices already include VAT. Type them as printed and the system splits out the VAT." /></>}
                 />
                 {!taxNoticeOpen && (
                   <button type="button" onClick={() => setTaxNoticeOpen(true)} title="How tax works on a GRN" className="rounded p-0.5 text-sky-500 hover:bg-sky-50">
@@ -2016,7 +2017,7 @@ export default function GoodsReceivedNoteFormPage() {
                       Purchasing Unit Price ({CURRENCY}){pricesIncludeTax && <span className="ml-0.5 normal-case text-sky-600">incl. VAT</span>}
                     </th>
                     {discountEnabled && <th className="w-20 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-600 text-center">Disc %</th>}
-                    <th className="w-36 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-sky-600">Tax</th>
+                    <th className="w-36 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-sky-600">Tax <HelpTip text="The tax code for this line. Use VAT (Tax Invoice) only with a valid Tax Invoice; otherwise No Tax Invoice. Import taxes go on the Customs bill, not here." /></th>
                     <th className="w-20 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Batch</th>
                     <th className="w-24 px-2 py-1.5 text-[10px] text-right font-bold uppercase tracking-wider text-slate-500">Total</th>
                     <th className="w-8 px-2 py-1.5"></th>
@@ -2392,13 +2393,13 @@ export default function GoodsReceivedNoteFormPage() {
                         <span className="text-slate-500">Gross: <Money value={totals.gross} className="font-bold text-slate-700" /></span>
                         {discountEnabled && <span className="text-amber-600">Disc: -<Money value={totals.disc} className="font-bold" /></span>}
                         {totals.claimable > 0 && (
-                          <span className="text-green-700" title="Goes to Input VAT — reduces the VAT you pay. Not part of the goods' cost.">
-                            VAT claimable: <Money value={totals.claimable} className="font-bold" />
+                          <span className="text-green-700">
+                            VAT claimable: <Money value={totals.claimable} className="font-bold" /> <HelpTip text="Goes to Input VAT and reduces the VAT you pay. It is not part of the goods' cost." />
                           </span>
                         )}
                         {totals.taxToCost > 0 && (
-                          <span className="text-orange-700" title="Tax that cannot be claimed back (e.g. supplier SSCL) — added to the cost of the goods.">
-                            Tax added to cost: <Money value={totals.taxToCost} className="font-bold" />
+                          <span className="text-orange-700">
+                            Tax added to cost: <Money value={totals.taxToCost} className="font-bold" /> <HelpTip text="Tax that cannot be claimed back, such as supplier SSCL. It is added to the cost of the goods." />
                           </span>
                         )}
                         {pricesIncludeTax && <span className="rounded bg-sky-100 px-1.5 py-px text-[10px] font-semibold text-sky-700">Prices include VAT</span>}
@@ -2566,6 +2567,7 @@ export default function GoodsReceivedNoteFormPage() {
       </div>
 
       {isEdit && <GrnSupplierReturns returns={existingGRN?.data?.returns} />}
+      {isConfirmedGrn && <GrnLandedCharges grnId={id} />}
 
       {/* Keyboard Shortcuts Reference */}
       <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">

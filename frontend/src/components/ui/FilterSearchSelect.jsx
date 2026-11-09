@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronDown, Search, X } from 'lucide-react'
+
+/** Search box + list height, and the pad's minimum widths (min-w-52 / min-w-105). */
+const PAD_HEIGHT = 250
+const PAD_MIN_WIDTH = 208
+const PAD_MIN_WIDTH_WIDE = 420
+const VIEWPORT_GAP = 8
 
 /**
  * Compact searchable dropdown for filter panels.
@@ -16,6 +23,9 @@ import { ChevronDown, Search, X } from 'lucide-react'
  * disabled:  greys the control out and blocks opening the pad.
  * invalid:   red border, for a failed required-field check.
  * clearable: false hides the X, which a required field should not offer.
+ * portal:    renders the pad on document.body at a fixed position, for a control
+ *            inside a scrolling table, whose overflow would otherwise clip it.
+ *            It opens upward when there is no room below, and closes on scroll.
  */
 export default function FilterSearchSelect({
   value,
@@ -27,10 +37,13 @@ export default function FilterSearchSelect({
   disabled = false,
   invalid = false,
   clearable = true,
+  portal = false,
 }) {
   const [open, setOpen]   = useState(false)
   const [query, setQuery] = useState('')
+  const [padStyle, setPadStyle] = useState(null)
   const containerRef      = useRef(null)
+  const padRef            = useRef(null)
   const searchRef         = useRef(null)
 
   const selected = options.find((o) => String(o.value) === String(value))
@@ -75,12 +88,46 @@ export default function FilterSearchSelect({
   useEffect(() => {
     if (!open) { setQuery(''); return }
     const handler = (e) => {
-      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false)
+      const inside = containerRef.current?.contains(e.target) || padRef.current?.contains(e.target)
+      if (!inside) setOpen(false)
+    }
+    // A fixed pad cannot follow its control, so it closes when the page moves.
+    const onMove = (e) => {
+      if (!padRef.current?.contains(e.target)) setOpen(false)
     }
     document.addEventListener('mousedown', handler)
+    if (portal) {
+      window.addEventListener('scroll', onMove, true)
+      window.addEventListener('resize', onMove)
+    }
     setTimeout(() => searchRef.current?.focus(), 40)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [open])
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      window.removeEventListener('scroll', onMove, true)
+      window.removeEventListener('resize', onMove)
+    }
+  }, [open, portal])
+
+  /** Where the fixed pad goes: under the control, or above it when there is no room below. */
+  const placePad = () => {
+    const box      = containerRef.current.getBoundingClientRect()
+    const padWidth = Math.max(box.width, wide ? PAD_MIN_WIDTH_WIDE : PAD_MIN_WIDTH)
+    const left     = Math.max(VIEWPORT_GAP, Math.min(box.left, window.innerWidth - padWidth - VIEWPORT_GAP))
+    const below    = window.innerHeight - box.bottom
+    const openUp   = below < PAD_HEIGHT && box.top > below
+
+    setPadStyle({
+      position: 'fixed',
+      left,
+      width: box.width,
+      ...(openUp ? { bottom: window.innerHeight - box.top + 4 } : { top: box.bottom + 4 }),
+    })
+  }
+
+  const toggle = () => {
+    if (portal && !open) placePad()
+    setOpen((v) => !v)
+  }
 
   const select = (val) => { onChange(val); setOpen(false) }
 
@@ -98,12 +145,14 @@ export default function FilterSearchSelect({
       ? 'border-red-300 bg-red-50/40 focus:border-red-500 focus:ring-2 focus:ring-red-500/15'
       : 'border-slate-200 bg-slate-50 focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-500/15'
 
+  const inBody = (pad) => (portal ? createPortal(pad, document.body) : pad)
+
   return (
     <div className="relative" ref={containerRef}>
       <button
         type="button"
         disabled={disabled}
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggle}
         className={`flex w-full items-center justify-between gap-1 border-2 text-left outline-none transition-all ${sizeCls} ${stateCls}`}
       >
         <span className={`truncate ${disabled ? 'text-slate-400' : selected ? 'text-slate-800' : 'text-slate-400'}`}>
@@ -122,8 +171,12 @@ export default function FilterSearchSelect({
         </div>
       </button>
 
-      {open && (
-        <div className={`absolute left-0 z-50 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg ${wide ? 'min-w-105 max-w-[90vw]' : 'min-w-52'}`}>
+      {open && inBody(
+        <div
+          ref={padRef}
+          style={portal ? padStyle : undefined}
+          className={`${portal ? 'z-60' : 'absolute left-0 z-50 mt-1 w-full'} rounded-lg border border-slate-200 bg-white shadow-lg ${wide ? 'min-w-105 max-w-[90vw]' : 'min-w-52'}`}
+        >
           {/* search input */}
           <div className="border-b border-slate-100 p-1.5">
             <div className="flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5">
@@ -171,7 +224,7 @@ export default function FilterSearchSelect({
               filtered.map(optionBtn)
             )}
           </div>
-        </div>
+        </div>,
       )}
     </div>
   )

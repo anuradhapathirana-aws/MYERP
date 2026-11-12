@@ -1,7 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { getMe } from '../../api/system'
+import { clearSession, readProfile, saveProfile } from '../../utils/session'
 import {
   AlertTriangle,
+  Blocks,
   ArrowLeftRight,
   BarChart2,
   BookOpen,
@@ -66,8 +70,10 @@ import {
 import UpgradeModal from './UpgradeModal'
 
 // ── Nav definition ─────────────────────────────────────────────────────────
-// moduleKey  → guarded by active_modules in localStorage
+// moduleKey  → shown when that module is switched on for the installation
+//              (System Settings > Modules; refreshed from /api/me on load)
 // roleGuard  → guarded by user_roles in localStorage (array: any match grants access)
+// superAdminOnly → the same super-admin check the server's System Settings routes make
 // children   → renders as a section header with always-visible child links
 const NAV_ITEMS = [
   {
@@ -249,6 +255,12 @@ const NAV_ITEMS = [
     icon: Shield,
     permGuard: 'manage_roles',
   },
+  {
+    label: 'System Settings',
+    to: '/admin/modules',
+    icon: Blocks,
+    superAdminOnly: true,
+  },
 ]
 
 // ── Recursive nav helpers ────────────────────────────────────────────────────
@@ -341,39 +353,25 @@ function renderNavItems({ items, parentKey, depth, isSuperAdmin, userPermissions
     })
 }
 
-function readUserPermissions() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem('user_permissions') ?? '[]')
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
-
-function readActiveModules() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem('active_modules') ?? '[]')
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
-
-function readUserRoles() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem('user_roles') ?? '[]')
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
-
 export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClose }) {
-  const activeModules   = readActiveModules()
-  const userRoles       = readUserRoles()
-  const userPermissions = readUserPermissions()
+  const navigate    = useNavigate()
+  const queryClient = useQueryClient()
+
+  // Refreshed from the server on every app load, so the menu always follows
+  // the installation's module switches (no stale menu until the next login).
+  const { data: me } = useQuery({
+    queryKey: ['me'],
+    queryFn:  getMe,
+    staleTime: 60_000,
+  })
+  useEffect(() => { if (me) saveProfile(me) }, [me])
+
+  const profile         = me ?? readProfile()
+  const activeModules   = profile.active_modules ?? []
+  const userRoles       = profile.roles ?? []
+  const userPermissions = profile.permissions ?? []
   const isSuperAdmin    = userRoles.includes('super_admin')
-  const navigate        = useNavigate()
+  const isSystemAdmin   = Boolean(profile.is_super_admin)
 
   const [lockedModule, setLockedModule]       = useState(null)
   const [openSubgroups, setOpenSubgroups]     = useState({})
@@ -389,12 +387,8 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
     : (userEmail[0]?.toUpperCase() ?? 'U')
 
   const handleLogout = () => {
-    localStorage.removeItem('auth_token')
-    localStorage.removeItem('user_name')
-    localStorage.removeItem('user_email')
-    localStorage.removeItem('active_modules')
-    localStorage.removeItem('user_roles')
-    localStorage.removeItem('user_permissions')
+    clearSession()
+    queryClient.clear()
     navigate('/login')
   }
 
@@ -441,11 +435,13 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
         {/* ── Navigation ── */}
         <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-1">
           {NAV_ITEMS.map((item) => {
-            const { label, to, icon: Icon, moduleKey, moduleKeys, roleGuard, permGuard, children } = item
+            const { label, to, icon: Icon, moduleKey, moduleKeys, roleGuard, permGuard, superAdminOnly, children } = item
 
             // ── Permission-gated standalone link (e.g. Team Management, Roles) ──
-            if (permGuard) {
-              const hasAccess = isSuperAdmin || userPermissions.includes(permGuard)
+            if (permGuard || superAdminOnly) {
+              const hasAccess = superAdminOnly
+                ? isSystemAdmin
+                : isSuperAdmin || userPermissions.includes(permGuard)
               if (!hasAccess) return null
 
               return (
@@ -657,7 +653,12 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
         </div>
       </aside>
 
-      <UpgradeModal module={lockedModule} onClose={() => setLockedModule(null)} />
+      <UpgradeModal
+        module={lockedModule}
+        canSwitchOn={isSystemAdmin}
+        onOpenSettings={() => { setLockedModule(null); navigate('/admin/modules') }}
+        onClose={() => setLockedModule(null)}
+      />
     </>
   )
 }

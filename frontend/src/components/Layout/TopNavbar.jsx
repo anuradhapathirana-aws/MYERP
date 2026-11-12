@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Bell, ChevronDown, LogOut, Menu } from 'lucide-react'
+import { clearSession } from '../../utils/session'
 
 export default function TopNavbar({ onMenuClick }) {
   const navigate = useNavigate()
@@ -20,12 +21,7 @@ export default function TopNavbar({ onMenuClick }) {
     : (userEmail[0]?.toUpperCase() ?? 'U')
 
   const handleLogout = () => {
-    localStorage.removeItem('auth_token')
-    localStorage.removeItem('user_name')
-    localStorage.removeItem('user_email')
-    localStorage.removeItem('active_modules')
-    localStorage.removeItem('user_roles')
-    localStorage.removeItem('user_permissions')
+    clearSession()
     navigate('/login')
   }
 

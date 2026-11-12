@@ -53,6 +53,8 @@ class UserController extends Controller
 
     public function show(User $user): JsonResponse
     {
+        $this->service->assertManageable($user);
+
         return response()->json(
             ['data' => (new UserResource($this->service->find($user)))->toArray(request())],
         );
@@ -60,6 +62,8 @@ class UserController extends Controller
 
     public function update(UserRequest $request, User $user): JsonResponse
     {
+        $this->service->assertManageable($user);
+
         $updated = $this->service->update($user, UserData::fromRequest($request));
 
         return response()->json(
@@ -69,6 +73,8 @@ class UserController extends Controller
 
     public function destroy(User $user): JsonResponse
     {
+        $this->service->assertManageable($user);
+
         $this->service->delete($user);
 
         return response()->json(null, 204);

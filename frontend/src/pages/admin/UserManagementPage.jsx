@@ -8,16 +8,13 @@ import Breadcrumb from '../../components/Breadcrumb'
 import { confirmDelete, showError, showSuccess } from '../../utils/alerts'
 import { EditBtn, DeleteBtn } from '../../components/ui/ActionButtons'
 import Pagination from '../../components/ui/Pagination'
+import { readProfile } from '../../utils/session'
 
 const CRUMBS = [{ label: 'Team Management' }]
 
-const EMPTY_FORM = { name: '', email: '', password: '', role: '', modules: ['inventory'], companies: [] }
-
-const AVAILABLE_MODULES = [
-  { key: 'inventory', label: 'Inventory' },
-  { key: 'finance',   label: 'Finance' },
-  { key: 'hr',        label: 'HR' },
-]
+// Modules are switched for the whole installation (System Settings > Modules);
+// what each user can open inside them comes from their role's permissions.
+const EMPTY_FORM = { name: '', email: '', password: '', role: '', companies: [] }
 
 // ── Role badge ────────────────────────────────────────────────────────────────
 const ROLE_COLOURS = {
@@ -58,7 +55,6 @@ function UserModal({ open, onClose, editing, roles, onSuccess, isSuperAdmin }) {
         email:    editing.email,
         password: '',
         role:     editing.roles?.[0] ?? '',
-        modules:  editing.active_modules ?? [],
         companies: editing.company_ids ?? [],
       })
     } else {
@@ -97,7 +93,6 @@ function UserModal({ open, onClose, editing, roles, onSuccess, isSuperAdmin }) {
       name:           form.name,
       email:          form.email,
       roles:          form.role ? [form.role] : [],
-      active_modules: form.modules,
       company_ids:    form.companies,
     }
     if (form.password) payload.password = form.password
@@ -234,42 +229,6 @@ function UserModal({ open, onClose, editing, roles, onSuccess, isSuperAdmin }) {
             )}
           </div>
 
-          {/* Module Access — super_admin only */}
-          {isSuperAdmin ? (
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                Module Access
-              </label>
-              <div className="flex flex-wrap gap-3">
-                {AVAILABLE_MODULES.map(({ key, label }) => (
-                  <label key={key} className="flex cursor-pointer items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={form.modules.includes(key)}
-                      onChange={(e) => {
-                        const next = e.target.checked
-                          ? [...form.modules, key]
-                          : form.modules.filter((m) => m !== key)
-                        setForm((prev) => ({ ...prev, modules: next }))
-                      }}
-                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/30"
-                    />
-                    <span className="text-slate-700">{label}</span>
-                  </label>
-                ))}
-              </div>
-              <p className="mt-1 text-xs text-slate-400">
-                Controls which modules appear in the sidebar for this user.
-              </p>
-            </div>
-          ) : (
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
-              <p className="text-xs text-slate-400">
-                <span className="font-medium text-slate-500">Module Access</span> can only be configured by a Super Admin.
-              </p>
-            </div>
-          )}
-
           {/* Company Access — empty means every company */}
           {companies.length > 1 && (
             <div>
@@ -333,13 +292,10 @@ function UserModal({ open, onClose, editing, roles, onSuccess, isSuperAdmin }) {
   )
 }
 
+// Only the system provider's account (the server's super-admin flag) may hand
+// out the super_admin role; the server enforces the same rule.
 function readIsSuperAdmin() {
-  try {
-    const roles = JSON.parse(localStorage.getItem('user_roles') ?? '[]')
-    return Array.isArray(roles) && roles.includes('super_admin')
-  } catch {
-    return false
-  }
+  return readProfile().is_super_admin
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────

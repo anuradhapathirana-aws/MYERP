@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Auth;
 
 use App\Models\User;
+use App\Services\SettingsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
@@ -48,9 +49,10 @@ class LoginTest extends TestCase
         $this->assertIsArray($response->json('active_modules'));
     }
 
-    public function test_login_returns_user_active_modules_when_set(): void
+    public function test_login_returns_the_installations_switched_on_modules(): void
     {
-        $this->user->update(['active_modules' => ['inventory', 'finance']]);
+        app(SettingsService::class)->set('module.inventory', true);
+        app(SettingsService::class)->set('module.finance', true);
 
         $response = $this->postJson('/api/login', [
             'email' => 'admin@example.com',
@@ -58,18 +60,24 @@ class LoginTest extends TestCase
         ]);
 
         $response->assertOk()
-            ->assertJson(['active_modules' => ['inventory', 'finance']]);
+            ->assertJsonPath('active_modules', ['inventory', 'finance']);
     }
 
-    public function test_login_defaults_to_inventory_module_when_active_modules_is_null(): void
+    public function test_login_ignores_the_old_per_user_module_list(): void
     {
+        // The menu must follow the same switch the server checks: a user
+        // ticked for Finance on an installation without Finance gets no Finance.
+        app(SettingsService::class)->set('module.inventory', true);
+        app(SettingsService::class)->set('module.finance', false);
+        $this->user->forceFill(['active_modules' => ['inventory', 'finance']])->save();
+
         $response = $this->postJson('/api/login', [
             'email' => 'admin@example.com',
             'password' => 'secret123',
         ]);
 
         $response->assertOk()
-            ->assertJson(['active_modules' => ['inventory']]);
+            ->assertJsonPath('active_modules', ['inventory']);
     }
 
     public function test_login_response_includes_a_bearer_token(): void

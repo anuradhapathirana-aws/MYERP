@@ -130,6 +130,7 @@ const AvailableStockReport = lazy(() => import('./pages/inventory/reports/Availa
 const UserManagementPage    = lazy(() => import('./pages/admin/UserManagementPage'))
 const RolesPage             = lazy(() => import('./pages/admin/RolesPage'))
 const RoleFormPage          = lazy(() => import('./pages/admin/RoleFormPage'))
+const ModulesPage           = lazy(() => import('./pages/admin/ModulesPage'))
 
 function PageLoader() {
   return (
@@ -166,6 +167,7 @@ export default function App() {
         <Route path="/admin/roles"              element={<Lazy component={RolesPage} />} />
         <Route path="/admin/roles/create"       element={<Lazy component={RoleFormPage} />} />
         <Route path="/admin/roles/:id/edit"     element={<Lazy component={RoleFormPage} />} />
+        <Route path="/admin/modules"            element={<Lazy component={ModulesPage} />} />
 
         {/* Inventory module — only its own chunk is downloaded */}
         <Route path="/inventory" element={<Navigate to="/inventory/unit-categories" replace />} />

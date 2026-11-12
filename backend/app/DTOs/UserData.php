@@ -13,7 +13,6 @@ final class UserData
         public readonly string  $name,
         public readonly string  $email,
         public readonly array   $roles,
-        public readonly array   $activeModules,
         public readonly ?string $password,
         public readonly ?array  $companyIds = null,
     ) {}
@@ -24,7 +23,6 @@ final class UserData
             name:          $request->validated('name'),
             email:         $request->validated('email'),
             roles:         $request->validated('roles'),
-            activeModules: $request->validated('active_modules', []),
             password:      $request->validated('password'),
             companyIds:    $request->has('company_ids')
                 ? array_map('intval', (array) $request->validated('company_ids', []))

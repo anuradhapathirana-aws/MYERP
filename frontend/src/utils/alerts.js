@@ -76,7 +76,8 @@ export async function confirmAction({ title, message, confirmText = 'Yes, Confir
   return result.isConfirmed
 }
 
-const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+/** For any user- or data-supplied text put into an alert's `message` (it is rendered as HTML). */
+export const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 
 /**
  * The server's "bank will go negative" warning (errors.bank_overdraw) as a Yes/No.

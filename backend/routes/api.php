@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\GlobalSettingController;
+use App\Http\Controllers\ModuleController;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\UserController;
@@ -28,10 +29,17 @@ Route::middleware(['auth:sanctum', 'module:inventory,finance,hr'])
 Route::middleware(['auth:sanctum', 'super_admin'])->group(function (): void {
     Route::get('/settings', [GlobalSettingController::class, 'index']);
     Route::put('/settings/{key}', [GlobalSettingController::class, 'update']);
+
+    // System Settings > Modules: the one place a module is switched on or off.
+    Route::get('/system/modules', [ModuleController::class, 'index'])->name('system.modules.index');
+    Route::put('/system/modules/{key}', [ModuleController::class, 'update'])->name('system.modules.update');
 });
 
 // ── Any authenticated user ─────────────────────────────────────────────────────
 Route::middleware('auth:sanctum')->group(function (): void {
+    // The signed-in user's modules, roles and permissions, for the menu.
+    Route::get('me', [AuthController::class, 'me'])->name('auth.me');
+
     // Lightweight user lookup for document dropdowns (sales person, order taken by)
     Route::get('users/all', [UserController::class, 'all'])->name('users.all');
 });

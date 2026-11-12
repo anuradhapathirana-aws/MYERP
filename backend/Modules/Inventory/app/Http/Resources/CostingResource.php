@@ -76,6 +76,19 @@ class CostingResource extends JsonResource
 
             'items' => CostingItemResource::collection($this->whenLoaded('items')),
 
+            // Supplier-bill lines pulled in, as they were when pulled.
+            'bill_charges' => $this->whenLoaded('billCharges', fn () => $this->billCharges->map(fn ($c) => [
+                'source_id'         => $c->source_id,
+                'bill_no'           => $c->bill_no,
+                'bill_date'         => $c->bill_date?->toDateString(),
+                'party_name'        => $c->party_name,
+                'charge_name'       => $c->charge_name,
+                'grn_id'            => $c->grn_id,
+                'expense_type_id'   => $c->expense_type_id,
+                'expense_type_name' => $c->relationLoaded('expenseType') ? $c->expenseType?->name : null,
+                'amount'            => (float) $c->amount,
+            ])->values()),
+
             'expenses' => $this->whenLoaded('expenses', fn () => $this->expenses->map(fn ($e) => [
                 'id'              => $e->id,
                 'expense_type_id' => $e->expense_type_id,

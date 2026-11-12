@@ -61,6 +61,7 @@ const PaymentModesPage          = lazy(() => import('./pages/inventory/PaymentMo
 const SupplierGroupsPage        = lazy(() => import('./pages/master-data/SupplierGroupsPage'))
 const BanksPage                 = lazy(() => import('./pages/master-data/BanksPage'))
 const TaxesPage                 = lazy(() => import('./pages/master-data/TaxesPage'))
+const TaxCodesPage              = lazy(() => import('./pages/master-data/TaxCodesPage'))
 const BankBranchesPage          = lazy(() => import('./pages/master-data/BankBranchesPage'))
 const EmployeesPage             = lazy(() => import('./pages/master-data/EmployeesPage'))
 
@@ -76,10 +77,14 @@ const TrialBalancePage          = lazy(() => import('./pages/finance/TrialBalanc
 const FinanceSettingsPage       = lazy(() => import('./pages/finance/FinanceSettingsPage'))
 const BillsPage                 = lazy(() => import('./pages/finance/BillsPage'))
 const BillFormPage              = lazy(() => import('./pages/finance/BillFormPage'))
+const ChargeTypesPage           = lazy(() => import('./pages/finance/ChargeTypesPage'))
 const BillPaymentsPage          = lazy(() => import('./pages/finance/BillPaymentsPage'))
 const BillPaymentFormPage       = lazy(() => import('./pages/finance/BillPaymentFormPage'))
 const BankDepositsPage          = lazy(() => import('./pages/finance/BankDepositsPage'))
 const BankDepositFormPage       = lazy(() => import('./pages/finance/BankDepositFormPage'))
+const BankReconciliationsPage   = lazy(() => import('./pages/finance/BankReconciliationsPage'))
+const BankReconciliationFormPage = lazy(() => import('./pages/finance/BankReconciliationFormPage'))
+const UnclearedChequesReport    = lazy(() => import('./pages/finance/UnclearedChequesReport'))
 const SalesOrdersPage           = lazy(() => import('./pages/inventory/SalesOrdersPage'))
 const SalesOrderFormPage        = lazy(() => import('./pages/inventory/SalesOrderFormPage'))
 const SalesOrderViewPage        = lazy(() => import('./pages/inventory/SalesOrderViewPage'))
@@ -96,6 +101,8 @@ const CustomerReceiptsPage      = lazy(() => import('./pages/inventory/CustomerR
 const CustomerReceiptFormPage   = lazy(() => import('./pages/inventory/CustomerReceiptFormPage'))
 const CustomerReturnsPage       = lazy(() => import('./pages/inventory/CustomerReturnsPage'))
 const CustomerReturnFormPage    = lazy(() => import('./pages/inventory/CustomerReturnFormPage'))
+const SupplierReturnsPage       = lazy(() => import('./pages/inventory/SupplierReturnsPage'))
+const SupplierReturnFormPage    = lazy(() => import('./pages/inventory/SupplierReturnFormPage'))
 const CustomerCreditNotesPage   = lazy(() => import('./pages/inventory/CustomerCreditNotesPage'))
 // Inventory Reports
 const StockLevelsReport        = lazy(() => import('./pages/inventory/reports/StockLevelsReport'))
@@ -123,6 +130,7 @@ const AvailableStockReport = lazy(() => import('./pages/inventory/reports/Availa
 const UserManagementPage    = lazy(() => import('./pages/admin/UserManagementPage'))
 const RolesPage             = lazy(() => import('./pages/admin/RolesPage'))
 const RoleFormPage          = lazy(() => import('./pages/admin/RoleFormPage'))
+const ModulesPage           = lazy(() => import('./pages/admin/ModulesPage'))
 
 function PageLoader() {
   return (
@@ -159,6 +167,7 @@ export default function App() {
         <Route path="/admin/roles"              element={<Lazy component={RolesPage} />} />
         <Route path="/admin/roles/create"       element={<Lazy component={RoleFormPage} />} />
         <Route path="/admin/roles/:id/edit"     element={<Lazy component={RoleFormPage} />} />
+        <Route path="/admin/modules"            element={<Lazy component={ModulesPage} />} />
 
         {/* Inventory module — only its own chunk is downloaded */}
         <Route path="/inventory" element={<Navigate to="/inventory/unit-categories" replace />} />
@@ -237,6 +246,9 @@ export default function App() {
         <Route path="/inventory/customer-returns"              element={<Lazy component={CustomerReturnsPage} />} />
         <Route path="/inventory/customer-returns/create"       element={<Lazy component={CustomerReturnFormPage} />} />
         <Route path="/inventory/customer-returns/:id/edit"     element={<Lazy component={CustomerReturnFormPage} />} />
+        <Route path="/inventory/supplier-returns"              element={<Lazy component={SupplierReturnsPage} />} />
+        <Route path="/inventory/supplier-returns/create"       element={<Lazy component={SupplierReturnFormPage} />} />
+        <Route path="/inventory/supplier-returns/:id/edit"     element={<Lazy component={SupplierReturnFormPage} />} />
         <Route path="/inventory/customer-credit-notes"         element={<Lazy component={CustomerCreditNotesPage} />} />
         <Route path="/inventory/goods-received-notes"          element={<Lazy component={GoodsReceivedNotesPage} />} />
         <Route path="/inventory/goods-received-notes/create"   element={<Lazy component={GoodsReceivedNoteFormPage} />} />
@@ -261,6 +273,7 @@ export default function App() {
         <Route path="/master-data/supplier-groups"             element={<Lazy component={SupplierGroupsPage} />} />
         <Route path="/master-data/banks"                       element={<Lazy component={BanksPage} />} />
         <Route path="/master-data/taxes"                       element={<Lazy component={TaxesPage} />} />
+        <Route path="/master-data/tax-codes"                   element={<Lazy component={TaxCodesPage} />} />
         <Route path="/master-data/bank-branches"               element={<Lazy component={BankBranchesPage} />} />
         <Route path="/master-data/employees"                   element={<Lazy component={EmployeesPage} />} />
 
@@ -274,6 +287,7 @@ export default function App() {
         <Route path="/finance/journal-voucher"                 element={<Lazy component={JournalVoucherFormPage} />} />
         <Route path="/finance/trial-balance"                   element={<Lazy component={TrialBalancePage} />} />
         <Route path="/finance/account-mapping"                 element={<Lazy component={FinanceSettingsPage} />} />
+        <Route path="/finance/charge-types"                    element={<Lazy component={ChargeTypesPage} />} />
         <Route path="/finance/bills"                           element={<Lazy component={BillsPage} />} />
         <Route path="/finance/bills/create"                    element={<Lazy component={BillFormPage} />} />
         <Route path="/finance/bills/:id"                       element={<Lazy component={BillFormPage} />} />
@@ -286,6 +300,11 @@ export default function App() {
         <Route path="/finance/bank-deposits/create"            element={<Lazy component={BankDepositFormPage} />} />
         <Route path="/finance/bank-deposits/:id"               element={<Lazy component={BankDepositFormPage} />} />
         <Route path="/finance/bank-deposits/:id/edit"          element={<Lazy component={BankDepositFormPage} />} />
+        <Route path="/finance/bank-reconciliations"            element={<Lazy component={BankReconciliationsPage} />} />
+        <Route path="/finance/bank-reconciliations/create"     element={<Lazy component={BankReconciliationFormPage} />} />
+        <Route path="/finance/bank-reconciliations/:id"        element={<Lazy component={BankReconciliationFormPage} />} />
+        <Route path="/finance/bank-reconciliations/:id/edit"   element={<Lazy component={BankReconciliationFormPage} />} />
+        <Route path="/finance/reports/uncleared-cheques"       element={<Lazy component={UnclearedChequesReport} />} />
 
         {/* ── Inventory Reports ── */}
         <Route path="/inventory/reports/stock-levels"      element={<Lazy component={StockLevelsReport} />} />

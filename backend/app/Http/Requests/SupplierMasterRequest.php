@@ -45,6 +45,8 @@ class SupplierMasterRequest extends FormRequest
             'tax_type'                  => ['nullable', 'string', 'max:50'],
             'tax_no'                    => ['nullable', 'string', 'max:50'],
             'tax_regis_no'              => ['nullable', 'string', 'max:50'],
+            // Starts every new GRN line of this supplier; empty = no tax, as before.
+            'default_tax_code_id'       => ['nullable', 'integer', Rule::exists('core_tax_codes', 'id')->where('scope', 'purchase')->where('is_active', true)],
 
             // Financial terms
             'credit_limit'              => ['nullable', 'numeric', 'min:0'],
@@ -83,6 +85,7 @@ class SupplierMasterRequest extends FormRequest
             'tax_type'                  => 'tax type',
             'tax_no'                    => 'tax number',
             'tax_regis_no'              => 'tax registration number',
+            'default_tax_code_id'       => 'default purchase tax',
             'credit_limit'              => 'credit limit',
             'credit_period'             => 'credit period',
             'privileges_discount'       => 'privileges discount',

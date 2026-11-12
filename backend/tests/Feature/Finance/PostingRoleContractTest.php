@@ -140,6 +140,10 @@ class PostingRoleContractTest extends TestCase
             PostingRole::SOURCE_CUSTOMER_RECEIPT,
             PostingRole::SOURCE_BILL,
             PostingRole::SOURCE_BILL_PAYMENT,
+            PostingRole::SOURCE_CHEQUE_RETURN,
+            PostingRole::SOURCE_BILL_PAYMENT_RETURN,
+            PostingRole::SOURCE_CUSTOMER_RECEIPT_SETTLEMENT,
+            PostingRole::SOURCE_SUPPLIER_PAYMENT_SETTLEMENT,
         ] as $source) {
             $this->assertLessThanOrEqual(40, strlen($source), "source_type '{$source}' exceeds its column.");
         }

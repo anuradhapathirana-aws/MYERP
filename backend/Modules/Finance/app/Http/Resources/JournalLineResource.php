@@ -42,6 +42,11 @@ class JournalLineResource extends JsonResource
             'source_type' => $this->source_type,
             'source_id'   => $this->source_id,
 
+            // How the money moved, on cash and bank lines.
+            'instrument_type' => $this->instrument_type,
+            'instrument_no'   => $this->instrument_no,
+            'instrument_date' => $this->instrument_date?->toDateString(),
+
             'company_id'  => $this->company_id,
             'location_id' => $this->location_id,
         ];

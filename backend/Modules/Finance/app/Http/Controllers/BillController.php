@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Modules\Finance\Http\Controllers;
 
+use App\Contracts\LandedCostTargets;
 use App\Models\Company;
 use App\Models\Location;
 use App\Models\SupplierMaster;
+use App\Models\Tax;
 use App\Models\User;
 use App\Services\CompanyAccessService;
+use App\Services\TaxService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -18,8 +21,10 @@ use Modules\Finance\Enums\PaymentStatus;
 use Modules\Finance\Http\Requests\BillRequest;
 use Modules\Finance\Http\Resources\BillResource;
 use Modules\Finance\Models\Bill;
+use Modules\Finance\Models\ChargeType;
 use Modules\Finance\Models\LedgerAccount;
 use Modules\Finance\Services\BillService;
+use Modules\Finance\Services\ChargeTypeService;
 use Modules\Finance\Services\FinanceControlService;
 
 /**
@@ -35,9 +40,11 @@ class BillController extends Controller
         private readonly BillService           $service,
         private readonly FinanceControlService $controls,
         private readonly CompanyAccessService  $companyAccess,
+        private readonly ChargeTypeService     $chargeTypes,
+        private readonly TaxService            $taxes,
     ) {
         $this->middleware('permission:view_bills')
-            ->only(['index', 'show', 'history', 'nextNo', 'options', 'supplierDefaults']);
+            ->only(['index', 'show', 'history', 'nextNo', 'options', 'supplierDefaults', 'grnOptions']);
         $this->middleware('permission:create_bills')->only(['store']);
         $this->middleware('permission:edit_bills')->only(['update']);
         $this->middleware('permission:delete_bills')->only(['destroy']);
@@ -67,7 +74,7 @@ class BillController extends Controller
 
     public function show(Request $request, Bill $bill): JsonResponse
     {
-        return response()->json(['data' => (new BillResource($this->service->find($bill)))->toArray($request)]);
+        return response()->json(['data' => $this->present($request, $this->service->find($bill))]);
     }
 
     /**
@@ -107,9 +114,23 @@ class BillController extends Controller
                 'company_id' => $a->company_id,
             ]);
 
+        $targets = app(LandedCostTargets::class);
+
         return response()->json([
             'data' => [
                 'expense_accounts'  => $accounts,
+                'charge_types'      => $this->chargeTypes->active()->map(fn (ChargeType $t): array => [
+                    'id'                => $t->id,
+                    'code'              => $t->code,
+                    'name'              => $t->name,
+                    'treatment'         => $t->treatment->value,
+                    'treatment_label'   => $t->treatment->label(),
+                    'links_to_grn'      => $t->treatment->linksToGrn(),
+                    'ledger_account_id' => $t->ledger_account_id,
+                ])->values(),
+                // GRN linking needs Inventory; claimable Import VAT needs VAT on.
+                'grn_link_available' => $targets->isAvailable(),
+                'vat_active'        => $this->taxes->isActive(Tax::VAT),
                 'companies'         => $companies,
                 'locations'         => $locations,
                 'statuses'          => BillStatus::options(),
@@ -135,18 +156,28 @@ class BillController extends Controller
         ]);
     }
 
+    /** GET bills/grn-options?search= -- confirmed GRNs a landed-cost line can belong to. */
+    public function grnOptions(Request $request): JsonResponse
+    {
+        $search = $request->query('search');
+
+        return response()->json([
+            'data' => app(LandedCostTargets::class)->searchGrns(is_string($search) ? mb_substr(trim($search), 0, 50) : null, 100),
+        ]);
+    }
+
     public function store(BillRequest $request): JsonResponse
     {
         $bill = $this->service->create(BillData::fromRequest($request));
 
-        return response()->json(['data' => (new BillResource($bill))->toArray($request)], 201);
+        return response()->json(['data' => $this->present($request, $bill)], 201);
     }
 
     public function update(BillRequest $request, Bill $bill): JsonResponse
     {
         $bill = $this->service->update($bill, BillData::fromRequest($request));
 
-        return response()->json(['data' => (new BillResource($bill))->toArray($request)]);
+        return response()->json(['data' => $this->present($request, $bill)]);
     }
 
     public function destroy(Bill $bill): JsonResponse
@@ -160,7 +191,7 @@ class BillController extends Controller
     {
         $bill = $this->service->confirm($bill);
 
-        return response()->json(['data' => (new BillResource($bill))->toArray($request)]);
+        return response()->json(['data' => $this->present($request, $bill)]);
     }
 
     public function void(Request $request, Bill $bill): JsonResponse
@@ -176,7 +207,7 @@ class BillController extends Controller
             $validated['reversal_date'],
         );
 
-        return response()->json(['data' => (new BillResource($bill))->toArray($request)]);
+        return response()->json(['data' => $this->present($request, $bill)]);
     }
 
     public function history(Bill $bill): JsonResponse
@@ -191,5 +222,11 @@ class BillController extends Controller
                 'created_at' => $log->created_at?->toISOString(),
             ])->values()->all(),
         ]);
+    }
+
+    /** One bill as the screen sees it, with the GRN numbers its lines link to. */
+    private function present(Request $request, Bill $bill): array
+    {
+        return (new BillResource($bill))->withGrns($this->service->linkedGrns($bill))->toArray($request);
     }
 }

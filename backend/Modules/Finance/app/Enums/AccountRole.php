@@ -47,12 +47,16 @@ enum AccountRole: string
     case RoundingDifference   = 'rounding_difference';
     case OpeningBalanceEquity = 'opening_balance_equity';
     case SalesReturns         = 'sales_returns';
+    case PurchaseReturns      = 'purchase_returns';
 
     // ── Used only when switched on (SSCL rate above zero) ────────────────────
     case SsclPayable          = 'sscl_payable';
 
-    // ── Mapped but not yet used by any posting ───────────────────────────────
+    // ── Bank-only entries from Bank Reconciliation (optional) ────────────────
     case BankCharges          = 'bank_charges';
+    case InterestIncome       = 'interest_income';
+
+    // ── Mapped but not yet used by any posting ───────────────────────────────
     case GrniClearing         = 'grni_clearing';
     case Inventory            = 'inventory';
     case CostOfSales          = 'cost_of_sales';
@@ -73,8 +77,10 @@ enum AccountRole: string
             self::RoundingDifference   => 'Rounding Difference',
             self::OpeningBalanceEquity => 'Opening Balance Equity',
             self::SalesReturns         => 'Sales Returns',
+            self::PurchaseReturns      => 'Purchase Returns',
             self::SsclPayable          => 'SSCL Payable',
             self::BankCharges          => 'Bank Charges',
+            self::InterestIncome       => 'Interest Income',
             self::GrniClearing         => 'Goods Received Not Invoiced',
             self::Inventory            => 'Inventory',
             self::CostOfSales          => 'Cost of Sales',
@@ -98,8 +104,10 @@ enum AccountRole: string
             self::RoundingDifference   => 'Absorbs sub-cent residue so the ledger agrees with the documents.',
             self::OpeningBalanceEquity => 'The balancing side of the opening-balance journal.',
             self::SalesReturns         => 'Goods customers sent back, net of tax. Debited by a Customer Return.',
+            self::PurchaseReturns      => 'Goods sent back to suppliers, net of tax. Credited by a Supplier Return.',
             self::SsclPayable          => 'SSCL inside the selling price, owed to the revenue authority. Used when an SSCL rate is set.',
-            self::BankCharges          => 'Bank fees. Not yet posted by any document.',
+            self::BankCharges          => 'Bank fees found on the statement, posted by New Bank Entry on Bank Reconciliation.',
+            self::InterestIncome       => 'Interest the bank credited, posted by New Bank Entry on Bank Reconciliation.',
             self::GrniClearing         => 'Used only once Bill Entry exists: a GRN credits this, the Bill moves it to Payables.',
             self::Inventory            => 'Used only if stock moves to perpetual valuation. Unused today.',
             self::CostOfSales          => 'Used only if stock moves to perpetual valuation. Unused today.',
@@ -127,9 +135,11 @@ enum AccountRole: string
 
             self::OpeningBalanceEquity => [AccountType::Equity],
 
-            self::SalesRevenue         => [AccountType::Income],
+            self::SalesRevenue,
+            self::InterestIncome       => [AccountType::Income],
 
             self::Purchases,
+            self::PurchaseReturns,
             self::BankCharges,
             self::CostOfSales          => [AccountType::Expense],
 
@@ -150,6 +160,7 @@ enum AccountRole: string
     {
         return ! in_array($this, [
             self::BankCharges,
+            self::InterestIncome,
             self::GrniClearing,
             self::Inventory,
             self::CostOfSales,

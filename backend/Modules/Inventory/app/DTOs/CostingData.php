@@ -23,6 +23,8 @@ final class CostingData
      *           the product's BASE (stocking) unit — margin is an addon amount,
      *           expenses are one amount per expense type of the costing's FOB/CIF
      *           list, and sscl_pct/vat_pct override the header defaults when set.
+     * @param array<int> $billChargeIds supplier-bill lines pulled in ("Pull from bills");
+     *           re-read from Finance on save, never trusted as amounts.
      */
     public function __construct(
         public readonly int     $supplierId,
@@ -37,6 +39,7 @@ final class CostingData
         public readonly bool    $applyVat,
         public readonly float   $vatPct,
         public readonly array   $items,
+        public readonly array   $billChargeIds = [],
     ) {}
 
     public static function fromRequest(
@@ -56,6 +59,7 @@ final class CostingData
             applyVat:        (bool) ($request->validated('apply_vat') ?? true),
             vatPct:          (float) ($request->validated('vat_pct') ?? app(TaxService::class)->rate(Tax::VAT)),
             items:           (array) ($request->validated('items') ?? []),
+            billChargeIds:   array_values(array_unique(array_map('intval', (array) ($request->validated('bill_charge_ids') ?? [])))),
         );
     }
 }

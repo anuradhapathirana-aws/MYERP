@@ -12,6 +12,7 @@ use App\Http\Controllers\PaymentModeController;
 use App\Http\Controllers\SupplierAttachmentController;
 use App\Http\Controllers\SupplierGroupController;
 use App\Http\Controllers\SupplierMasterController;
+use App\Http\Controllers\TaxCodeController;
 use App\Http\Controllers\TaxController;
 use Illuminate\Support\Facades\Route;
 
@@ -80,3 +81,7 @@ Route::apiResource('payment-modes', PaymentModeController::class)->names('paymen
 // ── Tax ──────────────────────────────────────────────────────────────────────
 Route::get('taxes/current', [TaxController::class, 'current'])->name('taxes.current');
 Route::apiResource('taxes', TaxController::class)->names('taxes');
+
+// Tax codes: what a document line picks (rates come from the taxes above)
+Route::get('tax-codes/options', [TaxCodeController::class, 'options'])->name('tax-codes.options');
+Route::apiResource('tax-codes', TaxCodeController::class)->names('tax-codes');

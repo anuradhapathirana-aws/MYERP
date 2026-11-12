@@ -39,6 +39,7 @@ class SupplierMasterResource extends JsonResource
             'tax_type'                   => $this->tax_type,
             'tax_no'                     => $this->tax_no,
             'tax_regis_no'               => $this->tax_regis_no,
+            'default_tax_code_id'        => $this->default_tax_code_id,
 
             'credit_limit'               => $this->credit_limit,
             'credit_period'              => $this->credit_period,

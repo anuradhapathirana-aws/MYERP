@@ -27,7 +27,7 @@ const CRUMBS = [
   { label: 'Supplier Payments' },
 ]
 
-const INITIAL_FILTERS = { search: '', status: '', supplier_id: '', supplier_group_id: '', date_from: '', date_to: '' }
+const INITIAL_FILTERS = { search: '', status: '', supplier_id: '', supplier_group_id: '', date_from: '', date_to: '', cheque_returned: '' }
 
 const STATUS_STYLES = {
   draft:     'bg-amber-100 text-amber-700',
@@ -149,6 +149,12 @@ export default function SupplierPaymentsPage() {
             <option value="voided">Voided</option>
           </select>
         </FilterField>
+        <FilterField label="Cheques">
+          <select className={FILTER_SELECT_CLS} value={draft.cheque_returned} onChange={(e) => setDraft((d) => ({ ...d, cheque_returned: e.target.value }))}>
+            <option value="">All payments</option>
+            <option value="1">Returned cheques only</option>
+          </select>
+        </FilterField>
         <FilterField label="Supplier">
           <FilterSearchSelect
             value={draft.supplier_id}
@@ -222,6 +228,11 @@ export default function SupplierPaymentsPage() {
                           <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[p.status] ?? 'bg-slate-100 text-slate-500'}`}>
                             {p.status_label}
                           </span>
+                          {p.returned_cheques > 0 && (
+                            <span className="ml-1 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700" title="The bank returned a cheque of this payment; its GRNs are payable again">
+                              Cheque Returned
+                            </span>
+                          )}
                         </td>
                         <td className="px-3 py-2">
                           <div className="flex items-center justify-end gap-1">
@@ -233,7 +244,7 @@ export default function SupplierPaymentsPage() {
                                 <DeleteBtn onClick={() => handleDelete(p.id, p.payment_no)} disabled={deleteMutation.isPending} />
                               </>
                             )}
-                            {p.status === 'confirmed' && can('void_supplier_payments') && (
+                            {p.status === 'confirmed' && !p.returned_cheques && can('void_supplier_payments') && (
                               <button type="button" title="Void Payment" onClick={() => handleVoid(p.id, p.payment_no)} disabled={voidMutation.isPending} className="inline-flex items-center justify-center rounded-lg p-1.5 bg-red-50 text-red-600 hover:bg-red-100 transition-colors disabled:opacity-40"><Ban size={14} strokeWidth={2} /></button>
                             )}
                           </div>

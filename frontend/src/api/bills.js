@@ -43,3 +43,7 @@ export const getNextBillNo = (transactionDate) =>
 export const getSupplierBillDefaults = (supplierId, transactionDate) =>
   api.get(`${BASE}/supplier-defaults/${supplierId}`, { params: { transaction_date: transactionDate } })
     .then((r) => r.data?.data ?? {})
+
+/** Confirmed GRNs a landed-cost line can belong to (searched by GRN no or supplier). */
+export const getBillGrnOptions = (search) =>
+  api.get(`${BASE}/grn-options`, { params: search ? { search } : {} }).then((r) => r.data?.data ?? [])

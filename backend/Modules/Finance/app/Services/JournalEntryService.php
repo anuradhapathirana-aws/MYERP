@@ -182,6 +182,7 @@ class JournalEntryService
         // A draft dated inside a closed period stays a draft: posting it would
         // change numbers already reported.
         $this->controls->assertOpen($entry->journal_date);
+        $this->controls->assertBankPeriodOpen($entry->lines()->pluck('ledger_account_id'), $entry->journal_date);
 
         if (! $entry->isBalanced()) {
             throw ValidationException::withMessages([

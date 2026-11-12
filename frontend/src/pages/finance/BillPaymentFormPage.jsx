@@ -60,6 +60,7 @@ const firstError = (err, fallback) => {
 
 const EVENT_LABELS = {
   created: 'Created', updated: 'Edited', confirmed: 'Confirmed', voided: 'Voided', deleted: 'Deleted',
+  cheque_returned: 'Cheque returned',
   attachment_added: 'File attached', attachment_removed: 'File removed',
 }
 
@@ -776,9 +777,16 @@ export default function BillPaymentFormPage() {
           <Breadcrumb crumbs={crumbs} />
         </div>
         {payment && (
-          <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
-            payment.status === 'confirmed' ? 'bg-green-100 text-green-700' : payment.status === 'voided' ? 'bg-slate-200 text-slate-500' : 'bg-amber-100 text-amber-700'
-          }`}>{payment.status_label}</span>
+          <div className="flex items-center gap-1.5">
+            <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
+              payment.status === 'confirmed' ? 'bg-green-100 text-green-700' : payment.status === 'voided' ? 'bg-slate-200 text-slate-500' : 'bg-amber-100 text-amber-700'
+            }`}>{payment.status_label}</span>
+            {payment.returned_date && (
+              <span className="rounded-full bg-red-100 px-2.5 py-1 text-[11px] font-bold text-red-700" title={`Returned in ${payment.return_reference}`}>
+                Cheque Returned
+              </span>
+            )}
+          </div>
         )}
       </div>
 
@@ -1224,6 +1232,11 @@ export default function BillPaymentFormPage() {
                 {payment.journal_no && <span>Journal: <Link to="/finance/journal-entries" className="font-mono text-indigo-600 hover:underline">{payment.journal_no}</Link></span>}
                 {payment.reversal_journal_no && <span>Reversal: <span className="font-mono">{payment.reversal_journal_no}</span> on {payment.reversal_date}</span>}
                 {payment.void_reason && <span className="text-red-600">Void reason: {payment.void_reason}</span>}
+                {payment.returned_date && (
+                  <span className="font-semibold text-red-600">
+                    Cheque returned on {payment.returned_date} in {payment.return_reference} · bounce entry <span className="font-mono">{payment.return_journal_no}</span>
+                  </span>
+                )}
                 {payment.created_by_name && <span>Entered by {payment.created_by_name}</span>}
               </div>
               <div className="flex items-center gap-1.5">
@@ -1251,7 +1264,7 @@ export default function BillPaymentFormPage() {
                     <Wallet size={12} /> Pay Balance
                   </Link>
                 )}
-                {payment.status === 'confirmed' && can('void_bill_payments') && (
+                {payment.status === 'confirmed' && !payment.returned_date && can('void_bill_payments') && (
                   <button type="button" onClick={handleVoid} disabled={voidMutation.isPending} className="flex items-center gap-1 rounded-md bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-40">
                     <Ban size={12} /> Void
                   </button>

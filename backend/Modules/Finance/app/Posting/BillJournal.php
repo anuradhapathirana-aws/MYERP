@@ -12,9 +12,25 @@ use Modules\Finance\Models\Bill;
 /**
  * Turns a confirmed bill into a balanced journal.
  *
- *   Dr  each line's expense account          (explicit account, chosen on screen)
- *   Cr  Accounts Payable, party = supplier   (role -- resolved per supplier group /
- *                                             per-party mode like every payable)
+ *   Dr  each line's account        line total less its claimable tax -- the
+ *                                  charge itself plus any tax that cannot be
+ *                                  claimed (explicit account, chosen on screen)
+ *   Dr  Input Tax Recoverable      the claimable tax of every line (role)
+ *   Cr  Accounts Payable           the bill total, party = supplier (role --
+ *                                  resolved per supplier group / per-party mode
+ *                                  like every payable)
+ *
+ * A clearing agent's bill with a fee (40,000 + VAT 7,200), duty paid for us
+ * (477,000) and the CusDec's import VAT (680,000) therefore posts
+ *
+ *   Dr Clearing & Transport In    40,000
+ *   Dr Import Duty & Levies      477,000
+ *   Dr Input Tax Recoverable     687,200
+ *      Cr Agent                         1,204,200
+ *
+ * An Import VAT line that is fully claimable leaves nothing for its own
+ * account, so it adds no line of its own. A bill without tax posts exactly as
+ * before tax existed (line_total = amount, recoverable 0).
  *
  * The payable line carries source = bill so Bill Payment can later clear
  * exactly this bill, the same way supplier payments clear GRNs today.
@@ -28,13 +44,28 @@ final class BillJournal
     {
         $bill->loadMissing(['lines', 'supplier']);
 
-        $lines = [];
+        $lines       = [];
+        $recoverable = 0;
 
         foreach ($bill->lines as $line) {
+            $cost = Bill::toCents($line->costAmount());
+
+            if ($cost > 0) {
+                $lines[] = JournalLineRequest::debit(
+                    (int) $line->ledger_account_id,
+                    $cost / 100,
+                    description: $line->description ?? $bill->description ?? 'Supplier invoice ' . $bill->document_no,
+                );
+            }
+
+            $recoverable += Bill::toCents($line->recoverable_tax);
+        }
+
+        if ($recoverable > 0) {
             $lines[] = JournalLineRequest::debit(
-                (int) $line->ledger_account_id,
-                (float) $line->amount,
-                description: $line->description ?? $bill->description ?? 'Supplier invoice ' . $bill->document_no,
+                PostingRole::INPUT_TAX_RECOVERABLE,
+                $recoverable / 100,
+                description: 'Claimable tax, supplier invoice ' . $bill->document_no,
             );
         }
 

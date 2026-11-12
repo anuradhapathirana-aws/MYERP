@@ -18,6 +18,7 @@ import { getAllLedgerAccounts } from '../../api/ledgerAccounts'
 import FilterSearchSelect from '../../components/ui/FilterSearchSelect'
 import Breadcrumb from '../../components/Breadcrumb'
 import Money from '../../components/ui/Money'
+import ChequeStatusChip from '../../components/ui/ChequeStatusChip'
 import { confirmAction, confirmBankOverdraw, showError, showSuccess } from '../../utils/alerts'
 import { fmtMoneyWithSymbol } from '../../utils/currency'
 import { INPUT_CLS, INPUT_DISABLED_CLS, LABEL_CLS, SELECT_CLS } from '../../utils/fieldStyles'
@@ -151,6 +152,7 @@ export default function SupplierPaymentFormPage() {
       amount: String(s.amount), bank_id: s.bank_id ?? null, bank_name: s.bank_name ?? '', bank_account_no: s.bank_account_no ?? '',
       ledger_account_id: s.ledger_account_id ? String(s.ledger_account_id) : '',
       reference_no: s.reference_no ?? '', instrument_date: s.instrument_date ?? '',
+      cheque_status: s.cheque_status ?? null,
     })))
   }, [existing])
 
@@ -1030,7 +1032,7 @@ export default function SupplierPaymentFormPage() {
                         <td className="px-2 py-1 text-right text-slate-700"><Money value={s.amount} /></td>
                         <td className="px-2 py-1 text-slate-500">{s.bank_name || '—'}</td>
                         <td className="px-2 py-1 text-slate-500">{s.bank_account_no || '—'}</td>
-                        <td className="px-2 py-1 text-slate-500">{s.reference_no || '—'}</td>
+                        <td className="px-2 py-1 text-slate-500">{s.reference_no || '—'}<ChequeStatusChip status={s.cheque_status} /></td>
                         <td className="px-2 py-1 text-slate-500 whitespace-nowrap">{s.instrument_date || '—'}</td>
                         <td className="px-2 py-1 text-center">
                           {isDraft && (

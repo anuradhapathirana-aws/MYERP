@@ -31,3 +31,12 @@ export const getCostingExpenseTypes = (costingType) =>
   api.get('/api/v1/costing-expense-types', {
     params: { costing_type: costingType, active_only: true },
   }).then((r) => r.data.data ?? [])
+
+/**
+ * What "Pull from bills" can add for the selected GRNs:
+ * { available, charges: [{ source_id, bill_no, charge_name, amount, expense_type_id, status: available|unmapped|elsewhere, elsewhere }] }
+ */
+export const getCostingBillCharges = ({ grnIds, costingType, costingId }) =>
+  api.get('/api/v1/costings/bill-charges', {
+    params: { grn_ids: grnIds, costing_type: costingType, ...(costingId ? { costing_id: costingId } : {}) },
+  }).then((r) => r.data?.data ?? { available: false, charges: [] })

@@ -118,9 +118,106 @@ class PartyLedgerModeTest extends TestCase
         // Nothing landed in the shared account.
         $this->assertSame(0.0, $this->balance($this->mapped(AccountRole::AccountsPayable)));
 
-        // XYZ has not traded, so XYZ has no account. The chart grows with the
-        // business rather than with the master list.
+        // XYZ was saved before the switch and has not traded, so nothing has
+        // given it an account yet.
         $this->assertNull(LedgerAccount::forParty('supplier', $this->xyz->id)->first());
+    }
+
+    // ── Created when the supplier is saved ──────────────────────────────────
+
+    /** This is what lets a Journal Voucher name a supplier before any posting. */
+    public function test_saving_a_new_supplier_creates_its_account_in_per_party_mode(): void
+    {
+        $this->perParty();
+
+        $supplier = $this->newSupplier('SUP-0003', 'New Mills');
+
+        $account = LedgerAccount::forParty('supplier', $supplier->id)->firstOrFail();
+        $shared  = LedgerAccount::findOrFail($this->mapped(AccountRole::AccountsPayable));
+
+        $this->assertSame('New Mills', $account->ledger_account_name);
+        $this->assertSame($shared->control_account_id, $account->control_account_id);
+        $this->assertTrue($account->is_active);
+    }
+
+    public function test_saving_a_supplier_creates_no_account_in_shared_mode(): void
+    {
+        $this->newSupplier('SUP-0003', 'New Mills');
+
+        $this->assertSame(0, LedgerAccount::whereNotNull('party_type')->count());
+    }
+
+    /** Installed is not the same as bought. */
+    public function test_saving_a_supplier_creates_no_account_when_finance_is_not_enabled(): void
+    {
+        $this->perParty();
+        app(SettingsService::class)->set('module.finance', false);
+
+        $this->newSupplier('SUP-0003', 'New Mills');
+
+        $this->assertSame(0, LedgerAccount::whereNotNull('party_type')->count());
+    }
+
+    public function test_first_posting_uses_the_account_created_on_save(): void
+    {
+        $this->perParty();
+
+        $supplier = $this->newSupplier('SUP-0003', 'New Mills');
+        $this->postGrn($supplier, 25000);
+
+        $this->assertSame(1, LedgerAccount::forParty('supplier', $supplier->id)->count());
+
+        $account = LedgerAccount::forParty('supplier', $supplier->id)->firstOrFail();
+        $this->assertSame(-25000.0, $this->balance($account->id));
+    }
+
+    /** Suppliers from before the switch pick up an account on their next save. */
+    public function test_saving_an_existing_supplier_creates_the_missing_account_once(): void
+    {
+        $this->perParty();
+
+        $this->abc->update(['mobile' => '0771234567']);
+        $this->abc->update(['mobile' => '0777654321']);
+
+        $this->assertSame(1, LedgerAccount::forParty('supplier', $this->abc->id)->count());
+    }
+
+    /** A Finance setup problem must not stop purchasing adding a supplier. */
+    public function test_a_supplier_still_saves_when_accounts_payable_is_not_mapped(): void
+    {
+        $this->perParty();
+        AccountDefault::where('rule_key', AccountRole::AccountsPayable->value)->delete();
+
+        $supplier = $this->newSupplier('SUP-0003', 'New Mills');
+
+        $this->assertDatabaseHas('inv_supplier_masters', ['id' => $supplier->id]);
+        $this->assertNull(LedgerAccount::forParty('supplier', $supplier->id)->first());
+    }
+
+    /** The unique index still counts a soft-deleted account. */
+    public function test_a_supplier_whose_account_was_deleted_can_still_be_saved(): void
+    {
+        $this->perParty();
+
+        $supplier = $this->newSupplier('SUP-0003', 'New Mills');
+        LedgerAccount::forParty('supplier', $supplier->id)->firstOrFail()->delete();
+
+        $supplier->update(['mobile' => '0771234567']);
+
+        $this->assertSame(1, LedgerAccount::withTrashed()->forParty('supplier', $supplier->id)->count());
+    }
+
+    /** A deliberately closed account is not reopened or refused by a save. */
+    public function test_saving_a_supplier_leaves_an_inactive_account_alone(): void
+    {
+        $this->perParty();
+
+        $supplier = $this->newSupplier('SUP-0003', 'New Mills');
+        LedgerAccount::forParty('supplier', $supplier->id)->update(['is_active' => false]);
+
+        $supplier->update(['mobile' => '0771234567']);
+
+        $this->assertFalse(LedgerAccount::forParty('supplier', $supplier->id)->firstOrFail()->is_active);
     }
 
     /**
@@ -316,6 +413,15 @@ class PartyLedgerModeTest extends TestCase
 
         // The resolver memoises per request, and a test is one request.
         app(\Modules\Finance\Services\AccountResolver::class)->flush();
+    }
+
+    private function newSupplier(string $code, string $name): SupplierMaster
+    {
+        return SupplierMaster::create([
+            'supplier_code'     => $code,
+            'supplier_name'     => $name,
+            'supplier_group_id' => $this->abc->supplier_group_id,
+        ]);
     }
 
     private function postGrn(SupplierMaster $supplier, float $total): GoodsReceivedNote

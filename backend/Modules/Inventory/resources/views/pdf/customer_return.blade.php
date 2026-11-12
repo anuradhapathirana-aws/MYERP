@@ -74,6 +74,26 @@
     ])->filter()->implode(' | ');
 
     $creditNote = $return->creditNote;
+
+    /*
+     * The VAT split, worked out the way the invoice PDF does: value of goods and
+     * discount per line from the returned qty × the invoice's unit price, VAT as
+     * whatever is left of the stored total. That keeps every printed row a real
+     * figure that adds up to total_amount, rounding included.
+     *
+     * A Non-Tax invoice's prices already carry the VAT inside (its lines have
+     * tax 0), so its return note shows no VAT split, just as its invoice doesn't.
+     */
+    $isTaxReturn   = $return->items->contains(fn ($it) => (float) $it->tax > 0);
+    $valueOfGoods  = round($return->items->sum(fn ($it) => (float) $it->quantity * (float) $it->unit_price), 2);
+    $discount      = round($return->items->sum(fn ($it) => (float) $it->quantity * (float) $it->unit_price * ((float) $it->discount / 100)), 2);
+    $vat           = round((float) $return->total_amount - $valueOfGoods + $discount, 2);
+
+    // "@ 18%" is only truthful when every line carries the same rate.
+    $rates   = $return->items->map(fn ($it) => round((float) $it->tax, 2))->unique()->values();
+    $vatRate = $rates->count() === 1
+        ? '@ ' . rtrim(rtrim(number_format((float) $rates->first(), 2, '.', ''), '0'), '.') . '%'
+        : '@ mixed rates';
   @endphp
 
   {{-- ══ LETTERHEAD ══ --}}
@@ -112,11 +132,11 @@
       <th style="width:22px;">#</th>
       <th>Item</th>
       <th class="r nw" style="width:70px;">Qty</th>
-      <th class="r nw" style="width:72px;">Price</th>
+      <th class="r nw" style="width:72px;">{{ $isTaxReturn ? 'Unit Price' : 'Price' }}</th>
       <th class="nw" style="width:78px;">Reason</th>
       <th class="nw" style="width:58px;">Cond.</th>
       <th class="nw" style="width:80px;">Store</th>
-      <th class="r nw" style="width:88px;">Amount</th>
+      <th class="r nw" style="width:88px;">{{ $isTaxReturn ? 'Amount Excl. VAT' : 'Amount' }}</th>
     </tr>
     @foreach($return->items as $i => $item)
       <tr>
@@ -130,7 +150,7 @@
         <td class="nw">{{ $item->reason->label() }}</td>
         <td class="nw">{{ $item->condition->label() }}</td>
         <td class="nw">{{ $item->store?->store_name }}</td>
-        <td class="r nw">{{ $money($item->line_total) }}</td>
+        <td class="r nw">{{ $money($isTaxReturn ? (float) $item->quantity * (float) $item->unit_price : $item->line_total) }}</td>
       </tr>
       @if($item->pieces->isNotEmpty())
         <tr class="rolls">
@@ -145,11 +165,19 @@
 
   {{-- ══ TOTALS ══ --}}
   <table class="totals">
+    @if($isTaxReturn)
+      <tr><td class="k">Value of Goods Returned (Excl. VAT)</td><td class="v">{{ $money($valueOfGoods) }}</td></tr>
+      @if($discount > 0)
+        <tr><td class="k">Less: Discount</td><td class="v">({{ $money($discount) }})</td></tr>
+      @endif
+      <tr><td class="k">VAT Amount {{ $vatRate }}</td><td class="v">{{ $money($vat) }}</td></tr>
+    @endif
+    <tr class="grand"><td class="k" style="color:#111827;">Total Return Value{{ $isTaxReturn ? ' incl. VAT' : '' }} ({{ $currency }})</td><td class="v">{{ $money($return->total_amount) }}</td></tr>
+    {{-- How the return value was settled: against the invoice first, any excess as a credit note --}}
     <tr><td class="k">Credited to Invoice</td><td class="v">{{ $money($return->applied_to_invoice) }}</td></tr>
     @if($creditNote)
       <tr><td class="k">Credit Note {{ $creditNote->credit_note_no }}</td><td class="v">{{ $money($creditNote->amount) }}</td></tr>
     @endif
-    <tr class="grand"><td class="k" style="color:#111827;">Total Return Value ({{ $currency }})</td><td class="v">{{ $money($return->total_amount) }}</td></tr>
   </table>
 
   <div class="words"><span class="lbl">Amount in words:</span> {{ $words }}</div>

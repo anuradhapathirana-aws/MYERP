@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Posting;
 
+use App\Enums\PaymentModeType;
+use App\Models\PaymentMode;
 use App\Support\Journal\JournalLineRequest;
 use App\Support\Journal\JournalRequest;
 use App\Support\Journal\PostingRole;
@@ -94,6 +96,8 @@ final class SupplierPaymentJournal
         }
 
         // ── Cr: the money, from the account the user chose ───────────────
+        $modeTypes = PaymentMode::typesById($payment->settlements->pluck('payment_mode_id')->map(fn ($id): int => (int) $id)->all());
+
         foreach ($payment->settlements as $settlement) {
             $amount = round((float) $settlement->amount, 2);
 
@@ -109,10 +113,22 @@ final class SupplierPaymentJournal
                 ]);
             }
 
+            // The settlement row is named on the money line, with its cheque
+            // or transfer details, so Bank Reconciliation can match and
+            // return this one instrument.
+            $type = $modeTypes[(int) $settlement->payment_mode_id]
+                ?? PaymentModeType::fromLegacyCode($settlement->payment_mode_code);
+
             $lines[] = JournalLineRequest::credit(
                 (int) $settlement->ledger_account_id,
                 $amount,
                 description: self::settlementNote($settlement),
+                sourceType:  PostingRole::SOURCE_SUPPLIER_PAYMENT_SETTLEMENT,
+                sourceId:    (int) $settlement->id,
+            )->withInstrument(
+                $type->value,
+                $settlement->reference_no,
+                $settlement->instrument_date?->toDateString(),
             );
         }
 
@@ -160,16 +176,18 @@ final class SupplierPaymentJournal
     /**
      * Set-off amounts grouped by the account they consume.
      *
-     * Three types, two meanings:
+     * Four types, two meanings:
      *
      *   advance / over_payment  -- spending a prepayment we already made, so it
-     *                              releases the Supplier Advances asset.
-     *   customer_return         -- goods sent back to the supplier. Under the
+     *   / supplier_return          releases the Supplier Advances asset. A
+     *                              supplier_return note was put there by the
+     *                              Supplier Return's own journal, which already
+     *                              credited Purchase Returns.
+     *   customer_return         -- legacy manual set-off for goods sent back,
+     *                              with no Supplier Return behind it. Under the
      *                              periodic stock method the original cost went
-     *                              to Purchases, so the return reverses it
-     *                              there. Were stock ever moved to perpetual
-     *                              valuation this would credit Inventory
-     *                              instead.
+     *                              to Purchases, so it reverses it there. Only
+     *                              old drafts can still carry it.
      *
      * @return array<string, float> role => amount
      */

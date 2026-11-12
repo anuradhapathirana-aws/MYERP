@@ -79,6 +79,10 @@ class BillPaymentResource extends JsonResource
             'reversal_journal_no' => $p->reversal_journal_no,
             'void_reason'         => $p->void_reason,
             'reversal_date'       => $p->reversal_date?->toDateString(),
+            // The bank returned the cheque: bills owed again, the payment stays confirmed.
+            'returned_date'       => $p->returned_date?->toDateString(),
+            'return_reference'    => $p->return_reference,
+            'return_journal_no'   => $p->return_journal_no,
             'confirmed_at'        => $p->confirmed_at?->toISOString(),
             'voided_at'           => $p->voided_at?->toISOString(),
             'created_by_name'     => $p->relationLoaded('creator') ? $p->creator?->name : null,

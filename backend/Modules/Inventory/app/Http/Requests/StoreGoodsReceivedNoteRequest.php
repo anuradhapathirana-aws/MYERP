@@ -57,7 +57,10 @@ class StoreGoodsReceivedNoteRequest extends FormRequest
             'items.*.quantity_received'   => ['required', 'numeric', 'min:0.0001'],
             'items.*.unit_price'          => ['required', 'numeric', 'min:0'],
             'items.*.discount'            => ['nullable', 'numeric', 'min:0', 'max:100'],
+            // Ignored on save: the tax % is derived from the line's tax code.
             'items.*.tax'                 => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'items.*.tax_code_id'         => ['nullable', 'integer', Rule::exists('core_tax_codes', 'id')->where('scope', 'purchase')->where('is_active', true)],
+            'prices_include_tax'          => ['sometimes', 'boolean'],
             'items.*.batch_no'            => ['nullable', 'string', 'max:100'],
             'items.*.expiry_date'         => ['nullable', 'date'],
 
@@ -99,6 +102,7 @@ class StoreGoodsReceivedNoteRequest extends FormRequest
             'shipping_code'             => 'shipping code',
             'items.*.po_item_id'        => 'PO item',
             'items.*.product_id'        => 'product',
+            'items.*.tax_code_id'       => 'tax code',
             'items.*.unit_id'           => 'unit of measure',
             'items.*.quantity_received' => 'quantity received',
             'items.*.unit_price'        => 'unit price',

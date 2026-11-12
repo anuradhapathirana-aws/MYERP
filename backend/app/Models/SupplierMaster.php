@@ -38,6 +38,7 @@ class SupplierMaster extends Model
         'tax_type',
         'tax_no',
         'tax_regis_no',
+        'default_tax_code_id',
         'credit_limit',
         'credit_period',
         'privileges_discount',

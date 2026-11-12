@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\Inventory\Services;
 
 use App\Contracts\JournalPoster;
+use App\Services\ChequeStatusRegistry;
 use App\Services\ReceivedChequeRegistry;
 use App\Support\Journal\PostingRole;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -15,6 +16,7 @@ use Modules\Inventory\Enums\CustomerCreditNoteType;
 use Modules\Inventory\Enums\CustomerReceiptStatus;
 use Modules\Inventory\Enums\CustomerSetoffType;
 use Modules\Inventory\Enums\InvoiceStatus;
+use Modules\Inventory\Models\ChequeReturn;
 use Modules\Inventory\Models\CustomerCreditNote;
 use Modules\Inventory\Models\CustomerReceipt;
 use Modules\Inventory\Models\CustomerReceiptAllocation;
@@ -66,8 +68,16 @@ class CustomerReceiptService
             $query->whereDate('receipt_date', '<=', $filters['date_to']);
         }
 
+        // Only receipts with a cheque the bank returned.
+        if (!empty($filters['cheque_returned'])) {
+            $query->whereIn('id', fn ($q) => $q->select('document_id')
+                ->from('inv_cheque_returns')
+                ->where('document_type', ChequeReturn::DOCUMENT_CUSTOMER_RECEIPT));
+        }
+
         $paginator = $query->paginate($perPage);
         $this->attachCustomerSnapshots($paginator->items());
+        $this->attachReturnedCounts($paginator->items());
 
         return $paginator;
     }
@@ -77,6 +87,8 @@ class CustomerReceiptService
         $receipt = CustomerReceipt::with(['allocations', 'setoffs.creditNote', 'settlements'])->findOrFail($id);
         $this->attachCustomerSnapshots([$receipt]);
         $this->attachInvoiceNumbers($receipt);
+        $this->attachReturnedCounts([$receipt]);
+        $this->attachChequeStatuses($receipt);
 
         return $receipt;
     }
@@ -426,6 +438,14 @@ class CustomerReceiptService
         }
 
         return DB::transaction(function () use ($receipt, $reason): CustomerReceipt {
+            // Locked first, as a cheque return locks it: a return and a void of
+            // the same receipt queue, and the second sees what the first did.
+            $locked = CustomerReceipt::whereKey($receipt->id)->lockForUpdate()->first();
+
+            if ($locked === null || $locked->status !== CustomerReceiptStatus::Confirmed) {
+                abort(422, 'Only a confirmed receipt can be voided.');
+            }
+
             // A cheque already on a deposit slip has left Cheques in Hand, so
             // reversing the receipt would take it out a second time. Checked
             // inside the transaction, after the deposit side's locks would
@@ -435,6 +455,24 @@ class CustomerReceiptService
             if ($depositNo !== null) {
                 abort(422, 'A cheque from ' . $receipt->receipt_no . ' is on bank deposit ' . $depositNo
                     . '. Remove it from that deposit (or void the deposit) first.');
+            }
+
+            // A returned cheque already reopened its invoices with its own
+            // entry; voiding the receipt as well would reopen them twice.
+            $returned = app(ChequeReturnService::class)->returnedOn(ChequeReturn::DOCUMENT_CUSTOMER_RECEIPT, (int) $receipt->id);
+
+            if ($returned !== null) {
+                abort(422, $receipt->receipt_no . ' cannot be voided: the bank returned its ' . $returned
+                    . ', which already reopened the invoices.');
+            }
+
+            // It spent an advance whose cheque bounced: that bounce already
+            // reopened the invoices this receipt paid with it.
+            $through = app(ChequeReturnService::class)->reopenedThrough(ChequeReturn::DOCUMENT_CUSTOMER_RECEIPT, (int) $receipt->id);
+
+            if ($through !== null) {
+                abort(422, $receipt->receipt_no . ' cannot be voided: it used an advance from ' . $through
+                    . ', which the bank returned. That already reopened the invoices it paid.');
             }
 
             $receipt->loadMissing(['allocations', 'setoffs']);
@@ -782,6 +820,37 @@ class CustomerReceiptService
     }
 
     /** @param array<CustomerReceipt> $receipts */
+    /**
+     * How many of each receipt's cheques the bank returned -- the list badge.
+     * setRelation, like the customer snapshot, so it is never saved as a column.
+     *
+     * @param array<CustomerReceipt> $receipts
+     */
+    private function attachReturnedCounts(array $receipts): void
+    {
+        $counts = app(ChequeReturnService::class)->countsByDocument(
+            ChequeReturn::DOCUMENT_CUSTOMER_RECEIPT,
+            collect($receipts)->pluck('id')->map(fn ($id): int => (int) $id)->all(),
+        );
+
+        foreach ($receipts as $receipt) {
+            $receipt->setRelation('returned_cheques', $counts[$receipt->id] ?? 0);
+        }
+    }
+
+    /** Each cheque line's In Hand / Deposited / Realized / Returned status, for the view. */
+    private function attachChequeStatuses(CustomerReceipt $receipt): void
+    {
+        $statuses = app(ChequeStatusRegistry::class)->forSettlements(
+            PostingRole::SOURCE_CUSTOMER_RECEIPT_SETTLEMENT,
+            $receipt->settlements->pluck('id')->map(fn ($id): int => (int) $id)->all(),
+        );
+
+        foreach ($receipt->settlements as $settlement) {
+            $settlement->setRelation('cheque_status', $statuses[$settlement->id] ?? null);
+        }
+    }
+
     private function attachCustomerSnapshots(array $receipts): void
     {
         $customerIds = collect($receipts)->pluck('customer_id')->filter()->unique()->values()->all();

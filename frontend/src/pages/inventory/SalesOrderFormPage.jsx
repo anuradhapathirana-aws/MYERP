@@ -33,6 +33,7 @@ import Breadcrumb from '../../components/Breadcrumb'
 import KeyboardShortcuts from '../../components/ui/KeyboardShortcuts'
 import FilterSearchSelect from '../../components/ui/FilterSearchSelect'
 import Money from '../../components/ui/Money'
+import ReturnedChequesAlert from '../../components/inventory/ReturnedChequesAlert'
 import { confirmAction, showError, showSuccess, showWarning } from '../../utils/alerts'
 import { CURRENCY, fmtMoney, fmtMoneyWithSymbol } from '../../utils/currency'
 
@@ -2147,6 +2148,7 @@ export default function SalesOrderFormPage() {
                 <input className={INPUT_CLS} placeholder="Notes…" value={form.remarks} onChange={setField('remarks')} />
               </div>
             </div>
+            <ReturnedChequesAlert customerId={form.customer_id} />
           </div>
         </div>
 

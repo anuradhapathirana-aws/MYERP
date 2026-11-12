@@ -106,6 +106,7 @@
 
     $gross       = $grn->items->sum(fn ($it) => (float) $it->quantity_received * (float) $it->unit_price);
     $discount    = $grn->items->sum(fn ($it) => (float) $it->quantity_received * (float) $it->unit_price * ((float) $it->discount / 100));
+    $tax         = $grn->items->sum(fn ($it) => (float) $it->tax_amount);
     $net         = (float) $grn->total_amount;
     $discountPct = $gross > 0 ? round($discount / $gross * 100, 2) : 0;
     $totalQty    = $grn->items->sum(fn ($it) => (float) $it->quantity_received);
@@ -255,6 +256,12 @@
       <tr>
         <td class="meta-label">Discount {{ rtrim(rtrim(number_format($discountPct, 2), '0'), '.') }}%</td>
         <td class="ta-r">- {{ $money($discount) }}</td>
+      </tr>
+      @endif
+      @if($tax > 0)
+      <tr>
+        <td class="meta-label">Tax</td>
+        <td class="ta-r">{{ $money($tax) }}</td>
       </tr>
       @endif
       <tr class="totals-sep">

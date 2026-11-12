@@ -18,5 +18,9 @@ export const updateCustomer = (id, data) =>
 export const deleteCustomer = (id) =>
   api.delete(`/api/v1/customer-masters/${id}`)
 
+/** Cheques of this customer the bank returned, newest first. */
+export const getCustomerReturnedCheques = (id) =>
+  api.get(`/api/v1/customer-masters/${id}/returned-cheques`).then((r) => r.data.data)
+
 export const getNextCustomerCode = () =>
   api.get('/api/v1/customer-masters/next-code').then((r) => r.data.data.customer_code)

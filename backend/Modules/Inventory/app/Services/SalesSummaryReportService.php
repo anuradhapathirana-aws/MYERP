@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Enums\CustomerReceiptStatus;
 use Modules\Inventory\Enums\CustomerReturnStatus;
 use Modules\Inventory\Enums\InvoiceStatus;
+use Modules\Inventory\Models\ChequeReturnAllocation;
 
 class SalesSummaryReportService
 {
@@ -114,9 +115,19 @@ class SalesSummaryReportService
         // payment-method columns above. GREATEST(..., 0) clamps per invoice so an
         // overpaid one (which becomes a credit note here, not a negative receivable)
         // can't mask another invoice's genuine shortfall.
+        // Receipt money paid by a cheque the bank returned (as at date_to) was
+        // never collected -- it reopened the invoice (InvoiceBalanceService).
+        $bouncedPerInvoice = DB::table('inv_cheque_return_allocations as ca')
+            ->join('inv_cheque_returns as cr', 'cr.id', '=', 'ca.cheque_return_id')
+            ->whereIn('ca.reference_type', ChequeReturnAllocation::REOPENS_INVOICE)
+            ->when($toDate, fn ($q) => $q->where('cr.return_date', '<=', $toDate))
+            ->groupBy('ca.reference_id')
+            ->selectRaw('ca.reference_id as invoice_id, SUM(ca.amount) as bounced');
+
         $billStats = DB::table('inv_invoices as i')
             ->leftJoinSub($receivedPerInvoice, 'rc', 'rc.invoice_id', '=', 'i.id')
             ->leftJoinSub($returnedPerInvoice, 'rt', 'rt.invoice_id', '=', 'i.id')
+            ->leftJoinSub($bouncedPerInvoice, 'bc', 'bc.invoice_id', '=', 'i.id')
             ->whereIn('i.status', [InvoiceStatus::Issued->value, InvoiceStatus::Paid->value, InvoiceStatus::Returned->value])
             ->whereNull('i.deleted_at')
             ->when($fromDate, fn ($q) => $q->where('i.invoice_date', '>=', $fromDate))
@@ -124,7 +135,7 @@ class SalesSummaryReportService
             ->selectRaw(
                 'COUNT(*) as bill_count,
                  COALESCE(SUM(i.grand_total - COALESCE(rt.returned_total, 0)), 0) as net_sale,
-                 COALESCE(SUM(GREATEST(i.grand_total - COALESCE(rc.received, 0) - COALESCE(rt.returned_applied, 0), 0)), 0) as uncollected'
+                 COALESCE(SUM(GREATEST(i.grand_total - COALESCE(rc.received, 0) + COALESCE(bc.bounced, 0) - COALESCE(rt.returned_applied, 0), 0)), 0) as uncollected'
             )
             ->first();
 

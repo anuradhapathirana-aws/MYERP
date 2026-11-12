@@ -319,7 +319,7 @@ class JournalVoucherApiTest extends TestCase
     {
         $response = $this->actingAs($this->user)->getJson('/api/v1/finance-settings')->assertOk();
 
-        $this->assertCount(18, $response->json('data.mappings'));
+        $this->assertCount(20, $response->json('data.mappings'));
         $this->assertSame([], $response->json('data.missing_required'));
         $this->assertSame('review', $response->json('data.posting_mode'), 'Review is the safe default.');
 

@@ -168,8 +168,8 @@ class LedgerAccountService
      *
      * Separate from create() on purpose. That one takes a LedgerAccountData
      * built from a form, with a cash/bank block and a company that make no
-     * sense for a party. This one is called by PartyLedgerProvisioner during a
-     * posting, so it accepts only what a party account can legitimately have.
+     * sense for a party. This one is called by PartyLedgerProvisioner, so it
+     * accepts only what a party account can legitimately have.
      *
      * The unique index on (party_type, party_id) is the real guarantee here:
      * two concurrent postings for the same new supplier cannot both succeed, so

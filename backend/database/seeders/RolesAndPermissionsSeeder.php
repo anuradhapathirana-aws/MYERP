@@ -40,6 +40,7 @@ class RolesAndPermissionsSeeder extends Seeder
         'purchase_requests'     => ['view', 'create', 'edit', 'delete', 'approve'],
         'purchase_orders'       => ['view', 'create', 'edit', 'delete'],
         'grns'                  => ['view', 'create', 'edit', 'delete', 'confirm'],
+        'supplier_returns'      => ['view', 'create', 'edit', 'delete', 'confirm'],
         'costings'              => ['view', 'create', 'edit', 'delete', 'confirm'],
         'stock_reconciliations' => ['view', 'create', 'edit', 'delete', 'approve'],
         'costing_expense_types' => ['manage'],
@@ -111,11 +112,20 @@ class RolesAndPermissionsSeeder extends Seeder
         // it, so both are separate from create/edit for the same reason.
         'bills' => ['view', 'create', 'edit', 'delete', 'confirm', 'void'],
 
+        // Charge Types: what a bill line is for (Freight, Customs Duty, Import
+        // VAT...) and so where it posts. Admin-only by default like every
+        // Finance screen.
+        'charge_types' => ['view', 'create', 'edit', 'delete'],
+
         // Bill Payment: same split. confirm pays out money, void puts it back.
         'bill_payments' => ['view', 'create', 'edit', 'delete', 'confirm', 'void'],
 
         // Bank Deposit: same split. confirm moves the money into the bank.
         'bank_deposits' => ['view', 'create', 'edit', 'delete', 'confirm', 'void'],
+
+        // Bank Reconciliation: post freezes the matching against the statement;
+        // void undoes the latest one. Both above plain create/edit.
+        'bank_reconciliations' => ['view', 'create', 'edit', 'delete', 'post', 'void'],
 
     ];
 

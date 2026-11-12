@@ -6,6 +6,7 @@ namespace Modules\Inventory\Services;
 
 use App\Contracts\FundBalanceGuard;
 use App\Contracts\JournalPoster;
+use App\Services\ChequeStatusRegistry;
 use App\Support\Journal\PostingRole;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -18,6 +19,7 @@ use Modules\Inventory\Enums\SetoffType;
 use Modules\Inventory\Enums\SupplierPaymentStatus;
 use App\Models\Bank;
 use App\Models\PaymentMode;
+use Modules\Inventory\Models\ChequeReturn;
 use Modules\Inventory\Models\SupplierCreditNote;
 use Modules\Inventory\Models\SupplierPayment;
 use Modules\Inventory\Models\SupplierPaymentAllocation;
@@ -27,6 +29,10 @@ use Modules\Inventory\Posting\SupplierPaymentJournal;
 
 class SupplierPaymentService
 {
+    public function __construct(private readonly GrnBalanceService $balances)
+    {
+    }
+
     /** @param array<string, mixed> $filters */
     public function paginate(int $perPage = 50, array $filters = []): LengthAwarePaginator
     {
@@ -68,8 +74,16 @@ class SupplierPaymentService
             $query->whereDate('payment_date', '<=', $filters['date_to']);
         }
 
+        // Only payments with a cheque the bank returned.
+        if (!empty($filters['cheque_returned'])) {
+            $query->whereIn('id', fn ($q) => $q->select('document_id')
+                ->from('inv_cheque_returns')
+                ->where('document_type', ChequeReturn::DOCUMENT_SUPPLIER_PAYMENT));
+        }
+
         $paginator = $query->paginate($perPage);
         $this->attachSupplierSnapshots($paginator->items());
+        $this->attachReturnedCounts($paginator->items());
 
         return $paginator;
     }
@@ -79,6 +93,8 @@ class SupplierPaymentService
         $payment = SupplierPayment::with(['allocations', 'setoffs.creditNote', 'settlements'])->findOrFail($id);
         $this->attachSupplierSnapshots([$payment]);
         $this->attachGrnNumbers($payment);
+        $this->attachReturnedCounts([$payment]);
+        $this->attachChequeStatuses($payment);
 
         return $payment;
     }
@@ -105,23 +121,13 @@ class SupplierPaymentService
             return [];
         }
 
-        $paidByGrn = DB::table('inv_supplier_payment_allocations as a')
-            ->join('inv_supplier_payments as p', 'p.id', '=', 'a.payment_id')
-            ->whereIn('a.reference_id', $grns->pluck('id')->all())
-            ->where('a.reference_type', 'grn')
-            ->where('p.status', SupplierPaymentStatus::Confirmed->value)
-            ->groupBy('a.reference_id')
-            // payment_amount + discount: a discount is a permanent write-off, so it must
-            // reduce outstanding exactly like a cash payment does.
-            ->select('a.reference_id', DB::raw('SUM(a.payment_amount + a.discount) as paid'))
-            ->get()
-            ->pluck('paid', 'reference_id');
+        // Net of confirmed payments (and their discounts) and of supplier returns.
+        $outstandingByGrn = $this->balances->outstandingFor($grns->pluck('total_amount', 'id')->all());
 
         $result = [];
 
         foreach ($grns as $grn) {
-            $paid        = (float) ($paidByGrn[$grn->id] ?? 0);
-            $outstanding = (float) $grn->total_amount - $paid;
+            $outstanding = $outstandingByGrn[$grn->id];
 
             if ($outstanding <= 0) {
                 continue;
@@ -299,6 +305,8 @@ class SupplierPaymentService
                 $amount = (float) $setoff->amount;
                 $setoffAmountTotal += $amount;
 
+                // Legacy manual set-off, kept only so a draft saved before Supplier Returns
+                // existed can still be confirmed. New payments can no longer choose it.
                 if ($setoff->setoff_type === SetoffType::CustomerReturn) {
                     $creditNote = SupplierCreditNote::create([
                         'credit_note_no'    => $this->generateCreditNoteNo(),
@@ -316,13 +324,19 @@ class SupplierPaymentService
                     continue;
                 }
 
-                // over_payment / advance setoffs consume an existing credit note's balance
+                // over_payment / advance / supplier_return setoffs consume an existing credit
+                // note's balance
                 $creditNote = SupplierCreditNote::whereKey($setoff->credit_note_id)
                     ->lockForUpdate()
                     ->first();
 
                 if (!$creditNote) {
                     abort(422, 'Referenced credit note no longer exists.');
+                }
+
+                if ((int) $creditNote->supplier_id !== (int) $payment->supplier_id
+                    || $creditNote->credit_type->value !== $setoff->setoff_type->value) {
+                    abort(422, "Credit note {$creditNote->credit_note_no} cannot be set off on this payment.");
                 }
 
                 if ((float) $creditNote->remaining_balance < $amount) {
@@ -449,6 +463,32 @@ class SupplierPaymentService
         }
 
         return DB::transaction(function () use ($payment, $reason): SupplierPayment {
+            // Locked first, as a cheque return locks it: a return and a void of
+            // the same payment queue, and the second sees what the first did.
+            $locked = SupplierPayment::whereKey($payment->id)->lockForUpdate()->first();
+
+            if ($locked === null || $locked->status !== SupplierPaymentStatus::Confirmed) {
+                abort(422, 'Only a confirmed payment can be voided.');
+            }
+
+            // A returned cheque already reopened its GRNs with its own entry;
+            // voiding the payment as well would reopen them twice.
+            $returned = app(ChequeReturnService::class)->returnedOn(ChequeReturn::DOCUMENT_SUPPLIER_PAYMENT, (int) $payment->id);
+
+            if ($returned !== null) {
+                abort(422, $payment->payment_no . ' cannot be voided: the bank returned its ' . $returned
+                    . ', which already reopened the GRNs.');
+            }
+
+            // It spent an advance whose cheque bounced: that bounce already
+            // reopened the GRNs this payment paid with it.
+            $through = app(ChequeReturnService::class)->reopenedThrough(ChequeReturn::DOCUMENT_SUPPLIER_PAYMENT, (int) $payment->id);
+
+            if ($through !== null) {
+                abort(422, $payment->payment_no . ' cannot be voided: it used an advance from ' . $through
+                    . ', which the bank returned. That already reopened the GRNs it paid.');
+            }
+
             $payment->loadMissing(['setoffs', 'settlements']);
 
             // Give back what this payment consumed. Locked in id order, the
@@ -558,40 +598,13 @@ class SupplierPaymentService
     /** Atomically generate the next credit note number (must be called inside a DB transaction) */
     private function generateCreditNoteNo(): string
     {
-        $prefix = 'CN-';
-
-        $last = SupplierCreditNote::where('credit_note_no', 'like', $prefix . '%')
-            ->orderByDesc('id')
-            ->lockForUpdate()
-            ->value('credit_note_no');
-
-        $next = $last
-            ? (int) substr($last, strlen($prefix)) + 1
-            : 1;
-
-        return $prefix . str_pad((string) $next, 4, '0', STR_PAD_LEFT);
+        return $this->balances->generateCreditNoteNo();
     }
 
-    /** Outstanding for a single GRN, based only on confirmed payments — reused by the list endpoint and confirm(). */
+    /** Outstanding for a single GRN (net of confirmed payments and supplier returns) — reused by syncAllocations() and confirm(). */
     private function computeOutstanding(int $grnId): float
     {
-        $grn = DB::table('inv_goods_received_notes')->where('id', $grnId)->first(['total_amount']);
-
-        if (!$grn) {
-            return 0.0;
-        }
-
-        // payment_amount + discount: a discount is a permanent write-off, so it must
-        // reduce outstanding exactly like a cash payment does.
-        $paid = DB::table('inv_supplier_payment_allocations as a')
-            ->join('inv_supplier_payments as p', 'p.id', '=', 'a.payment_id')
-            ->where('a.reference_type', 'grn')
-            ->where('a.reference_id', $grnId)
-            ->where('p.status', SupplierPaymentStatus::Confirmed->value)
-            ->selectRaw('COALESCE(SUM(a.payment_amount + a.discount), 0) as total')
-            ->value('total');
-
-        return (float) $grn->total_amount - (float) $paid;
+        return $this->balances->outstanding($grnId);
     }
 
     /**
@@ -818,6 +831,37 @@ class SupplierPaymentService
     }
 
     /** @param array<SupplierPayment> $payments */
+    /**
+     * How many of each payment's cheques came back -- the list badge.
+     * setRelation, like the supplier snapshot, so it is never saved as a column.
+     *
+     * @param array<SupplierPayment> $payments
+     */
+    private function attachReturnedCounts(array $payments): void
+    {
+        $counts = app(ChequeReturnService::class)->countsByDocument(
+            ChequeReturn::DOCUMENT_SUPPLIER_PAYMENT,
+            collect($payments)->pluck('id')->map(fn ($id): int => (int) $id)->all(),
+        );
+
+        foreach ($payments as $payment) {
+            $payment->setRelation('returned_cheques', $counts[$payment->id] ?? 0);
+        }
+    }
+
+    /** Each cheque line's Issued / Realized / Returned status, for the view. */
+    private function attachChequeStatuses(SupplierPayment $payment): void
+    {
+        $statuses = app(ChequeStatusRegistry::class)->forSettlements(
+            PostingRole::SOURCE_SUPPLIER_PAYMENT_SETTLEMENT,
+            $payment->settlements->pluck('id')->map(fn ($id): int => (int) $id)->all(),
+        );
+
+        foreach ($payment->settlements as $settlement) {
+            $settlement->setRelation('cheque_status', $statuses[$settlement->id] ?? null);
+        }
+    }
+
     private function attachSupplierSnapshots(array $payments): void
     {
         $supplierIds = collect($payments)->pluck('supplier_id')->filter()->unique()->values()->all();

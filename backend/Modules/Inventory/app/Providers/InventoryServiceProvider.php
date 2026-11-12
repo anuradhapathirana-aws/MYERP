@@ -2,9 +2,17 @@
 
 namespace Modules\Inventory\Providers;
 
+use App\Contracts\ChequeReturnSource;
+use App\Contracts\LandedChargeUsage;
+use App\Contracts\LandedCostTargets;
+use App\Contracts\TaxCodeUsage;
+use Modules\Inventory\Support\CostingLandedChargeUsage;
+use Modules\Inventory\Support\GrnTaxCodeUsage;
+use Modules\Inventory\Support\InventoryLandedCostTargets;
 use Modules\Inventory\Console\Commands\RecalculateStockBalances;
 use Modules\Inventory\Console\Commands\VerifyVariantBackfill;
 use Modules\Inventory\Console\Commands\WarmPieceQrCodes;
+use Modules\Inventory\Services\ChequeReturnService;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
 class InventoryServiceProvider extends ModuleServiceProvider
@@ -24,4 +32,21 @@ class InventoryServiceProvider extends ModuleServiceProvider
         EventServiceProvider::class,
         RouteServiceProvider::class,
     ];
+
+    public function register(): void
+    {
+        parent::register();
+
+        // GRN lines reference core tax codes; the master asks before deleting one.
+        $this->app->tag([GrnTaxCodeUsage::class], TaxCodeUsage::TAG);
+
+        // Landed costs: bill lines link to GRNs and fill Costing rows; a bill
+        // pulled into a costing must not be voided from under it.
+        $this->app->bind(LandedCostTargets::class, InventoryLandedCostTargets::class);
+        $this->app->tag([CostingLandedChargeUsage::class], LandedChargeUsage::TAG);
+
+        // Bank Reconciliation returns a receipt's or a payment's cheque here:
+        // the invoices / GRNs it settled reopen.
+        $this->app->tag([ChequeReturnService::class], ChequeReturnSource::TAG);
+    }
 }

@@ -99,6 +99,8 @@ class SupplierMasterController extends Controller
                 'bil_postal_code'       => $s->bil_postal_code,
                 'bil_state_province'    => $s->bil_state_province,
                 'bil_country'           => $s->bil_country,
+                // The GRN form starts new lines with this tax code.
+                'default_tax_code_id'   => $s->default_tax_code_id,
             ])
             ->values()
             ->all();

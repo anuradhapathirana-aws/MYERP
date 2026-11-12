@@ -83,18 +83,28 @@ function PaymentHistoryPanel({ invoiceId }) {
                       <td className="px-2 py-1 text-right tabular-nums text-slate-500"><Money value={p.discount} /></td>
                       <td className="px-2 py-1 text-right tabular-nums font-semibold text-slate-800"><Money value={p.outstanding_after} /></td>
                     </tr>
-                    {p.settlements?.length > 0 && (
+                    {(p.settlements?.length > 0 || p.returned_cheques?.length > 0) && (
                       <tr className="bg-white">
                         <td></td>
                         <td colSpan={4} className="px-2 pb-1.5 pt-0">
                           <div className="flex flex-wrap gap-1">
-                            {p.settlements.map((s, i) => (
+                            {p.settlements?.map((s, i) => (
                               <span
                                 key={i}
                                 className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600"
                                 title={s.remark || undefined}
                               >
                                 {settlementLabel(s)}: <Money value={s.amount} />
+                              </span>
+                            ))}
+                            {/* The bank returned this cheque: what it paid here is owed again. */}
+                            {p.returned_cheques?.map((r, i) => (
+                              <span
+                                key={`r${i}`}
+                                className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-600 ring-1 ring-red-200"
+                                title={`Returned in ${r.reference}`}
+                              >
+                                Cheque {r.cheque_no} returned {r.return_date}: −<Money value={r.amount} />
                               </span>
                             ))}
                           </div>

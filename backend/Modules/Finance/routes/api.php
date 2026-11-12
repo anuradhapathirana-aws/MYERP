@@ -7,10 +7,14 @@ use Modules\Finance\Http\Controllers\AccountCategoryController;
 use Modules\Finance\Http\Controllers\AttachmentController;
 use Modules\Finance\Http\Controllers\BankDepositController;
 use Modules\Finance\Http\Controllers\BankDepositPdfController;
+use Modules\Finance\Http\Controllers\BankReconciliationController;
+use Modules\Finance\Http\Controllers\BankReconciliationPdfController;
 use Modules\Finance\Http\Controllers\BillController;
 use Modules\Finance\Http\Controllers\BillPaymentController;
+use Modules\Finance\Http\Controllers\ChargeTypeController;
 use Modules\Finance\Http\Controllers\ControlAccountController;
 use Modules\Finance\Http\Controllers\FinanceReportController;
+use Modules\Finance\Http\Controllers\UnclearedChequesReportController;
 use Modules\Finance\Http\Controllers\FinanceSettingsController;
 use Modules\Finance\Http\Controllers\JournalEntryController;
 use Modules\Finance\Http\Controllers\LedgerAccountController;
@@ -98,7 +102,21 @@ Route::middleware(['auth:sanctum', 'module:finance'])->prefix('v1')->group(funct
     // ── Payables: supplier bills ─────────────────────────────────────────────
     // Reads are unthrottled beyond the app default; every write goes through
     // the finance-writes limiter (FinanceServiceProvider).
+    // ── Payables: charge types (what a bill line is for) ─────────────────────
+    Route::get('charge-types/options', [ChargeTypeController::class, 'options'])->name('charge-types.options');
+    Route::get('charge-types', [ChargeTypeController::class, 'index'])->name('charge-types.index');
+    Route::middleware('throttle:finance-writes')->group(function (): void {
+        Route::post('charge-types', [ChargeTypeController::class, 'store'])->name('charge-types.store');
+        Route::match(['put', 'patch'], 'charge-types/{charge_type}', [ChargeTypeController::class, 'update'])
+            ->whereNumber('charge_type')
+            ->name('charge-types.update');
+        Route::delete('charge-types/{charge_type}', [ChargeTypeController::class, 'destroy'])
+            ->whereNumber('charge_type')
+            ->name('charge-types.destroy');
+    });
+
     Route::get('bills/options', [BillController::class, 'options'])->name('bills.options');
+    Route::get('bills/grn-options', [BillController::class, 'grnOptions'])->name('bills.grn-options');
     Route::get('bills/next-no', [BillController::class, 'nextNo'])->name('bills.next-no');
     Route::get('bills/supplier-defaults/{supplier}', [BillController::class, 'supplierDefaults'])
         ->whereNumber('supplier')
@@ -150,6 +168,22 @@ Route::middleware(['auth:sanctum', 'module:finance'])->prefix('v1')->group(funct
             ->whereNumber('bank_deposit')
             ->name('bank-deposits.destroy');
 
+        Route::post('bank-reconciliations/bank-entries', [BankReconciliationController::class, 'addEntry'])
+            ->name('bank-reconciliations.bank-entries');
+        Route::post('bank-reconciliations/{bank_reconciliation}/post', [BankReconciliationController::class, 'post'])
+            ->whereNumber('bank_reconciliation')
+            ->name('bank-reconciliations.post');
+        Route::post('bank-reconciliations/{bank_reconciliation}/void', [BankReconciliationController::class, 'void'])
+            ->whereNumber('bank_reconciliation')
+            ->name('bank-reconciliations.void');
+        Route::post('bank-reconciliations', [BankReconciliationController::class, 'store'])->name('bank-reconciliations.store');
+        Route::match(['put', 'patch'], 'bank-reconciliations/{bank_reconciliation}', [BankReconciliationController::class, 'update'])
+            ->whereNumber('bank_reconciliation')
+            ->name('bank-reconciliations.update');
+        Route::delete('bank-reconciliations/{bank_reconciliation}', [BankReconciliationController::class, 'destroy'])
+            ->whereNumber('bank_reconciliation')
+            ->name('bank-reconciliations.destroy');
+
         // Shared attachments for every Finance document type.
         Route::post('finance-attachments/{type}/{id}', [AttachmentController::class, 'store'])
             ->where('type', '[a-z_]+')->whereNumber('id')
@@ -186,6 +220,24 @@ Route::middleware(['auth:sanctum', 'module:finance'])->prefix('v1')->group(funct
         ->whereNumber('bank_deposit')
         ->name('bank-deposits.show');
 
+    // ── Banking: bank reconciliation ─────────────────────────────────────────
+    Route::get('bank-reconciliations/options', [BankReconciliationController::class, 'options'])->name('bank-reconciliations.options');
+    Route::get('bank-reconciliations/next-no', [BankReconciliationController::class, 'nextNo'])->name('bank-reconciliations.next-no');
+    Route::get('bank-reconciliations/workspace', [BankReconciliationController::class, 'workspace'])->name('bank-reconciliations.workspace');
+    Route::get('bank-reconciliations/search', [BankReconciliationController::class, 'search'])->name('bank-reconciliations.search');
+    // The same read, with the lines already on screen in the body instead of a long query string.
+    Route::post('bank-reconciliations/search', [BankReconciliationController::class, 'search'])->name('bank-reconciliations.search.post');
+    Route::get('bank-reconciliations/{bank_reconciliation}/history', [BankReconciliationController::class, 'history'])
+        ->whereNumber('bank_reconciliation')
+        ->name('bank-reconciliations.history');
+    Route::get('bank-reconciliations/{bank_reconciliation}/pdf', [BankReconciliationPdfController::class, 'download'])
+        ->whereNumber('bank_reconciliation')
+        ->name('bank-reconciliations.pdf');
+    Route::get('bank-reconciliations', [BankReconciliationController::class, 'index'])->name('bank-reconciliations.index');
+    Route::get('bank-reconciliations/{bank_reconciliation}', [BankReconciliationController::class, 'show'])
+        ->whereNumber('bank_reconciliation')
+        ->name('bank-reconciliations.show');
+
     Route::get('bills', [BillController::class, 'index'])->name('bills.index');
     Route::get('bills/{bill}', [BillController::class, 'show'])->whereNumber('bill')->name('bills.show');
 
@@ -199,4 +251,12 @@ Route::middleware(['auth:sanctum', 'module:finance'])->prefix('v1')->group(funct
     // ── Financial statements ─────────────────────────────────────────────────
     Route::get('finance-reports/trial-balance', [FinanceReportController::class, 'trialBalanceReport'])
         ->name('finance-reports.trial-balance');
+    Route::get('finance-reports/uncleared-cheques/options', [UnclearedChequesReportController::class, 'options'])
+        ->name('finance-reports.uncleared-cheques.options');
+    Route::get('finance-reports/uncleared-cheques/pdf', [UnclearedChequesReportController::class, 'pdf'])
+        ->name('finance-reports.uncleared-cheques.pdf');
+    Route::get('finance-reports/uncleared-cheques/csv', [UnclearedChequesReportController::class, 'csv'])
+        ->name('finance-reports.uncleared-cheques.csv');
+    Route::get('finance-reports/uncleared-cheques', [UnclearedChequesReportController::class, 'index'])
+        ->name('finance-reports.uncleared-cheques');
 });

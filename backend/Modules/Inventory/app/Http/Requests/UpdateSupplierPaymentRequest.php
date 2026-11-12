@@ -38,7 +38,9 @@ class UpdateSupplierPaymentRequest extends FormRequest
             'allocations.*.line_remark'          => ['nullable', 'string'],
 
             'setoffs'                     => ['nullable', 'array'],
-            'setoffs.*.setoff_type'       => ['required_with:setoffs', 'string', 'in:customer_return,over_payment,advance'],
+            // customer_return (a manually typed amount) is no longer accepted: goods sent back
+            // are deducted through the supplier_return credit note their Supplier Return raised.
+            'setoffs.*.setoff_type'       => ['required_with:setoffs', 'string', 'in:supplier_return,over_payment,advance'],
             'setoffs.*.credit_note_id'    => ['nullable', 'integer', 'exists:inv_supplier_credit_notes,id'],
             'setoffs.*.amount'            => ['required_with:setoffs', 'numeric', 'min:0.01'],
             'setoffs.*.remark'            => ['nullable', 'string'],
@@ -101,12 +103,8 @@ class UpdateSupplierPaymentRequest extends FormRequest
             foreach ($setoffs as $index => $setoff) {
                 $type = $setoff['setoff_type'] ?? null;
 
-                if (in_array($type, ['over_payment', 'advance'], true) && empty($setoff['credit_note_id'])) {
+                if (in_array($type, ['supplier_return', 'over_payment', 'advance'], true) && empty($setoff['credit_note_id'])) {
                     $validator->errors()->add("setoffs.{$index}.credit_note_id", 'A credit note must be selected for this setoff type.');
-                }
-
-                if ($type === 'customer_return' && empty($setoff['remark'])) {
-                    $validator->errors()->add("setoffs.{$index}.remark", 'A remark is required for customer return setoffs.');
                 }
             }
         });

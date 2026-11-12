@@ -4,19 +4,21 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Http\Controllers;
 
+use App\Support\Journal\PostingRole;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
 use Modules\Inventory\DTOs\CustomerData;
 use Modules\Inventory\Http\Requests\CustomerRequest;
 use Modules\Inventory\Http\Resources\CustomerResource;
 use Modules\Inventory\Models\CustomerMaster;
+use Modules\Inventory\Services\ChequeReturnService;
 use Modules\Inventory\Services\CustomerService;
 
 class CustomerController extends Controller
 {
     public function __construct(private readonly CustomerService $service)
     {
-        $this->middleware('permission:view_customer_masters')->only(['index', 'show', 'all', 'nextCustomerCode']);
+        $this->middleware('permission:view_customer_masters')->only(['index', 'show', 'all', 'nextCustomerCode', 'returnedCheques']);
         $this->middleware('permission:create_customer_masters')->only(['store']);
         $this->middleware('permission:edit_customer_masters')->only(['update']);
         $this->middleware('permission:delete_customer_masters')->only(['destroy']);
@@ -82,6 +84,18 @@ class CustomerController extends Controller
     public function nextCustomerCode(): JsonResponse
     {
         return response()->json(['data' => ['customer_code' => $this->service->nextCustomerCode()]]);
+    }
+
+    /**
+     * GET /customer-masters/{id}/returned-cheques — cheques of this customer
+     * the bank returned, newest first. The flag the receipt and sales screens
+     * show when the customer is picked.
+     */
+    public function returnedCheques(CustomerMaster $customerMaster, ChequeReturnService $returns): JsonResponse
+    {
+        return response()->json([
+            'data' => $returns->returnedChequesFor(PostingRole::PARTY_CUSTOMER, (int) $customerMaster->id),
+        ]);
     }
 
     /** Flat list for <select> dropdowns — no pagination, lookup fields only. */

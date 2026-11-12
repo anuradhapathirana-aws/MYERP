@@ -46,6 +46,11 @@ class StoreCostingRequest extends FormRequest
             'items.*.expenses'                     => ['nullable', 'array'],
             'items.*.expenses.*.expense_type_id'   => ['required', 'integer', 'min:1'],
             'items.*.expenses.*.amount'            => ['required', 'numeric', 'min:0'],
+
+            // Supplier-bill lines pulled in. Only ids travel: amounts are read
+            // back from Finance on save.
+            'bill_charge_ids'                      => ['nullable', 'array', 'max:200'],
+            'bill_charge_ids.*'                    => ['integer', 'min:1', 'distinct'],
         ];
     }
 

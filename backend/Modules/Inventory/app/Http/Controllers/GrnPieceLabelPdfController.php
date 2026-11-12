@@ -24,6 +24,8 @@ class GrnPieceLabelPdfController extends Controller
 
         $pieces = GrnItemPiece::with(['product.baseUnit', 'parent:id,piece_code', 'batch:id,batch_no'])
             ->where('grn_id', $goodsReceivedNote->id)
+            // Rolls sent back on a supplier return left with their stickers.
+            ->where('status', '!=', GrnItemPiece::STATUS_RETURNED)
             ->orderBy('grn_item_id')
             ->orderBy('piece_no')
             ->get();
@@ -47,7 +49,7 @@ class GrnPieceLabelPdfController extends Controller
 
         $content = $this->renderer->a4Sheet((string) $goodsReceivedNote->grn_no, $labels);
 
-        GrnItemPiece::where('grn_id', $goodsReceivedNote->id)
+        GrnItemPiece::whereIn('id', $pieces->pluck('id'))
             ->whereNull('printed_at')
             ->update(['printed_at' => now()]);
 

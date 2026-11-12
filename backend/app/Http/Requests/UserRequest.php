@@ -27,8 +27,6 @@ class UserRequest extends FormRequest
             'email'            => ['required', 'email', 'max:100', Rule::unique('users', 'email')->ignore($userId)],
             'roles'            => ['required', 'array', 'min:1'],
             'roles.*'          => ['string', Rule::exists('roles', 'name')],
-            'active_modules'   => ['nullable', 'array'],
-            'active_modules.*' => ['string'],
             'password'         => [
                 $isStore ? 'required' : 'nullable',
                 'string',
@@ -64,8 +62,6 @@ class UserRequest extends FormRequest
     {
         return [
             'roles.*'          => 'role',
-            'active_modules'   => 'active modules',
-            'active_modules.*' => 'module',
             'company_ids'      => 'companies',
             'company_ids.*'    => 'company',
         ];

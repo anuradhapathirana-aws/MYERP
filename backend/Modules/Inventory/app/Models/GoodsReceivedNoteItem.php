@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Models;
 
+use App\Models\TaxCode;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -25,8 +26,12 @@ class GoodsReceivedNoteItem extends Model
         'base_quantity',
         'no_of_pieces',
         'unit_price',
+        'unit_price_incl',
         'discount',
+        'tax_code_id',
         'tax',
+        'tax_amount',
+        'recoverable_tax',
         'line_total',
         'batch_no',
         'expiry_date',
@@ -45,8 +50,12 @@ class GoodsReceivedNoteItem extends Model
         'base_quantity'     => 'decimal:6',
         'no_of_pieces'      => 'integer',
         'unit_price'        => 'decimal:4',
+        'unit_price_incl'   => 'decimal:4',
         'discount'          => 'decimal:4',
+        'tax_code_id'       => 'integer',
         'tax'               => 'decimal:4',
+        'tax_amount'        => 'decimal:2',
+        'recoverable_tax'   => 'decimal:2',
         'line_total'        => 'decimal:4',
         'expiry_date'       => 'date',
     ];
@@ -85,6 +94,18 @@ class GoodsReceivedNoteItem extends Model
     public function batchAssignments(): HasMany
     {
         return $this->hasMany(GrnItemBatch::class, 'grn_item_id');
+    }
+
+    /** Each tax on the line (VAT, SSCL ...), as its tax code worked it out. */
+    public function taxes(): HasMany
+    {
+        return $this->hasMany(GrnItemTax::class, 'grn_item_id');
+    }
+
+    /** The line's tax code — a core master, so a soft link with no foreign key. */
+    public function taxCode(): BelongsTo
+    {
+        return $this->belongsTo(TaxCode::class, 'tax_code_id');
     }
 
     public function pieces(): HasMany

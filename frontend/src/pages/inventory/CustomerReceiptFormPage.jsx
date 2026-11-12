@@ -21,6 +21,8 @@ import Breadcrumb from '../../components/Breadcrumb'
 import KeyboardShortcuts from '../../components/ui/KeyboardShortcuts'
 import Money from '../../components/ui/Money'
 import FilterSearchSelect from '../../components/ui/FilterSearchSelect'
+import ReturnedChequesAlert from '../../components/inventory/ReturnedChequesAlert'
+import ChequeStatusChip from '../../components/ui/ChequeStatusChip'
 import { confirmAction, showError, showSuccess } from '../../utils/alerts'
 import { fmtMoneyWithSymbol } from '../../utils/currency'
 import { printPdfBlob } from '../../utils/pdf'
@@ -177,6 +179,7 @@ export default function CustomerReceiptFormPage() {
       amount: String(s.amount), bank_id: s.bank_id ?? null, bank_name: s.bank_name ?? '', bank_account_no: s.bank_account_no ?? '',
       ledger_account_id: s.ledger_account_id ? String(s.ledger_account_id) : '',
       reference_no: s.reference_no ?? '', instrument_date: s.instrument_date ?? '',
+      cheque_status: s.cheque_status ?? null,
     })))
   }, [existing])
 
@@ -714,6 +717,15 @@ export default function CustomerReceiptFormPage() {
             </div>
           </div>
 
+          {isDraft && form.customer_id && (
+            <div className="px-3 pb-2">
+              <ReturnedChequesAlert
+                customerId={form.customer_id}
+                chequeNos={[...settlements.map((s) => s.reference_no), settlementDraft.reference_no]}
+              />
+            </div>
+          )}
+
           {isDraft && (
             <div className="flex items-center gap-2 border-t border-slate-100 px-3 py-2">
               <input
@@ -1177,7 +1189,7 @@ export default function CustomerReceiptFormPage() {
                         <td className="px-2 py-1 text-right text-slate-700"><Money value={s.amount} /></td>
                         <td className="px-2 py-1 text-slate-500">{s.bank_name || '—'}</td>
                         <td className="px-2 py-1 text-slate-500">{s.bank_account_no || '—'}</td>
-                        <td className="px-2 py-1 text-slate-500">{s.reference_no || '—'}</td>
+                        <td className="px-2 py-1 text-slate-500">{s.reference_no || '—'}<ChequeStatusChip status={s.cheque_status} /></td>
                         <td className="px-2 py-1 text-slate-500 whitespace-nowrap">{s.instrument_date || '—'}</td>
                         <td className="px-2 py-1 text-center">
                           {isDraft && (

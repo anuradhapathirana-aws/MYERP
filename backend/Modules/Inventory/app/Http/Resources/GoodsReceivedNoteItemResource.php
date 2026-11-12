@@ -27,9 +27,27 @@ class GoodsReceivedNoteItemResource extends JsonResource
             'base_quantity'     => (float) $this->base_quantity,
             'no_of_pieces'      => (int) $this->no_of_pieces,
             'unit_price'        => (float) $this->unit_price,
+            // The price as typed when the GRN quotes VAT-inclusive; unit_price is before tax.
+            'unit_price_incl'   => $this->unit_price_incl !== null ? (float) $this->unit_price_incl : null,
             'discount'          => (float) $this->discount,
+            'tax_code_id'       => $this->tax_code_id,
             'tax'               => (float) $this->tax,
+            'tax_amount'        => (float) $this->tax_amount,
+            'recoverable_tax'   => (float) $this->recoverable_tax,
             'line_total'        => (float) $this->line_total,
+
+            'tax_code' => $this->whenLoaded('taxCode', fn () => $this->taxCode ? [
+                'id'   => $this->taxCode->id,
+                'code' => $this->taxCode->code,
+                'name' => $this->taxCode->name,
+            ] : null),
+            'taxes' => $this->whenLoaded('taxes', fn () => $this->taxes->map(fn ($t) => [
+                'tax_code_ref'   => $t->tax_code_ref,
+                'rate'           => (float) $t->rate,
+                'base'           => (float) $t->base,
+                'amount'         => (float) $t->amount,
+                'is_recoverable' => $t->is_recoverable,
+            ])->values()),
             'batch_no'          => $this->batch_no,
             'expiry_date'       => $this->expiry_date?->toDateString(),
 

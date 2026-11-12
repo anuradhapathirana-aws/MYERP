@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Finance\Posting;
 
+use App\Enums\PaymentModeType;
 use App\Support\Journal\JournalLineRequest;
 use App\Support\Journal\JournalRequest;
 use App\Support\Journal\PostingRole;
@@ -25,7 +26,7 @@ final class BillPaymentJournal
 {
     public static function build(BillPayment $payment): JournalRequest
     {
-        $payment->loadMissing(['allocations.bill', 'supplier']);
+        $payment->loadMissing(['allocations.bill', 'supplier', 'paymentMode']);
 
         $supplierName = $payment->supplier?->supplier_name;
         $lines        = [];
@@ -44,10 +45,21 @@ final class BillPaymentJournal
             );
         }
 
+        $type = $payment->paymentMode?->effectiveType()
+            ?? PaymentModeType::fromLegacyCode($payment->payment_mode_code);
+
+        // The money line names the payment -- one cheque each -- so Bank
+        // Reconciliation can return it (BillPaymentChequeReturns).
         $lines[] = JournalLineRequest::credit(
             (int) $payment->pay_from_account_id,
             (float) $payment->total_amount,
             description: self::moneyNote($payment),
+            sourceType:  PostingRole::SOURCE_BILL_PAYMENT,
+            sourceId:    (int) $payment->id,
+        )->withInstrument(
+            $type->value,
+            $payment->cheque_no ?? $payment->reference_no,
+            $payment->cheque_date?->toDateString(),
         );
 
         return new JournalRequest(

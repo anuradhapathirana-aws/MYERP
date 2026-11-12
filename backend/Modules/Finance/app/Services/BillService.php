@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace Modules\Finance\Services;
 
 use App\Contracts\JournalPoster;
+use App\Contracts\LandedChargeUsage;
+use App\Contracts\LandedCostTargets;
 use App\Models\AuditLog;
 use App\Models\SupplierMaster;
+use App\Models\TaxCode;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\CompanyAccessService;
@@ -19,9 +22,13 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Modules\Finance\DTOs\BillData;
+use Modules\Finance\DTOs\BillLinePrice;
 use Modules\Finance\Enums\BillStatus;
+use Modules\Finance\Enums\ChargeTreatment;
 use Modules\Finance\Enums\PaymentStatus;
 use Modules\Finance\Models\Bill;
+use Modules\Finance\Models\BillLine;
+use Modules\Finance\Models\ChargeType;
 use Modules\Finance\Models\LedgerAccount;
 use Modules\Finance\Posting\BillJournal;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -42,6 +49,9 @@ class BillService
 {
     private const EAGER = ['supplier:id,supplier_code,supplier_name', 'company:id,company_name', 'location:id,location_name', 'lines.ledgerAccount:id,code,ledger_account_name'];
 
+    /** What the bill screen shows per line, on top of EAGER. */
+    private const LINE_DETAIL = ['lines.chargeType:id,code,name', 'lines.taxCode:id,code,name', 'lines.taxes'];
+
     /** Columns the list may be sorted by. Anything else is ignored. */
     private const SORTABLE = ['bill_no', 'transaction_date', 'due_date', 'total_amount', 'document_no', 'created_at'];
 
@@ -52,6 +62,7 @@ class BillService
         private readonly FinanceControlService $controls,
         private readonly CompanyAccessService  $companyAccess,
         private readonly AuditLogger           $audit,
+        private readonly BillLinePricer        $pricer,
     ) {}
 
     // ── Reading ──────────────────────────────────────────────────────────────
@@ -114,10 +125,26 @@ class BillService
 
         return $bill->load([
             ...self::EAGER,
+            ...self::LINE_DETAIL,
             'attachments',
             'creator:id,name',
             'paymentAllocations.payment:id,payment_no,payment_date,payment_mode_name,status',
         ]);
+    }
+
+    /**
+     * The GRNs the bill's lines link to, keyed by id -- read from Inventory
+     * through LandedCostTargets, never from an inv_ table.
+     *
+     * @return array<int, array{id:int, grn_no:string, grn_date:?string, supplier_name:?string, total_amount:float}>
+     */
+    public function linkedGrns(Bill $bill): array
+    {
+        $bill->loadMissing('lines');
+
+        $ids = $bill->lines->map(fn (BillLine $l) => $l->grnId())->filter()->unique()->values()->all();
+
+        return $ids === [] ? [] : app(LandedCostTargets::class)->grnsByIds($ids);
     }
 
     /** @return Collection<int, AuditLog> */
@@ -206,8 +233,10 @@ class BillService
         return DB::transaction(function () use ($data): Bill {
             $this->lockSupplierAndCheckDuplicate($data->supplier_id, $data->document_no, null);
 
+            $priced = $this->priceLines($data);
+
             $bill = new Bill();
-            $this->fill($bill, $data);
+            $this->fill($bill, $data, $priced);
 
             $bill->bill_no        = $this->numbers->next(
                 DocumentNumberService::TYPE_BILL,
@@ -223,7 +252,7 @@ class BillService
             $bill->updated_by     = Auth::id();
             $bill->save();
 
-            $this->writeLines($bill, $data);
+            $this->writeLines($bill, $priced);
 
             $this->audit->record(Bill::AUDIT_TYPE, $bill->id, 'created', null, $this->snapshot($bill));
 
@@ -244,13 +273,15 @@ class BillService
             $this->lockSupplierAndCheckDuplicate($data->supplier_id, $data->document_no, $locked->id);
 
             $before = $this->snapshot($locked);
+            $priced = $this->priceLines($data);
 
-            $this->fill($locked, $data);
+            $this->fill($locked, $data, $priced);
             $locked->updated_by = Auth::id();
             $locked->save();
 
+            // Line taxes go with their lines (cascade).
             $locked->lines()->delete();
-            $this->writeLines($locked, $data);
+            $this->writeLines($locked, $priced);
 
             [$old, $new] = $this->audit->diff($before, $this->snapshot($locked->fresh()));
 
@@ -303,6 +334,7 @@ class BillService
             }
 
             $this->assertLinesStillBillable($locked);
+            $this->assertGrnLinksStillValid($locked);
 
             $poster = app(JournalPoster::class);
 
@@ -356,6 +388,8 @@ class BillService
                     'status' => 'This bill has payments against it. Reverse the payments first.',
                 ]);
             }
+
+            $this->assertNotInCosting($locked);
 
             $date = $this->controls->assertReversalDate($reversalDate, $locked->transaction_date, 'bill');
 
@@ -461,6 +495,47 @@ class BillService
     }
 
     /**
+     * A line linked to a GRN must still point at a confirmed one: the GRN may
+     * have been cancelled since the draft was saved.
+     */
+    private function assertGrnLinksStillValid(Bill $bill): void
+    {
+        $grnIds  = $bill->lines->map(fn (BillLine $l) => $l->grnId())->filter()->unique()->values()->all();
+        $targets = app(LandedCostTargets::class);
+
+        // Inventory switched off since: the link is kept as a reference, nothing to check against.
+        if ($grnIds === [] || ! $targets->isAvailable()) {
+            return;
+        }
+
+        $found = $targets->grnsByIds($grnIds);
+
+        if (count($found) !== count($grnIds)) {
+            throw ValidationException::withMessages([
+                'lines' => 'A GRN linked on this bill is no longer confirmed. Edit the bill and link the line to another GRN, or remove the link.',
+            ]);
+        }
+    }
+
+    /**
+     * A bill whose charges were pulled into a costing is part of a selling
+     * price. Voiding it would leave that price built on a bill that no longer
+     * exists, so the costing has to let go of it first.
+     */
+    private function assertNotInCosting(Bill $bill): void
+    {
+        $lineIds = $bill->lines()->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        foreach (app()->tagged(LandedChargeUsage::TAG) as $usage) {
+            if (($where = $usage->usedBy($lineIds)) !== null) {
+                throw ValidationException::withMessages([
+                    'status' => "{$bill->bill_no} is included in {$where}. Remove it from that costing before voiding.",
+                ]);
+            }
+        }
+    }
+
+    /**
      * Serialise bill writes per supplier by locking the supplier row, then
      * check for the same supplier invoice. Without the lock two users could
      * each pass the check and both save the same invoice.
@@ -485,7 +560,43 @@ class BillService
 
     // ── Internals ────────────────────────────────────────────────────────────
 
-    private function fill(Bill $bill, BillData $data): void
+    /**
+     * Each line priced at the bill date with its tax code -- or, for an Import
+     * VAT line, as the tax itself. The charge type's treatment is captured now
+     * and stored with the line, so later edits to the type never move a bill.
+     *
+     * @return list<array{data: array<string, mixed>, price: BillLinePrice, treatment: ?ChargeTreatment}>
+     */
+    private function priceLines(BillData $data): array
+    {
+        $lines = collect($data->lines);
+
+        $types = ChargeType::query()
+            ->whereKey($lines->pluck('charge_type_id')->filter()->unique()->values()->all())
+            ->get()
+            ->keyBy('id');
+
+        $codes = TaxCode::with('components')
+            ->whereKey($lines->pluck('tax_code_id')->filter()->unique()->values()->all())
+            ->get()
+            ->keyBy('id');
+
+        $on = CarbonImmutable::parse($data->transaction_date);
+
+        return $lines->map(function (array $line) use ($types, $codes, $on, $data): array {
+            $treatment = $line['charge_type_id'] === null ? null : $types->get($line['charge_type_id'])?->treatment;
+            $code      = $line['tax_code_id'] === null ? null : $codes->get($line['tax_code_id']);
+
+            return [
+                'data'      => $line,
+                'treatment' => $treatment,
+                'price'     => $this->pricer->price($line['amount'], $code, $treatment, $data->prices_include_tax, $on),
+            ];
+        })->values()->all();
+    }
+
+    /** @param list<array{data: array<string, mixed>, price: BillLinePrice, treatment: ?ChargeTreatment}> $priced */
+    private function fill(Bill $bill, BillData $data, array $priced): void
     {
         $bill->fill([
             'supplier_id'      => $data->supplier_id,
@@ -496,28 +607,58 @@ class BillService
             'company_id'       => $data->company_id,
             'location_id'      => $data->location_id,
             'description'      => $data->description,
+            'prices_include_tax' => $data->prices_include_tax,
         ]);
 
         $bill->document_no_normalized = Bill::normalizeDocumentNo($data->document_no);
 
-        $cents = 0;
+        // Summed in cents: what the supplier is owed is exactly the lines' totals.
+        $total = 0;
+        $tax   = 0;
 
-        foreach ($data->lines as $line) {
-            $cents += Bill::toCents($line['amount']);
+        foreach ($priced as $line) {
+            $total += Bill::toCents($line['price']->lineTotal);
+            $tax   += Bill::toCents($line['price']->taxAmount);
         }
 
-        $bill->total_amount = Bill::fromCents($cents);
+        $bill->total_amount = Bill::fromCents($total);
+        $bill->tax_amount   = Bill::fromCents($tax);
     }
 
-    private function writeLines(Bill $bill, BillData $data): void
+    /** @param list<array{data: array<string, mixed>, price: BillLinePrice, treatment: ?ChargeTreatment}> $priced */
+    private function writeLines(Bill $bill, array $priced): void
     {
-        foreach (array_values($data->lines) as $i => $line) {
-            $bill->lines()->create([
+        foreach ($priced as $i => ['data' => $line, 'price' => $price, 'treatment' => $treatment]) {
+            /** @var BillLine $created */
+            $created = $bill->lines()->create([
                 'line_no'           => $i + 1,
+                'charge_type_id'    => $line['charge_type_id'],
+                'treatment'         => $treatment,
                 'ledger_account_id' => $line['ledger_account_id'],
                 'description'       => $line['description'],
-                'amount'            => $line['amount'],
+                'amount'            => $price->amount,
+                'amount_incl'       => $price->amountIncl,
+                'tax_code_id'       => $treatment === ChargeTreatment::RecoverableTax ? null : $line['tax_code_id'],
+                'tax_amount'        => $price->taxAmount,
+                'line_total'        => $price->lineTotal,
+                'recoverable_tax'   => $price->recoverableTax,
+                'reference_type'    => $line['grn_id'] === null ? null : BillLine::REFERENCE_GRN,
+                'reference_id'      => $line['grn_id'],
             ]);
+
+            foreach ($price->taxLines as $tax) {
+                if ($tax->amount == 0.0) {
+                    continue;
+                }
+
+                $created->taxes()->create([
+                    'tax_code_ref'   => $tax->taxCodeRef,
+                    'rate'           => $price->rateKnown ? $tax->rate : null,
+                    'base'           => $price->rateKnown ? $tax->base : null,
+                    'amount'         => $tax->amount,
+                    'is_recoverable' => $tax->isRecoverable,
+                ]);
+            }
         }
     }
 
@@ -536,11 +677,17 @@ class BillService
             'company_id'       => $bill->company_id,
             'location_id'      => $bill->location_id,
             'description'      => $bill->description,
+            'prices_include_tax' => (bool) $bill->prices_include_tax,
             'total_amount'     => (string) $bill->total_amount,
             'status'           => $bill->status?->value,
             'lines'            => $bill->lines->map(fn ($l): array => [
+                'charge_type_id'    => $l->charge_type_id,
                 'ledger_account_id' => $l->ledger_account_id,
                 'amount'            => (string) $l->amount,
+                'tax_code_id'       => $l->tax_code_id,
+                'tax_amount'        => (string) $l->tax_amount,
+                'line_total'        => (string) $l->line_total,
+                'grn_id'            => $l->grnId(),
                 'description'       => $l->description,
             ])->values()->all(),
         ];

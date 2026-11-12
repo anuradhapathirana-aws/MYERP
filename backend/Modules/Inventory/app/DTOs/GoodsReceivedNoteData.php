@@ -23,6 +23,7 @@ final class GoodsReceivedNoteData
         public readonly ?string $paymentTerms,
         public readonly ?array  $attachments,
         public readonly array   $items,
+        public readonly bool    $pricesIncludeTax = false,
     ) {}
 
     public static function fromRequest(
@@ -41,6 +42,7 @@ final class GoodsReceivedNoteData
             paymentTerms:    $request->validated('payment_terms'),
             attachments:     $request->validated('attachments'),
             items:           (array) ($request->validated('items') ?? []),
+            pricesIncludeTax: (bool) ($request->validated('prices_include_tax') ?? false),
         );
     }
 }

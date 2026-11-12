@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Modules\Inventory\Posting;
 
 use App\Contracts\JournalPoster;
+use App\Enums\PaymentModeType;
+use App\Models\PaymentMode;
 use App\Support\Journal\JournalLineRequest;
 use App\Support\Journal\JournalRequest;
 use App\Support\Journal\PostingRole;
@@ -46,6 +48,8 @@ final class CustomerReceiptJournal
         $lines = [];
 
         // ── Dr: the money, into the account the user chose ───────────────
+        $modeTypes = PaymentMode::typesById($receipt->settlements->pluck('payment_mode_id')->map(fn ($id): int => (int) $id)->all());
+
         foreach ($receipt->settlements as $settlement) {
             $amount = round((float) $settlement->amount, 2);
 
@@ -61,10 +65,22 @@ final class CustomerReceiptJournal
                 ]);
             }
 
+            // The settlement row is named on the money line, with its cheque
+            // or transfer details, so Bank Reconciliation can match and
+            // return this one instrument.
+            $type = $modeTypes[(int) $settlement->payment_mode_id]
+                ?? PaymentModeType::fromLegacyCode($settlement->payment_mode_code);
+
             $lines[] = JournalLineRequest::debit(
                 (int) $settlement->ledger_account_id,
                 $amount,
                 description: self::settlementNote($settlement),
+                sourceType:  PostingRole::SOURCE_CUSTOMER_RECEIPT_SETTLEMENT,
+                sourceId:    (int) $settlement->id,
+            )->withInstrument(
+                $type->value,
+                $settlement->reference_no,
+                $settlement->instrument_date?->toDateString(),
             );
         }
 

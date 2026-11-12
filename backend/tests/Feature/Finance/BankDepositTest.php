@@ -291,6 +291,81 @@ class BankDepositTest extends TestCase
         $this->assertSame([], $this->chequesOffered());
     }
 
+    // ── Instrument on the bank line (Bank Reconciliation groundwork) ─────────
+
+    public function test_the_bank_side_is_one_line_per_cheque_carrying_its_number_and_date(): void
+    {
+        $this->receivedCash(12000);
+        $first  = $this->receivedCheque(5000, chequeDate: '2026-10-18');
+        $second = $this->receivedCheque(2500.50);
+
+        $deposit = $this->createDeposit([
+            'cash_account_id' => $this->cash->id,
+            'cash_amount'     => '10000.00',
+            'cheque_ids'      => [$first, $second],
+        ]);
+        $this->confirm($deposit)->assertOk();
+
+        $bankLines = JournalLine::where('ledger_account_id', $this->bank->id)->orderBy('line_no')->get();
+
+        // Two cheques and the cash: three lines, so each clears on its own day.
+        $this->assertCount(3, $bankLines);
+        $this->assertSame(17500.50, round((float) $bankLines->sum('debit'), 2));
+
+        $cheque = $bankLines->firstWhere('source_id', $first);
+        $this->assertSame(PostingRole::SOURCE_CUSTOMER_RECEIPT_SETTLEMENT, $cheque->source_type);
+        $this->assertSame('cheque', $cheque->instrument_type);
+        $this->assertSame((string) CustomerReceiptSettlement::find($first)->reference_no, $cheque->instrument_no);
+        $this->assertSame('2026-10-18', $cheque->instrument_date->toDateString());
+        $this->assertSame('5000.0000', (string) $cheque->debit);
+
+        $cash = $bankLines->firstWhere('instrument_type', 'cash');
+        $this->assertSame('10000.0000', (string) $cash->debit);
+        $this->assertSame('SLIP-77', $cash->instrument_no);
+    }
+
+    public function test_a_received_cheque_line_names_its_settlement_and_the_reversal_keeps_it(): void
+    {
+        $settlement = $this->receivedCheque(5000, chequeDate: '2026-10-19');
+        $deposit    = $this->createDeposit(['cheque_ids' => [$settlement]]);
+        $this->confirm($deposit)->assertOk();
+
+        $inHand = JournalLine::where('ledger_account_id', $this->chequesInHand->id)->where('debit', '>', 0)->firstOrFail();
+        $this->assertSame(PostingRole::SOURCE_CUSTOMER_RECEIPT_SETTLEMENT, $inHand->source_type);
+        $this->assertSame($settlement, $inHand->source_id);
+        $this->assertSame('cheque', $inHand->instrument_type);
+        $this->assertSame('2026-10-19', $inHand->instrument_date->toDateString());
+
+        $this->actingAs($this->user)->postJson("/api/v1/bank-deposits/{$deposit->id}/void", [
+            'reason' => 'Wrong bank account', 'reversal_date' => '2026-10-26',
+        ])->assertOk();
+
+        // The mirror credit on the bank carries the same cheque, so the pair
+        // can be recognised and netted off in Bank Reconciliation.
+        $mirror = JournalLine::where('ledger_account_id', $this->bank->id)->where('credit', '>', 0)->firstOrFail();
+        $this->assertSame($settlement, $mirror->source_id);
+        $this->assertSame(CustomerReceiptSettlement::find($settlement)->reference_no, $mirror->instrument_no);
+    }
+
+    public function test_a_client_added_cheque_mode_is_treated_as_a_cheque(): void
+    {
+        $pdc = PaymentMode::create([
+            'payment_mode_name' => 'Post-dated Cheque', 'code' => 'pdc', 'type' => PaymentModeType::Cheque,
+            'sort_order' => 9, 'is_active' => true,
+        ]);
+
+        $receipt = $this->confirmedReceipt(4000, [
+            'payment_mode_id'   => $pdc->id,
+            'amount'            => 4000,
+            'ledger_account_id' => $this->chequesInHand->id,
+            'reference_no'      => '445566',
+            'instrument_date'   => '2026-10-20',
+        ]);
+
+        $this->assertContains((int) $receipt->settlements()->value('id'), $this->chequesOffered());
+        $this->assertSame('cheque', JournalLine::where('ledger_account_id', $this->chequesInHand->id)->value('instrument_type'));
+    }
+
     public function test_amounts_and_cheque_details_come_from_the_receipt_not_the_client(): void
     {
         $cheque = $this->receivedCheque(5000);

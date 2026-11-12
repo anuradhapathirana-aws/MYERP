@@ -6,6 +6,7 @@ namespace Tests\Feature\MasterData;
 
 use App\Models\SupplierGroup;
 use App\Models\SupplierMaster;
+use App\Models\TaxCode;
 use App\Models\User;
 use App\Services\SettingsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -164,6 +165,33 @@ class SupplierMasterTest extends TestCase
         $this->assertSame('Trade (Local)', $row['supplier_group_name']);
         // Address fields the PO form auto-fills from must survive the move.
         $this->assertArrayHasKey('bil_address_line_1', $row);
+    }
+
+    /** The tax code a supplier's GRN lines start with; empty keeps today's "no tax". */
+    public function test_a_supplier_keeps_a_default_purchase_tax_code_for_the_grn_form(): void
+    {
+        $vatIn = TaxCode::where('code', 'VAT-IN')->value('id');
+
+        $id = $this->actingAs($this->user)
+            ->postJson('/api/v1/supplier-masters', $this->payload(['default_tax_code_id' => $vatIn]))
+            ->assertCreated()
+            ->assertJsonPath('data.default_tax_code_id', $vatIn)
+            ->json('data.id');
+
+        $row = collect($this->actingAs($this->user)->getJson('/api/v1/supplier-masters/all')->json('data'))->firstWhere('id', $id);
+        $this->assertSame($vatIn, $row['default_tax_code_id']);
+
+        // Unknown or switched-off codes are refused
+        TaxCode::where('code', 'EXEMPT-IN')->update(['is_active' => false]);
+        foreach ([999999, TaxCode::where('code', 'EXEMPT-IN')->value('id')] as $bad) {
+            $this->actingAs($this->user)
+                ->postJson('/api/v1/supplier-masters', $this->payload(['default_tax_code_id' => $bad]))
+                ->assertStatus(422)->assertJsonValidationErrors('default_tax_code_id');
+        }
+
+        $this->actingAs($this->user)
+            ->postJson('/api/v1/supplier-masters', $this->payload())
+            ->assertCreated()->assertJsonPath('data.default_tax_code_id', null);
     }
 
     public function test_update_changes_the_group(): void

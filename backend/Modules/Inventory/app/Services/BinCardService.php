@@ -31,6 +31,7 @@ class BinCardService
         StockReferenceType::CODE_GRN            => ['table' => 'inv_goods_received_notes', 'column' => 'grn_no'],
         StockReferenceType::CODE_SALES_DELIVERY => ['table' => 'inv_delivery_orders',      'column' => 'do_no'],
         StockReferenceType::CODE_CUSTOMER_RETURN => ['table' => 'inv_customer_returns',    'column' => 'return_no'],
+        StockReferenceType::CODE_SUPPLIER_RETURN => ['table' => 'inv_supplier_returns',    'column' => 'return_no'],
     ];
 
     /**

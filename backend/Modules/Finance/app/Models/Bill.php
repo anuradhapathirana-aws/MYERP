@@ -44,6 +44,7 @@ class Bill extends Model
         'company_id',
         'location_id',
         'description',
+        'prices_include_tax',
     ];
 
     protected $casts = [
@@ -55,6 +56,7 @@ class Bill extends Model
         'due_date'         => 'date',
         'reversal_date'    => 'date',
         'exchange_rate'    => 'decimal:6',
+        'prices_include_tax' => 'boolean',
         'total_amount'     => 'decimal:2',
         'tax_amount'       => 'decimal:2',
         'paid_amount'      => 'decimal:2',

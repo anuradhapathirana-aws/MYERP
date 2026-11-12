@@ -75,11 +75,15 @@ class FinanceGlAccountsSeeder extends Seeder
             AccountRole::OpeningBalanceEquity->value => ['Retained Earnings',         'Opening Balance Equity'],
             AccountRole::SalesReturns->value         => ['Sales Returns & Discounts', 'Sales Returns'],
             AccountRole::SsclPayable->value          => ['Statutory Payables',        'SSCL Payable'],
+            AccountRole::PurchaseReturns->value      => ['Direct Material Cost',      'Purchase Returns'],
+
+            // Bank-only entries posted from Bank Reconciliation.
+            AccountRole::BankCharges->value          => ['Bank Charges',              'Bank Charges'],
+            AccountRole::InterestIncome->value       => ['Other Operating Income',    'Interest Income'],
 
             // Mapped so the accounts exist and are visible, but no posting uses
             // them yet. GRNI waits on Bill Entry; Inventory and Cost of Sales
             // wait on perpetual stock valuation.
-            AccountRole::BankCharges->value          => ['Bank Charges',              'Bank Charges'],
             AccountRole::GrniClearing->value         => ['Accrued Expenses',          'Goods Received Not Invoiced'],
             AccountRole::Inventory->value            => ['Inventories',               'Inventory'],
             AccountRole::CostOfSales->value          => ['Direct Material Cost',      'Cost of Sales'],

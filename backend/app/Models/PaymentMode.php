@@ -46,6 +46,26 @@ class PaymentMode extends Model
         return $this->type ?? PaymentModeType::fromLegacyCode($this->code);
     }
 
+    /**
+     * The type of each mode, keyed by id -- deleted modes included, because a
+     * posted document may still name one.
+     *
+     * @param  list<int> $ids
+     * @return array<int, PaymentModeType>
+     */
+    public static function typesById(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        return static::withTrashed()
+            ->whereIn('id', array_values(array_unique($ids)))
+            ->get(['id', 'code', 'type'])
+            ->mapWithKeys(fn (self $m): array => [(int) $m->id => $m->effectiveType()])
+            ->all();
+    }
+
     /** Judged on the saved code, so editing the code in the same request cannot unlock it. */
     public function isBuiltIn(): bool
     {

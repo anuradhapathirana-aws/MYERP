@@ -131,6 +131,7 @@ class SupplierMasterService
                 'bil_postal_code',
                 'bil_state_province',
                 'bil_country',
+                'default_tax_code_id',
             ]);
     }
 
@@ -158,6 +159,7 @@ class SupplierMasterService
             'tax_type'                   => $data->taxType,
             'tax_no'                     => $data->taxNo,
             'tax_regis_no'               => $data->taxRegisNo,
+            'default_tax_code_id'        => $data->defaultTaxCodeId,
             'credit_limit'               => $data->creditLimit,
             'credit_period'              => $data->creditPeriod,
             'privileges_discount'        => $data->privilegesDiscount,

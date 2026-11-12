@@ -18,7 +18,7 @@ class CostingController extends Controller
 {
     public function __construct(private readonly CostingService $service)
     {
-        $this->middleware('permission:view_costings')->only(['index', 'show', 'nextDocumentNo', 'nextReferenceNo', 'supplierGrns']);
+        $this->middleware('permission:view_costings')->only(['index', 'show', 'nextDocumentNo', 'nextReferenceNo', 'supplierGrns', 'billCharges']);
         $this->middleware('permission:create_costings')->only(['store', 'calculatePreview']);
         $this->middleware('permission:edit_costings')->only(['update']);
         $this->middleware('permission:confirm_costings')->only(['confirm']);
@@ -55,9 +55,32 @@ class CostingController extends Controller
     {
         $costing = $this->service->find($costing->id);
 
-        return response()->json(
-            ['data' => (new CostingResource($costing))->toArray(request())],
-        );
+        return response()->json([
+            'data' => (new CostingResource($costing))->toArray(request()) + [
+                // Bills for these GRNs that arrived after the costing was built.
+                'bills_not_included' => $this->service->billsNotIncluded($costing),
+            ],
+        ]);
+    }
+
+    /**
+     * GET /costings/bill-charges?grn_ids[]=&costing_type=fob|cif&costing_id=
+     * What "Pull from bills" can add for the selected GRNs.
+     */
+    public function billCharges(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'grn_ids'      => ['required', 'array', 'max:200'],
+            'grn_ids.*'    => ['integer', 'min:1'],
+            'costing_type' => ['required', 'in:fob,cif'],
+            'costing_id'   => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        return response()->json(['data' => $this->service->billChargeOptions(
+            array_map('intval', $validated['grn_ids']),
+            $validated['costing_type'],
+            isset($validated['costing_id']) ? (int) $validated['costing_id'] : null,
+        )]);
     }
 
     public function update(UpdateCostingRequest $request, Costing $costing): JsonResponse
@@ -109,6 +132,7 @@ class CostingController extends Controller
     {
         $input = $request->only([
             'grn_ids', 'apply_sscl', 'sscl_pct', 'apply_vat', 'vat_pct', 'items',
+            'bill_charge_ids', 'costing_type', 'costing_id',
         ]);
 
         return response()->json(['data' => $this->service->preview($input)]);

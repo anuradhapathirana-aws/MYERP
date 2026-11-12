@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Services;
 
+use App\Contracts\LandedChargeSource;
+use App\DTOs\LandedCharge;
 use App\Models\Tax;
 use App\Services\TaxService;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -13,6 +15,7 @@ use Modules\Inventory\DTOs\CostingData;
 use Modules\Inventory\Enums\CostingStatus;
 use Modules\Inventory\Enums\GrnStatus;
 use Modules\Inventory\Models\Costing;
+use Modules\Inventory\Models\CostingBillCharge;
 use Modules\Inventory\Models\CostingExpense;
 use Modules\Inventory\Models\CostingGrn;
 use Modules\Inventory\Models\CostingItem;
@@ -41,12 +44,20 @@ use Modules\Inventory\Models\GoodsReceivedNoteItem;
  * confirmed-costing lock and mirrors landed/selling onto the product price
  * list via ProductPricingService; sales orders price each roll from its own
  * shipment's confirmed costing (old stock at old price, new at new).
+ *
+ * Pull from bills: confirmed supplier-bill lines linked to the costing's GRNs
+ * (freight, duty, clearing... entered in Finance) can be added. Each is spread
+ * over the products BY VALUE -- per base unit that is fob_cif x (bill amount /
+ * purchase value) -- into the expense row its charge type maps to, beside any
+ * typed (estimate) amounts. Bills come through LandedChargeSource, never from
+ * a fin_ table, so Inventory works the same with Finance switched off.
  */
 class CostingService
 {
     public function __construct(
         private readonly ProductPricingService $pricing,
         private readonly UnitConversionService $units,
+        private readonly LandedChargeSource $landedCharges,
     ) {
     }
 
@@ -152,6 +163,7 @@ class CostingService
             'items.baseUnit:id,symbol,unit_position',
             'items.grn:id,grn_no',
             'items.expenses.expenseType:id,name',
+            'billCharges.expenseType:id,name',
         ])->findOrFail($id);
     }
 
@@ -159,7 +171,8 @@ class CostingService
     {
         return DB::transaction(function () use ($data): Costing {
             $grns      = $this->loadGrns($data->grnIds);
-            $breakdown = $this->computeBreakdown($grns, $data);
+            $charges   = $this->resolveBillCharges($data->billChargeIds, $grns, $data->costingType, null);
+            $breakdown = $this->computeBreakdown($grns, $data, null, $charges);
 
             $costing = Costing::create(array_merge(
                 [
@@ -173,6 +186,7 @@ class CostingService
 
             $this->syncGrns($costing, $grns);
             $this->syncItems($costing, $breakdown['items']);
+            $this->syncBillCharges($costing, $charges);
 
             return $this->find($costing->id);
         });
@@ -186,12 +200,14 @@ class CostingService
 
         return DB::transaction(function () use ($costing, $data): Costing {
             $grns      = $this->loadGrns($data->grnIds);
-            $breakdown = $this->computeBreakdown($grns, $data);
+            $charges   = $this->resolveBillCharges($data->billChargeIds, $grns, $data->costingType, (int) $costing->id);
+            $breakdown = $this->computeBreakdown($grns, $data, null, $charges);
 
             $costing->update($this->headerAttributes($data, $breakdown['summary']));
 
             $this->syncGrns($costing, $grns);
             $this->syncItems($costing, $breakdown['items']);
+            $this->syncBillCharges($costing, $charges);
 
             return $this->find($costing->id);
         });
@@ -273,7 +289,11 @@ class CostingService
             abort(422, 'Only draft costings can be deleted.');
         }
 
-        $costing->delete();
+        DB::transaction(function () use ($costing): void {
+            // Releases the bills it pulled, so they can be voided or pulled elsewhere.
+            CostingBillCharge::where('costing_id', $costing->id)->delete();
+            $costing->delete();
+        });
     }
 
     /** Preview next document number (lock-free, display only) */
@@ -391,7 +411,13 @@ class CostingService
      */
     public function preview(array $input): array
     {
-        $grns = $this->loadGrns(array_map('intval', (array) ($input['grn_ids'] ?? [])));
+        $grns    = $this->loadGrns(array_map('intval', (array) ($input['grn_ids'] ?? [])));
+        $charges = $this->resolveBillCharges(
+            array_map('intval', (array) ($input['bill_charge_ids'] ?? [])),
+            $grns,
+            ($input['costing_type'] ?? 'fob') === 'cif' ? 'cif' : 'fob',
+            isset($input['costing_id']) ? (int) $input['costing_id'] : null,
+        );
 
         return $this->computeBreakdown($grns, null, [
             'apply_sscl' => (bool) ($input['apply_sscl'] ?? true),
@@ -399,7 +425,65 @@ class CostingService
             'apply_vat'  => (bool) ($input['apply_vat'] ?? true),
             'vat_pct'    => (float) ($input['vat_pct'] ?? app(TaxService::class)->rate(Tax::VAT)),
             'items'      => (array) ($input['items'] ?? []),
-        ]);
+        ], $charges);
+    }
+
+    /**
+     * What "Pull from bills" offers for these GRNs: every confirmed landed-cost
+     * bill line linked to them, each marked
+     *
+     *   available  -- can be pulled (included = already in this costing)
+     *   unmapped   -- its charge type has no Costing row for this FOB/CIF list
+     *   elsewhere  -- already pulled into another costing (named)
+     *
+     * @param  list<int> $grnIds
+     * @return array{available: bool, charges: list<array<string, mixed>>}
+     */
+    public function billChargeOptions(array $grnIds, string $costingType, ?int $costingId): array
+    {
+        if (! $this->landedCharges->isAvailable()) {
+            return ['available' => false, 'charges' => []];
+        }
+
+        $charges = $this->landedCharges->chargesForGrns($grnIds);
+        $rows    = $this->activeExpenseRows($costingType);
+        $taken   = $this->pulledElsewhere(array_map(fn (LandedCharge $c) => $c->sourceId, $charges), $costingId);
+
+        return [
+            'available' => true,
+            'charges'   => array_map(function (LandedCharge $c) use ($costingType, $rows, $taken): array {
+                $typeId = $c->expenseTypeFor($costingType);
+
+                return $c->toArray() + [
+                    'expense_type_id'   => $typeId !== null && isset($rows[$typeId]) ? $typeId : null,
+                    'expense_type_name' => $typeId !== null ? ($rows[$typeId] ?? null) : null,
+                    'status'            => isset($taken[$c->sourceId]) ? 'elsewhere'
+                        : ($typeId === null || ! isset($rows[$typeId]) ? 'unmapped' : 'available'),
+                    'elsewhere'         => $taken[$c->sourceId] ?? null,
+                ];
+            }, $charges),
+        ];
+    }
+
+    /**
+     * Bills linked to this costing's GRNs that are not in it -- a bill that
+     * arrived after the costing was built. Shown as a warning; a confirmed
+     * costing is final (its prices are already live).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function billsNotIncluded(Costing $costing): array
+    {
+        $grnIds   = $costing->costingGrns()->pluck('grn_id')->map(fn ($id) => (int) $id)->all();
+        $included = $costing->billCharges()->pluck('source_id')->map(fn ($id) => (int) $id)->all();
+
+        return array_values(array_map(
+            fn (LandedCharge $c): array => $c->toArray(),
+            array_filter(
+                $this->landedCharges->chargesForGrns($grnIds),
+                fn (LandedCharge $c): bool => ! in_array($c->sourceId, $included, true),
+            ),
+        ));
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
@@ -420,7 +504,7 @@ class CostingService
      * @param array<string, mixed>|null $raw preview-mode inputs when no DTO
      * @return array{items: array<int, array<string, mixed>>, summary: array<string, float>}
      */
-    private function computeBreakdown(Collection $grns, ?CostingData $data, ?array $raw = null): array
+    private function computeBreakdown(Collection $grns, ?CostingData $data, ?array $raw = null, array $charges = []): array
     {
         $applySscl = $data?->applySscl ?? $raw['apply_sscl'];
         $ssclPct   = $data?->ssclPct   ?? $raw['sscl_pct'];
@@ -433,8 +517,13 @@ class CostingService
 
         $totalQty = (float) $grnItems->sum('quantity_received');
 
+        // Pulled bills, spread by value: each expense row's bill total as a
+        // share of the purchase value. A line then carries fob_cif x share per
+        // base unit -- exactly its value's part of the bill.
+        $billRates = $this->billRates($charges, $grnItems);
+
         $items = $grnItems->map(function (GoodsReceivedNoteItem $item) use (
-            $applySscl, $ssclPct, $applyVat, $vatPct, $inputs,
+            $applySscl, $ssclPct, $applyVat, $vatPct, $inputs, $billRates,
         ): array {
             $this->assertConversionIsSound($item);
 
@@ -451,15 +540,27 @@ class CostingService
             // FOB/CIF value per base unit = the GRN purchasing price restated
             $fobBase = $factor > 0.0 ? $unitPrice / $factor : $unitPrice;
 
-            // Typed expense amounts (per base unit) against this line
+            // Typed expense amounts (per base unit) against this line -- estimates
             $expenseRows = collect($input['expenses'] ?? [])
                 ->filter(fn (array $e): bool => !empty($e['expense_type_id']) && (float) ($e['amount'] ?? 0) > 0)
                 ->map(fn (array $e): array => [
                     'expense_type_id' => (int) $e['expense_type_id'],
+                    'source'          => CostingItemExpense::SOURCE_MANUAL,
                     'amount'          => round((float) $e['amount'], 8),
                 ])
                 ->values();
-            $expBase = (float) $expenseRows->sum('amount');
+
+            // This line's share of the pulled bills, per base unit
+            foreach ($billRates as $typeId => $rate) {
+                $expenseRows->push([
+                    'expense_type_id' => (int) $typeId,
+                    'source'          => CostingItemExpense::SOURCE_BILL,
+                    'amount'          => round($fobBase * $rate, 8),
+                ]);
+            }
+
+            $expBase  = (float) $expenseRows->sum('amount');
+            $billBase = (float) $expenseRows->where('source', CostingItemExpense::SOURCE_BILL)->sum('amount');
 
             $num = static fn (string $key): ?float =>
                 isset($input[$key]) && $input[$key] !== null && $input[$key] !== ''
@@ -518,6 +619,7 @@ class CostingService
                 // Typed expense rows — persisted to inv_costing_item_expenses by syncItems
                 'expense_rows'          => $expenseRows->all(),
                 // Display-only extras (preview payload; stripped before insert)
+                'bill_expense_base'     => round($billBase, 8),
                 'product_name'          => $item->product?->name,
                 'product_code'          => $item->product?->product_code,
                 'color'                 => $item->variant?->variant_label ?? $item->attribute?->attribute_name,
@@ -694,6 +796,7 @@ class CostingService
                     'costing_item_id' => (int) $itemId,
                     'grn_item_id'     => (int) $item['grn_item_id'],
                     'expense_type_id' => $expense['expense_type_id'],
+                    'source'          => $expense['source'] ?? CostingItemExpense::SOURCE_MANUAL,
                     'amount'          => $expense['amount'],
                     'created_at'      => now(),
                     'updated_at'      => now(),
@@ -704,5 +807,138 @@ class CostingService
         if (!empty($expenseRows)) {
             CostingItemExpense::insert($expenseRows);
         }
+    }
+
+    /**
+     * The bills to pull, re-read from Finance (never trusted from the form) and
+     * checked: still a confirmed landed cost, belongs to one of these GRNs,
+     * has a Costing row on this FOB/CIF list, and is not in another costing.
+     *
+     * @param  list<int> $sourceIds
+     * @return list<array{charge: LandedCharge, expense_type_id: int}>
+     */
+    private function resolveBillCharges(array $sourceIds, Collection $grns, string $costingType, ?int $costingId): array
+    {
+        $sourceIds = array_values(array_unique(array_map('intval', $sourceIds)));
+
+        if ($sourceIds === []) {
+            return [];
+        }
+
+        $charges = collect($this->landedCharges->chargesByIds($sourceIds))->keyBy(fn (LandedCharge $c) => $c->sourceId);
+        $missing = array_diff($sourceIds, $charges->keys()->all());
+
+        abort_if($missing !== [], 422, 'A pulled bill is no longer available (it was voided, or Finance is switched off). Pull from bills again.');
+
+        $grnIds = $grns->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $rows   = $this->activeExpenseRows($costingType);
+        $taken  = $this->pulledElsewhere($sourceIds, $costingId, lock: true);
+
+        return $charges->values()->map(function (LandedCharge $c) use ($grnIds, $rows, $taken, $costingType): array {
+            if (! in_array($c->grnId, $grnIds, true)) {
+                abort(422, "{$c->billNo} ({$c->chargeName}) belongs to a GRN that is not in this costing.");
+            }
+
+            if (isset($taken[$c->sourceId])) {
+                abort(422, "{$c->billNo} ({$c->chargeName}) is already in {$taken[$c->sourceId]}.");
+            }
+
+            $typeId = $c->expenseTypeFor($costingType);
+
+            if ($typeId === null || ! isset($rows[$typeId])) {
+                abort(422, "{$c->chargeName} has no " . strtoupper($costingType) . ' costing row. Set it in Finance > Charge Types.');
+            }
+
+            return ['charge' => $c, 'expense_type_id' => $typeId];
+        })->all();
+    }
+
+    /**
+     * Each expense row's pulled-bill total as a share of the purchase value.
+     *
+     * @param  list<array{charge: LandedCharge, expense_type_id: int}> $charges
+     * @param  Collection<int, GoodsReceivedNoteItem> $grnItems
+     * @return array<int, float> expense_type_id => share
+     */
+    private function billRates(array $charges, Collection $grnItems): array
+    {
+        if ($charges === []) {
+            return [];
+        }
+
+        $purchaseValue = (float) $grnItems->sum(fn (GoodsReceivedNoteItem $i) => (float) $i->quantity_received * (float) $i->unit_price);
+
+        abort_if($purchaseValue <= 0.0, 422, 'Bills are spread by value, and these GRNs have no value. Check the GRN prices.');
+
+        $rates = [];
+
+        foreach ($charges as ['charge' => $charge, 'expense_type_id' => $typeId]) {
+            $rates[$typeId] = ($rates[$typeId] ?? 0.0) + $charge->amount / $purchaseValue;
+        }
+
+        return $rates;
+    }
+
+    /** @param list<array{charge: LandedCharge, expense_type_id: int}> $charges */
+    private function syncBillCharges(Costing $costing, array $charges): void
+    {
+        CostingBillCharge::where('costing_id', $costing->id)->delete();
+
+        foreach ($charges as ['charge' => $c, 'expense_type_id' => $typeId]) {
+            CostingBillCharge::create([
+                'costing_id'      => $costing->id,
+                'source_type'     => CostingBillCharge::SOURCE_BILL_LINE,
+                'source_id'       => $c->sourceId,
+                'bill_no'         => $c->billNo,
+                'bill_date'       => $c->billDate,
+                'party_name'      => $c->partyName === null ? null : mb_substr($c->partyName, 0, 150),
+                'charge_name'     => mb_substr($c->chargeName, 0, 100),
+                'grn_id'          => $c->grnId,
+                'expense_type_id' => $typeId,
+                'amount'          => $c->amount,
+            ]);
+        }
+    }
+
+    /** @return array<int, string> active expense rows of a FOB/CIF list, id => name */
+    private function activeExpenseRows(string $costingType): array
+    {
+        return CostingExpenseType::active()->forType($costingType)->pluck('name', 'id')
+            ->mapWithKeys(fn ($name, $id) => [(int) $id => (string) $name])
+            ->all();
+    }
+
+    /**
+     * Bill lines already in another live costing.
+     *
+     * @param  list<int> $sourceIds
+     * @param  bool      $lock      true inside a save transaction
+     * @return array<int, string> source_id => that costing's document no
+     */
+    private function pulledElsewhere(array $sourceIds, ?int $costingId, bool $lock = false): array
+    {
+        if ($sourceIds === []) {
+            return [];
+        }
+
+        // On save the rows (and the index gap where they would go) are locked,
+        // so two costings saved at once cannot both take the same bill.
+        if ($lock) {
+            CostingBillCharge::query()
+                ->where('source_type', CostingBillCharge::SOURCE_BILL_LINE)
+                ->whereIn('source_id', $sourceIds)
+                ->lockForUpdate()
+                ->pluck('id');
+        }
+
+        return CostingBillCharge::query()
+            ->where('source_type', CostingBillCharge::SOURCE_BILL_LINE)
+            ->whereIn('source_id', $sourceIds)
+            ->when($costingId !== null, fn ($q) => $q->where('costing_id', '!=', $costingId))
+            ->whereHas('costing')
+            ->with('costing:id,document_no')
+            ->get()
+            ->mapWithKeys(fn (CostingBillCharge $c) => [(int) $c->source_id => (string) $c->costing?->document_no])
+            ->all();
     }
 }

@@ -84,6 +84,9 @@ class RolesAndPermissionsSeeder extends Seeder
 
         // ── Tax master (VAT / SSCL rates used by every module) ───────
         'taxes'             => ['view', 'create', 'edit', 'delete'],
+
+        // ── Home dashboard (each section also checks its own screen's view right)
+        'dashboard'         => ['view'],
     ];
 
     /**

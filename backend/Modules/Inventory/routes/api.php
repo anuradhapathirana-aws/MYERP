@@ -42,6 +42,7 @@ use Modules\Inventory\Http\Controllers\OutstandingSummaryExportController;
 use Modules\Inventory\Http\Controllers\SalesSummaryExportController;
 use Modules\Inventory\Http\Controllers\CostingController;
 use Modules\Inventory\Http\Controllers\CostingExpenseTypeController;
+use Modules\Inventory\Http\Controllers\DashboardController;
 use Modules\Inventory\Http\Controllers\ReportController;
 use Modules\Inventory\Http\Controllers\SupplierPaymentController;
 use Modules\Inventory\Http\Controllers\SupplierReturnController;
@@ -424,6 +425,15 @@ Route::middleware(['auth:sanctum', 'module:inventory'])->prefix('v1')->group(fun
     // ── GRN Piece QR scan resolve ────────────────────────────────────────────
     Route::get('pieces/{pieceCode}', [GrnItemPieceController::class, 'show'])
         ->name('inventory.pieces.show');
+
+    // ── Home dashboard widgets ───────────────────────────────────────────────
+    Route::prefix('dashboard/inventory')->name('inventory.dashboard.')->group(function (): void {
+        Route::get('sales',       [DashboardController::class, 'sales'])->name('sales');
+        Route::get('orders',      [DashboardController::class, 'orders'])->name('orders');
+        Route::get('receivables', [DashboardController::class, 'receivables'])->name('receivables');
+        Route::get('payables',    [DashboardController::class, 'payables'])->name('payables');
+        Route::get('stock',       [DashboardController::class, 'stock'])->name('stock');
+    });
 
     // ── Reports ───────────────────────────────────────────────────────────────
     Route::prefix('reports/inventory')->name('inventory.reports.')->group(function (): void {

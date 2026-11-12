@@ -16,6 +16,13 @@ class PermissionController extends Controller
      * Keep in sync with Database\Seeders\RolesAndPermissionsSeeder.
      */
     private const GROUPS = [
+        'general' => [
+            'label'     => 'General',
+            'resources' => [
+                // Each dashboard section also needs its own screen's view right.
+                'dashboard' => ['label' => 'Dashboard', 'actions' => ['view']],
+            ],
+        ],
         'master_data' => [
             'label'     => 'Master Data (Shared)',
             'resources' => [

@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Enums\CustomerReceiptStatus;
 use Modules\Inventory\Enums\CustomerReturnStatus;
 use Modules\Inventory\Enums\InvoiceStatus;
+use Modules\Inventory\Models\ChequeReturnAllocation;
 use Modules\Inventory\Models\CustomerCreditNote;
 use Modules\Inventory\Models\Invoice;
 
@@ -17,6 +18,7 @@ use Modules\Inventory\Models\Invoice;
  *
  *   outstanding = grand_total
  *               − SUM(confirmed receipt allocations' receipt_amount + discount)
+ *               + SUM(returned cheques' allocations to the invoice, discounts taken back included)
  *               − SUM(confirmed customer returns' applied_to_invoice)
  *
  * A receipt discount is a permanent write-off, so it settles the invoice exactly like
@@ -29,7 +31,8 @@ use Modules\Inventory\Models\Invoice;
 class InvoiceBalanceService
 {
     /**
-     * Money received per invoice from confirmed receipts.
+     * Money received per invoice from confirmed receipts, less any of it paid
+     * by a cheque the bank later returned (ChequeReturnService).
      *
      * @param  array<int> $invoiceIds
      * @return Collection<int, float> invoice id => received
@@ -40,6 +43,8 @@ class InvoiceBalanceService
             return collect();
         }
 
+        $bounced = $this->chequeReturnedFor($invoiceIds);
+
         return DB::table('inv_customer_receipt_allocations as a')
             ->join('inv_customer_receipts as r', 'r.id', '=', 'a.receipt_id')
             ->whereIn('a.reference_id', $invoiceIds)
@@ -48,7 +53,31 @@ class InvoiceBalanceService
             ->groupBy('a.reference_id')
             ->select('a.reference_id', DB::raw('SUM(a.receipt_amount + a.discount) as received'))
             ->get()
-            ->mapWithKeys(fn ($row) => [(int) $row->reference_id => (float) $row->received]);
+            ->mapWithKeys(fn ($row) => [
+                (int) $row->reference_id => (float) $row->received - ($bounced[(int) $row->reference_id] ?? 0.0),
+            ]);
+    }
+
+    /**
+     * Invoice money reopened by returned cheques: what they paid, and the
+     * settlement discount given for paying that was taken back.
+     *
+     * @param  array<int> $invoiceIds
+     * @return Collection<int, float> invoice id => reopened
+     */
+    public function chequeReturnedFor(array $invoiceIds): Collection
+    {
+        if (empty($invoiceIds)) {
+            return collect();
+        }
+
+        return DB::table('inv_cheque_return_allocations')
+            ->whereIn('reference_id', $invoiceIds)
+            ->whereIn('reference_type', ChequeReturnAllocation::REOPENS_INVOICE)
+            ->groupBy('reference_id')
+            ->select('reference_id', DB::raw('SUM(amount) as reopened'))
+            ->get()
+            ->mapWithKeys(fn ($row) => [(int) $row->reference_id => (float) $row->reopened]);
     }
 
     /**

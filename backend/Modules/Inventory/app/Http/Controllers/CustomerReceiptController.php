@@ -29,7 +29,7 @@ class CustomerReceiptController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $filters   = $request->only(['search', 'status', 'customer_id', 'date_from', 'date_to']);
+        $filters   = $request->only(['search', 'status', 'customer_id', 'date_from', 'date_to', 'cheque_returned']);
         $paginator = $this->service->paginate(50, $filters);
 
         return response()->json([

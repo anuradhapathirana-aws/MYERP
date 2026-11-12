@@ -16,10 +16,12 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Modules\Finance\Enums\BankDepositStatus;
+use Modules\Finance\Enums\BankReconciliationStatus;
 use Modules\Finance\Enums\BillPaymentStatus;
 use Modules\Finance\Enums\BillStatus;
 use Modules\Finance\Models\Attachment;
 use Modules\Finance\Models\BankDeposit;
+use Modules\Finance\Models\BankReconciliation;
 use Modules\Finance\Models\Bill;
 use Modules\Finance\Models\BillPayment;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
@@ -66,6 +68,10 @@ class AttachmentService
         BankDeposit::AUDIT_TYPE => [
             'model' => BankDeposit::class, 'view' => 'view_bank_deposits', 'edit' => 'edit_bank_deposits',
         ],
+        // The bank statement the reconciliation was matched against.
+        BankReconciliation::AUDIT_TYPE => [
+            'model' => BankReconciliation::class, 'view' => 'view_bank_reconciliations', 'edit' => 'edit_bank_reconciliations',
+        ],
     ];
 
     public function __construct(
@@ -86,7 +92,7 @@ class AttachmentService
         $document = $this->resolve($type, $id, 'edit');
 
         if (! $this->canAdd($type, $document)) {
-            throw ValidationException::withMessages(['file' => 'Files cannot be added to a voided document.']);
+            throw ValidationException::withMessages(['file' => 'Files cannot be added to a voided or undone document.']);
         }
 
         $mime = $this->detectMime($file);
@@ -215,6 +221,8 @@ class AttachmentService
             Bill::AUDIT_TYPE        => $document->status !== BillStatus::Voided,
             BillPayment::AUDIT_TYPE => $document->status !== BillPaymentStatus::Voided,
             BankDeposit::AUDIT_TYPE => $document->status !== BankDepositStatus::Voided,
+            // Draft and posted; an undone one keeps its files for the audit trail.
+            BankReconciliation::AUDIT_TYPE => $document->status !== BankReconciliationStatus::Voided,
             default                 => false,
         };
     }
@@ -225,6 +233,7 @@ class AttachmentService
             Bill::AUDIT_TYPE        => $document->status === BillStatus::Draft,
             BillPayment::AUDIT_TYPE => $document->status === BillPaymentStatus::Draft,
             BankDeposit::AUDIT_TYPE => $document->status === BankDepositStatus::Draft,
+            BankReconciliation::AUDIT_TYPE => $document->status === BankReconciliationStatus::Draft,
             default                 => false,
         };
     }

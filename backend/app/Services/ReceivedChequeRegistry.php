@@ -51,7 +51,7 @@ class ReceivedChequeRegistry
             ->join('inv_customer_receipts as r', 'r.id', '=', 's.receipt_id')
             ->leftJoin('inv_customer_masters as c', 'c.id', '=', 'r.customer_id')
             ->whereIn('s.ledger_account_id', $accountIds)
-            ->where('s.payment_mode_code', 'cheque')
+            ->where(fn ($q) => $this->isChequeLine($q))
             ->where('s.amount', '>', 0)
             ->where('r.status', 'confirmed')
             ->whereNull('r.deleted_at')
@@ -132,7 +132,7 @@ class ReceivedChequeRegistry
         $query = DB::table('inv_customer_receipt_settlements as s')
             ->join('inv_customer_receipts as r', 'r.id', '=', 's.receipt_id')
             ->whereIn('s.ledger_account_id', $accountIds)
-            ->where('s.payment_mode_code', 'cheque')
+            ->where(fn ($q) => $this->isChequeLine($q))
             ->where('s.amount', '>', 0)
             ->where('r.status', 'confirmed')
             ->whereNull('r.deleted_at');
@@ -164,6 +164,19 @@ class ReceivedChequeRegistry
             ->where('l.source_type', self::SOURCE_CUSTOMER_RECEIPT)
             ->where('d.status', '!=', 'voided')
             ->whereNull('d.deleted_at');
+    }
+
+    /**
+     * A settlement line paid by cheque: the built-in 'cheque' code, or any
+     * client-added mode whose TYPE is cheque ("PDC", "Cheque - HNB").
+     */
+    private function isChequeLine(Builder $q): void
+    {
+        $q->where('s.payment_mode_code', 'cheque');
+
+        if ($this->hasTable('inv_payment_modes') && Schema::hasColumn('inv_payment_modes', 'type')) {
+            $q->orWhereIn('s.payment_mode_id', fn ($m) => $m->select('id')->from('inv_payment_modes')->where('type', 'cheque'));
+        }
     }
 
     private function hasTable(string $table): bool

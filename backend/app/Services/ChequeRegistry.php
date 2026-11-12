@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -45,7 +46,7 @@ class ChequeRegistry
             $used = DB::table('inv_supplier_payment_settlements as s')
                 ->join('inv_supplier_payments as p', 'p.id', '=', 's.payment_id')
                 ->where('s.ledger_account_id', $ledgerAccountId)
-                ->where('s.payment_mode_code', 'cheque')
+                ->where(fn ($q) => $this->isChequeLine($q))
                 ->where('s.reference_no', $chequeNo)
                 ->where('p.status', '!=', 'voided')
                 ->whereNull('p.deleted_at')
@@ -70,6 +71,19 @@ class ChequeRegistry
         }
 
         return null;
+    }
+
+    /**
+     * A settlement line paid by cheque: the built-in 'cheque' code, or any
+     * client-added mode whose TYPE is cheque ("PDC", "Cheque - HNB").
+     */
+    private function isChequeLine(Builder $q): void
+    {
+        $q->where('s.payment_mode_code', 'cheque');
+
+        if ($this->hasTable('inv_payment_modes') && Schema::hasColumn('inv_payment_modes', 'type')) {
+            $q->orWhereIn('s.payment_mode_id', fn ($m) => $m->select('id')->from('inv_payment_modes')->where('type', 'cheque'));
+        }
     }
 
     private function hasTable(string $table): bool

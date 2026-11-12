@@ -28,6 +28,8 @@ class CustomerReceiptResource extends JsonResource
             'net_amount'       => (float) $this->net_amount,
             'status'           => $this->status->value,
             'status_label'     => $this->status->label(),
+            // Cheques of this document the bank returned (list badge, filter).
+            'returned_cheques' => $this->resource->relationLoaded('returned_cheques') ? (int) $this->resource->getRelation('returned_cheques') : 0,
             'confirmed_at'     => $this->confirmed_at?->toDateTimeString(),
 
             'customer' => $this->customer,

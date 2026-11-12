@@ -82,6 +82,9 @@ const BillPaymentsPage          = lazy(() => import('./pages/finance/BillPayment
 const BillPaymentFormPage       = lazy(() => import('./pages/finance/BillPaymentFormPage'))
 const BankDepositsPage          = lazy(() => import('./pages/finance/BankDepositsPage'))
 const BankDepositFormPage       = lazy(() => import('./pages/finance/BankDepositFormPage'))
+const BankReconciliationsPage   = lazy(() => import('./pages/finance/BankReconciliationsPage'))
+const BankReconciliationFormPage = lazy(() => import('./pages/finance/BankReconciliationFormPage'))
+const UnclearedChequesReport    = lazy(() => import('./pages/finance/UnclearedChequesReport'))
 const SalesOrdersPage           = lazy(() => import('./pages/inventory/SalesOrdersPage'))
 const SalesOrderFormPage        = lazy(() => import('./pages/inventory/SalesOrderFormPage'))
 const SalesOrderViewPage        = lazy(() => import('./pages/inventory/SalesOrderViewPage'))
@@ -295,6 +298,11 @@ export default function App() {
         <Route path="/finance/bank-deposits/create"            element={<Lazy component={BankDepositFormPage} />} />
         <Route path="/finance/bank-deposits/:id"               element={<Lazy component={BankDepositFormPage} />} />
         <Route path="/finance/bank-deposits/:id/edit"          element={<Lazy component={BankDepositFormPage} />} />
+        <Route path="/finance/bank-reconciliations"            element={<Lazy component={BankReconciliationsPage} />} />
+        <Route path="/finance/bank-reconciliations/create"     element={<Lazy component={BankReconciliationFormPage} />} />
+        <Route path="/finance/bank-reconciliations/:id"        element={<Lazy component={BankReconciliationFormPage} />} />
+        <Route path="/finance/bank-reconciliations/:id/edit"   element={<Lazy component={BankReconciliationFormPage} />} />
+        <Route path="/finance/reports/uncleared-cheques"       element={<Lazy component={UnclearedChequesReport} />} />
 
         {/* ── Inventory Reports ── */}
         <Route path="/inventory/reports/stock-levels"      element={<Lazy component={StockLevelsReport} />} />

@@ -41,6 +41,9 @@ class JournalLine extends Model
         'party_id',
         'source_type',
         'source_id',
+        'instrument_type',
+        'instrument_no',
+        'instrument_date',
     ];
 
     protected $casts = [
@@ -53,6 +56,7 @@ class JournalLine extends Model
         'location_id'       => 'integer',
         'party_id'          => 'integer',
         'source_id'         => 'integer',
+        'instrument_date'   => 'date',
     ];
 
     public function entry(): BelongsTo

@@ -60,6 +60,8 @@ import {
   Warehouse,
   X,
   PiggyBank,
+  ListChecks,
+  ScrollText,
 } from 'lucide-react'
 import UpgradeModal from './UpgradeModal'
 
@@ -223,6 +225,8 @@ const NAV_ITEMS = [
         isSubgroup: true,
         children: [
           { label: 'Bank Deposits', to: '/finance/bank-deposits', icon: PiggyBank, permissionGuard: 'view_bank_deposits' },
+          { label: 'Bank Reconciliation', to: '/finance/bank-reconciliations', icon: ListChecks, permissionGuard: 'view_bank_reconciliations' },
+          { label: 'Uncleared Cheques', to: '/finance/reports/uncleared-cheques', icon: ScrollText, permissionGuard: ['view_bank_reconciliations', 'view_finance_reports'] },
         ],
       },
     ],
@@ -256,7 +260,8 @@ function isNavItemVisible(node, isSuperAdmin, userPermissions) {
   if (node.isSubgroup) {
     return (node.children ?? []).some((c) => isNavItemVisible(c, isSuperAdmin, userPermissions))
   }
-  return !node.permissionGuard || isSuperAdmin || userPermissions.includes(node.permissionGuard)
+  // permissionGuard: one permission, or a list of which any one is enough.
+  return !node.permissionGuard || isSuperAdmin || [].concat(node.permissionGuard).some((p) => userPermissions.includes(p))
 }
 
 function flattenLeaves(items) {

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Contracts\ChequeReturnHandler;
 use App\Contracts\FundBalanceGuard;
 use App\Contracts\JournalPoster;
 use App\Contracts\LandedChargeSource;
@@ -12,6 +13,7 @@ use App\Contracts\TaxCodeUsage;
 use App\Models\User;
 use App\Services\CompanyAccessService;
 use App\Services\SettingsService;
+use App\Support\Banking\ChequeReturnRouter;
 use App\Support\Journal\NullFundBalanceGuard;
 use App\Support\Journal\NullJournalPoster;
 use App\Support\Landed\NullLandedChargeSource;
@@ -56,6 +58,11 @@ class AppServiceProvider extends ServiceProvider
         // other module works on its own. bindIf for the reason given above.
         $this->app->bindIf(LandedChargeSource::class, NullLandedChargeSource::class);
         $this->app->bindIf(LandedCostTargets::class, NullLandedCostTargets::class);
+
+        // Bank Reconciliation asks the document that wrote a cheque to take it
+        // back. The router finds that document among the ChequeReturnSource
+        // implementations modules tag; a cheque none answers for is refused.
+        $this->app->bindIf(ChequeReturnHandler::class, ChequeReturnRouter::class);
     }
 
     public function boot(): void

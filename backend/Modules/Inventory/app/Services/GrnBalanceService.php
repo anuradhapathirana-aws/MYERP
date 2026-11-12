@@ -8,6 +8,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Enums\SupplierPaymentStatus;
 use Modules\Inventory\Enums\SupplierReturnStatus;
+use Modules\Inventory\Models\ChequeReturnAllocation;
 use Modules\Inventory\Models\SupplierCreditNote;
 
 /**
@@ -15,6 +16,7 @@ use Modules\Inventory\Models\SupplierCreditNote;
  *
  *   outstanding = total_amount
  *               − SUM(confirmed payment allocations' payment_amount + discount)
+ *               + SUM(returned cheques' allocations to the GRN)
  *               − SUM(confirmed supplier returns' applied_to_grn)
  *
  * A payment discount is a permanent write-off, so it settles the GRN exactly like cash.
@@ -38,6 +40,16 @@ class GrnBalanceService
             return collect();
         }
 
+        // Paid by a cheque that came back is not paid, and the discount
+        // taken for paying is given back.
+        $bounced = DB::table('inv_cheque_return_allocations')
+            ->whereIn('reference_id', $grnIds)
+            ->whereIn('reference_type', ChequeReturnAllocation::REOPENS_GRN)
+            ->groupBy('reference_id')
+            ->select('reference_id', DB::raw('SUM(amount) as reopened'))
+            ->get()
+            ->mapWithKeys(fn ($row) => [(int) $row->reference_id => (float) $row->reopened]);
+
         return DB::table('inv_supplier_payment_allocations as a')
             ->join('inv_supplier_payments as p', 'p.id', '=', 'a.payment_id')
             ->whereIn('a.reference_id', $grnIds)
@@ -46,7 +58,9 @@ class GrnBalanceService
             ->groupBy('a.reference_id')
             ->select('a.reference_id', DB::raw('SUM(a.payment_amount + a.discount) as paid'))
             ->get()
-            ->mapWithKeys(fn ($row) => [(int) $row->reference_id => (float) $row->paid]);
+            ->mapWithKeys(fn ($row) => [
+                (int) $row->reference_id => (float) $row->paid - ($bounced[(int) $row->reference_id] ?? 0.0),
+            ]);
     }
 
     /**

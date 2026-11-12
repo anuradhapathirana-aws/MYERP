@@ -28,6 +28,8 @@ class CustomerReceiptSettlementResource extends JsonResource
             'instrument_date'    => $this->instrument_date?->toDateString(),
             'is_thirdparty'      => (bool) $this->is_thirdparty,
             'remark'             => $this->remark,
+            // In Hand / Issued / Deposited / Realized / Returned, cheque lines only (ChequeStatusRegistry).
+            'cheque_status'      => $this->resource->relationLoaded('cheque_status') ? $this->resource->getRelation('cheque_status') : null,
         ];
     }
 }

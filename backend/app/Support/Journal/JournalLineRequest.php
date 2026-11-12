@@ -39,6 +39,13 @@ use InvalidArgumentException;
  * The document already knows the name, so it simply passes it. That is the
  * whole point of this port: data flows core-wards, never sideways. Omit it and
  * the account is still created, just named "Customer #4" until renamed.
+ *
+ * ── The instrument ───────────────────────────────────────────────────────────
+ * A cash or bank line may say HOW the money moved: a cheque (number + date),
+ * a transfer reference, a card. Attached with withInstrument() rather than as
+ * more positional arguments, because only money lines carry it. Bank
+ * Reconciliation matches the statement on these columns, so a cheque number
+ * must never again live only inside the description text.
  */
 final class JournalLineRequest
 {
@@ -55,6 +62,9 @@ final class JournalLineRequest
         public readonly ?int    $sourceId,
         public readonly ?int    $companyId,
         public readonly ?int    $locationId,
+        public readonly ?string $instrumentType = null,
+        public readonly ?string $instrumentNo   = null,
+        public readonly ?string $instrumentDate = null,
     ) {}
 
     /**
@@ -141,6 +151,35 @@ final class JournalLineRequest
             sourceId:        $sourceId,
             companyId:       $companyId,
             locationId:      $locationId,
+        );
+    }
+
+    /**
+     * The same line, saying how the money moved.
+     *
+     * @param string|null $type a PaymentModeType value: cash, cheque, bank_transfer, card
+     * @param string|null $date Y-m-d; the cheque date for a cheque
+     */
+    public function withInstrument(?string $type, ?string $number, ?string $date = null): self
+    {
+        $number = $number === null ? null : (trim($number) ?: null);
+
+        return new self(
+            role:            $this->role,
+            ledgerAccountId: $this->ledgerAccountId,
+            debit:           $this->debit,
+            credit:          $this->credit,
+            description:     $this->description,
+            partyType:       $this->partyType,
+            partyId:         $this->partyId,
+            partyName:       $this->partyName,
+            sourceType:      $this->sourceType,
+            sourceId:        $this->sourceId,
+            companyId:       $this->companyId,
+            locationId:      $this->locationId,
+            instrumentType:  $type ?: null,
+            instrumentNo:    $number === null ? null : mb_substr($number, 0, 30),
+            instrumentDate:  $date === null || $date === '' ? null : substr($date, 0, 10),
         );
     }
 

@@ -11,6 +11,9 @@ use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\ChequeRegistry;
 use App\Services\CompanyAccessService;
+use App\Enums\PaymentModeType;
+use App\Support\Journal\JournalLineRequest;
+use App\Support\Journal\JournalRequest;
 use App\Support\Journal\PostingRole;
 use App\Models\PaymentMode;
 use Carbon\CarbonImmutable;
@@ -441,6 +444,14 @@ class BillPaymentService
 
             $this->assertStatus($locked, BillPaymentStatus::Confirmed, 'voided');
 
+            // Its bounce entry already gave the bills their balances back.
+            if ($locked->returned_date !== null) {
+                throw ValidationException::withMessages([
+                    'status' => $locked->payment_no . ' cannot be voided: the bank returned its cheque in '
+                        . $locked->return_reference . ', which already reopened the bills.',
+                ]);
+            }
+
             $date = $this->controls->assertReversalDate($reversalDate, $locked->payment_date, 'payment');
 
             $bills = $this->lockBills($locked);
@@ -485,6 +496,108 @@ class BillPaymentService
         });
 
         return $this->find($payment->fresh());
+    }
+
+    /**
+     * Why this payment's cheque cannot be returned, or null when it can.
+     * Bank Reconciliation shows it beside the Return option.
+     */
+    public function returnBlockedReason(?BillPayment $payment): ?string
+    {
+        // A cheque by the mode's TYPE, like every other cheque check -- a
+        // reference typed into cheque_no on a transfer does not make it one.
+        $isCheque = $payment !== null
+            && trim((string) $payment->cheque_no) !== ''
+            && (PaymentMode::typesById(array_filter([(int) $payment->payment_mode_id]))[(int) $payment->payment_mode_id] ?? null) === PaymentModeType::Cheque;
+
+        return match (true) {
+            $payment === null => 'The bill payment of this cheque no longer exists.',
+            $payment->returned_date !== null => 'This cheque was already returned in ' . $payment->return_reference . '.',
+            $payment->status !== BillPaymentStatus::Confirmed => $payment->payment_no . ' is ' . $payment->status->value . ', so its cheque cannot be returned.',
+            ! $isCheque => 'Only a cheque can be returned. Void ' . $payment->payment_no . ' instead.',
+            default => null,
+        };
+    }
+
+    /**
+     * The bank returned this payment's cheque: post the bounce (Dr the bank /
+     * Cr Payables per bill) and give every bill its paid amount back. The
+     * payment stays Confirmed -- it happened -- and records the return; its
+     * void is refused from now on. Runs inside the reconciliation's
+     * transaction.
+     */
+    public function returnCheque(int $paymentId, CarbonImmutable $date, string $reference, int $bankAccountId): ?string
+    {
+        /** @var BillPayment|null $locked */
+        $locked = BillPayment::with(['allocations.bill', 'supplier'])->whereKey($paymentId)->lockForUpdate()->first();
+
+        $reason = $this->returnBlockedReason($locked);
+
+        if ($reason !== null) {
+            throw ValidationException::withMessages(['lines' => $reason]);
+        }
+
+        $bills = $this->lockBills($locked);
+        $note  = 'Cheque ' . $locked->cheque_no . ' returned';
+        $lines = [];
+
+        foreach ($locked->allocations as $allocation) {
+            $lines[] = JournalLineRequest::credit(
+                PostingRole::ACCOUNTS_PAYABLE,
+                (float) $allocation->amount,
+                description: $note . ' - ' . ($allocation->bill?->bill_no ?? 'bill'),
+                partyType:   PostingRole::PARTY_SUPPLIER,
+                partyId:     (int) $locked->supplier_id,
+                partyName:   $locked->supplier?->supplier_name,
+                sourceType:  PostingRole::SOURCE_BILL,
+                sourceId:    (int) $allocation->bill_id,
+            );
+        }
+
+        $lines[] = JournalLineRequest::debit(
+            $bankAccountId,
+            (float) $locked->total_amount,
+            description: $note . ' (' . $locked->payment_no . ')',
+            sourceType:  PostingRole::SOURCE_BILL_PAYMENT,
+            sourceId:    (int) $locked->id,
+        )->withInstrument(PaymentModeType::Cheque->value, $locked->cheque_no, $locked->cheque_date?->toDateString());
+
+        $journalNo = app(JournalPoster::class)->post(new JournalRequest(
+            sourceType:  PostingRole::SOURCE_BILL_PAYMENT_RETURN,
+            sourceId:    (int) $locked->id,
+            journalDate: $date,
+            lines:       $lines,
+            journalType: JournalRequest::TYPE_ADJUSTMENT,
+            companyId:   (int) $locked->company_id,
+            narration:   $note . ' - ' . $locked->payment_no . ' (' . $reference . ')',
+        ));
+
+        foreach ($locked->allocations as $allocation) {
+            $bill = $bills->get($allocation->bill_id);
+
+            if ($bill !== null) {
+                $this->applyToBill($bill, -Bill::toCents($allocation->amount), $locked, 'cheque_returned');
+            }
+        }
+
+        $locked->forceFill([
+            'returned_date'     => $date->toDateString(),
+            'return_reference'  => $reference,
+            'return_journal_no' => $journalNo,
+            'returned_at'       => now(),
+            'returned_by'       => Auth::id(),
+            'updated_by'        => Auth::id(),
+        ])->save();
+
+        $this->audit->record(
+            BillPayment::AUDIT_TYPE,
+            $locked->id,
+            'cheque_returned',
+            ['returned_date' => null],
+            ['returned_date' => $date->toDateString(), 'return_reference' => $reference, 'return_journal_no' => $journalNo],
+        );
+
+        return $journalNo;
     }
 
     // ── Guards ───────────────────────────────────────────────────────────────

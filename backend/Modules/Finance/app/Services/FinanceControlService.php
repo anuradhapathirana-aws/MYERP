@@ -8,6 +8,7 @@ use App\Services\AuditLogger;
 use App\Services\SettingsService;
 use Carbon\CarbonImmutable;
 use DateTimeInterface;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -24,6 +25,10 @@ use Illuminate\Validation\ValidationException;
  *
  * The lock can never be set in the future. That keeps "today" always open,
  * which is what lets existing voids that reverse on today's date keep working.
+ *
+ * ── Bank period lock ─────────────────────────────────────────────────────────
+ * Per bank account: nothing dated on or before its latest posted bank
+ * reconciliation's statement date (assertBankPeriodOpen).
  *
  * ── Maker-checker ────────────────────────────────────────────────────────────
  * Off by default so a one-accountant client can still work. When on, the
@@ -67,6 +72,50 @@ class FinanceControlService
         throw ValidationException::withMessages([
             $field => 'Period closed up to ' . $this->lockDate()?->format('d-m-Y')
                 . '. Choose a date after the lock date.',
+        ]);
+    }
+
+    /**
+     * Refuse a posting on a bank account dated on or before the statement date
+     * of that account's latest posted reconciliation. That period is closed for
+     * the bank: its reconciliation balanced, and a back-dated entry would make
+     * its printed statement wrong. Date the entry after it, or undo the
+     * reconciliation first. Accounts that were never reconciled are free.
+     *
+     * @param  iterable<int|string> $ledgerAccountIds every account the journal touches
+     * @throws ValidationException
+     */
+    public function assertBankPeriodOpen(iterable $ledgerAccountIds, DateTimeInterface $date, string $field = 'journal_date'): void
+    {
+        $ids = [];
+
+        foreach ($ledgerAccountIds as $id) {
+            if ($id !== null) {
+                $ids[(int) $id] = true;
+            }
+        }
+
+        if ($ids === []) {
+            return;
+        }
+
+        $hit = DB::table('fin_bank_reconciliations as r')
+            ->join('fin_ledger_accounts as a', 'a.id', '=', 'r.bank_account_id')
+            ->whereIn('r.bank_account_id', array_keys($ids))
+            ->where('r.status', 'posted')
+            ->whereNull('r.deleted_at')
+            ->whereDate('r.statement_date', '>=', CarbonImmutable::instance($date)->toDateString())
+            ->orderByDesc('r.statement_date')
+            ->first(['r.recon_no', 'r.statement_date', 'a.code', 'a.ledger_account_name']);
+
+        if ($hit === null) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            $field => $hit->code . ' - ' . $hit->ledger_account_name . ' is reconciled up to '
+                . CarbonImmutable::parse($hit->statement_date)->format('d-m-Y') . ' (' . $hit->recon_no . '). '
+                . 'Date this entry after that, or undo that bank reconciliation first.',
         ]);
     }
 

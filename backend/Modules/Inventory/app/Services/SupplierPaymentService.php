@@ -6,6 +6,7 @@ namespace Modules\Inventory\Services;
 
 use App\Contracts\FundBalanceGuard;
 use App\Contracts\JournalPoster;
+use App\Services\ChequeStatusRegistry;
 use App\Support\Journal\PostingRole;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -18,6 +19,7 @@ use Modules\Inventory\Enums\SetoffType;
 use Modules\Inventory\Enums\SupplierPaymentStatus;
 use App\Models\Bank;
 use App\Models\PaymentMode;
+use Modules\Inventory\Models\ChequeReturn;
 use Modules\Inventory\Models\SupplierCreditNote;
 use Modules\Inventory\Models\SupplierPayment;
 use Modules\Inventory\Models\SupplierPaymentAllocation;
@@ -72,8 +74,16 @@ class SupplierPaymentService
             $query->whereDate('payment_date', '<=', $filters['date_to']);
         }
 
+        // Only payments with a cheque the bank returned.
+        if (!empty($filters['cheque_returned'])) {
+            $query->whereIn('id', fn ($q) => $q->select('document_id')
+                ->from('inv_cheque_returns')
+                ->where('document_type', ChequeReturn::DOCUMENT_SUPPLIER_PAYMENT));
+        }
+
         $paginator = $query->paginate($perPage);
         $this->attachSupplierSnapshots($paginator->items());
+        $this->attachReturnedCounts($paginator->items());
 
         return $paginator;
     }
@@ -83,6 +93,8 @@ class SupplierPaymentService
         $payment = SupplierPayment::with(['allocations', 'setoffs.creditNote', 'settlements'])->findOrFail($id);
         $this->attachSupplierSnapshots([$payment]);
         $this->attachGrnNumbers($payment);
+        $this->attachReturnedCounts([$payment]);
+        $this->attachChequeStatuses($payment);
 
         return $payment;
     }
@@ -451,6 +463,32 @@ class SupplierPaymentService
         }
 
         return DB::transaction(function () use ($payment, $reason): SupplierPayment {
+            // Locked first, as a cheque return locks it: a return and a void of
+            // the same payment queue, and the second sees what the first did.
+            $locked = SupplierPayment::whereKey($payment->id)->lockForUpdate()->first();
+
+            if ($locked === null || $locked->status !== SupplierPaymentStatus::Confirmed) {
+                abort(422, 'Only a confirmed payment can be voided.');
+            }
+
+            // A returned cheque already reopened its GRNs with its own entry;
+            // voiding the payment as well would reopen them twice.
+            $returned = app(ChequeReturnService::class)->returnedOn(ChequeReturn::DOCUMENT_SUPPLIER_PAYMENT, (int) $payment->id);
+
+            if ($returned !== null) {
+                abort(422, $payment->payment_no . ' cannot be voided: the bank returned its ' . $returned
+                    . ', which already reopened the GRNs.');
+            }
+
+            // It spent an advance whose cheque bounced: that bounce already
+            // reopened the GRNs this payment paid with it.
+            $through = app(ChequeReturnService::class)->reopenedThrough(ChequeReturn::DOCUMENT_SUPPLIER_PAYMENT, (int) $payment->id);
+
+            if ($through !== null) {
+                abort(422, $payment->payment_no . ' cannot be voided: it used an advance from ' . $through
+                    . ', which the bank returned. That already reopened the GRNs it paid.');
+            }
+
             $payment->loadMissing(['setoffs', 'settlements']);
 
             // Give back what this payment consumed. Locked in id order, the
@@ -793,6 +831,37 @@ class SupplierPaymentService
     }
 
     /** @param array<SupplierPayment> $payments */
+    /**
+     * How many of each payment's cheques came back -- the list badge.
+     * setRelation, like the supplier snapshot, so it is never saved as a column.
+     *
+     * @param array<SupplierPayment> $payments
+     */
+    private function attachReturnedCounts(array $payments): void
+    {
+        $counts = app(ChequeReturnService::class)->countsByDocument(
+            ChequeReturn::DOCUMENT_SUPPLIER_PAYMENT,
+            collect($payments)->pluck('id')->map(fn ($id): int => (int) $id)->all(),
+        );
+
+        foreach ($payments as $payment) {
+            $payment->setRelation('returned_cheques', $counts[$payment->id] ?? 0);
+        }
+    }
+
+    /** Each cheque line's Issued / Realized / Returned status, for the view. */
+    private function attachChequeStatuses(SupplierPayment $payment): void
+    {
+        $statuses = app(ChequeStatusRegistry::class)->forSettlements(
+            PostingRole::SOURCE_SUPPLIER_PAYMENT_SETTLEMENT,
+            $payment->settlements->pluck('id')->map(fn ($id): int => (int) $id)->all(),
+        );
+
+        foreach ($payment->settlements as $settlement) {
+            $settlement->setRelation('cheque_status', $statuses[$settlement->id] ?? null);
+        }
+    }
+
     private function attachSupplierSnapshots(array $payments): void
     {
         $supplierIds = collect($payments)->pluck('supplier_id')->filter()->unique()->values()->all();

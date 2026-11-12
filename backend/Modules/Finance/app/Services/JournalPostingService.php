@@ -89,6 +89,10 @@ final class JournalPostingService implements JournalPoster
             $rows = $this->resolveLines($request, $companyId);
             $rows = $this->applyRounding($request, $rows, $companyId);
 
+            // A bank account's reconciled period is closed for the bank: no
+            // document may post into it, whichever module it comes from.
+            $this->controls->assertBankPeriodOpen(array_column($rows, 'ledger_account_id'), $request->journalDate);
+
             $totalDebit  = round(array_sum(array_column($rows, 'debit')), 2);
             $totalCredit = round(array_sum(array_column($rows, 'credit')), 2);
 
@@ -235,6 +239,9 @@ final class JournalPostingService implements JournalPoster
 
             $original->loadMissing('lines');
 
+            $this->assertNotReconciled($original);
+            $this->controls->assertBankPeriodOpen($original->lines->pluck('ledger_account_id'), $date, 'reversal_date');
+
             // Every line mirrored -- debit becomes credit and credit becomes
             // debit, keeping the same account, party and source. The original
             // is left untouched, because a posted entry is the audit trail.
@@ -250,6 +257,9 @@ final class JournalPostingService implements JournalPoster
                 'party_id'          => $line->party_id,
                 'source_type'       => $line->source_type,
                 'source_id'         => $line->source_id,
+                'instrument_type'   => $line->instrument_type,
+                'instrument_no'     => $line->instrument_no,
+                'instrument_date'   => $line->instrument_date,
             ])->all();
 
             $reversal = new JournalEntry([
@@ -285,6 +295,48 @@ final class JournalPostingService implements JournalPoster
 
             return $reversal->journal_no;
         });
+    }
+
+    /**
+     * A bank line the statement has already shown cannot be taken back by a
+     * void: the bank still holds the money, so the reversal would put the
+     * books and the posted reconciliation out of step. Checked here so every
+     * document's void -- in any module -- meets the same rule.
+     *
+     * @throws ValidationException
+     */
+    private function assertNotReconciled(JournalEntry $original): void
+    {
+        $ids = $original->lines->pluck('id')->all();
+
+        if ($ids === []) {
+            return;
+        }
+
+        // Take the bank account locks a reconciliation post takes, so a void
+        // and a post of the same lines cannot both pass their checks at once.
+        DB::table('fin_ledger_accounts')
+            ->whereIn('id', $original->lines->pluck('ledger_account_id')->unique()->values()->all())
+            ->where('cash_book_type', 'bank')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->pluck('id');
+
+        $hit = DB::table('fin_bank_reconciliation_lines as rl')
+            ->join('fin_bank_reconciliations as r', 'r.id', '=', 'rl.bank_reconciliation_id')
+            ->whereIn('rl.journal_line_id', $ids)
+            ->where('r.status', 'posted')
+            ->whereNull('r.deleted_at')
+            ->whereIn('rl.status', ['realized', 'returned'])
+            ->first(['r.recon_no', 'rl.instrument_no']);
+
+        if ($hit !== null) {
+            throw ValidationException::withMessages([
+                'status' => ($hit->instrument_no ? 'Cheque ' . $hit->instrument_no . ' of ' : '') . $original->journal_no
+                    . ' is reconciled in ' . $hit->recon_no . ': the bank has already cleared it. '
+                    . 'Undo that reconciliation first, or post a correcting entry.',
+            ]);
+        }
     }
 
     /**
@@ -369,6 +421,9 @@ final class JournalPostingService implements JournalPoster
                 'party_id'          => $line->partyId,
                 'source_type'       => $line->sourceType,
                 'source_id'         => $line->sourceId,
+                'instrument_type'   => $line->instrumentType,
+                'instrument_no'     => $line->instrumentNo,
+                'instrument_date'   => $line->instrumentDate,
             ];
         }
 

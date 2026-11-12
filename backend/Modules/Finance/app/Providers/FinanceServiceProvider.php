@@ -2,6 +2,7 @@
 
 namespace Modules\Finance\Providers;
 
+use App\Contracts\ChequeReturnSource;
 use App\Contracts\FundBalanceGuard;
 use App\Contracts\JournalPoster;
 use App\Contracts\LandedChargeSource;
@@ -13,6 +14,7 @@ use Modules\Finance\Observers\SupplierLedgerObserver;
 use Modules\Finance\Services\FundBalanceService;
 use Modules\Finance\Services\JournalPostingService;
 use Modules\Finance\Support\BillLandedChargeSource;
+use Modules\Finance\Support\BillPaymentChequeReturns;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
 class FinanceServiceProvider extends ModuleServiceProvider
@@ -45,6 +47,9 @@ class FinanceServiceProvider extends ModuleServiceProvider
 
         // Confirmed bills linked to a GRN feed Inventory's Costing.
         $this->app->bind(LandedChargeSource::class, BillLandedChargeSource::class);
+
+        // Bank Reconciliation returns a bill payment's cheque here.
+        $this->app->tag([BillPaymentChequeReturns::class], ChequeReturnSource::TAG);
     }
 
     public function boot(): void

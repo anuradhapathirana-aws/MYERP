@@ -22,6 +22,7 @@ use Modules\Finance\Enums\JournalStatus;
 use Modules\Finance\Models\AccountDefault;
 use Modules\Finance\Models\ControlAccount;
 use Modules\Finance\Models\JournalEntry;
+use Modules\Finance\Models\JournalLine;
 use Modules\Finance\Models\LedgerAccount;
 use Modules\Finance\Services\FundBalanceService;
 use Modules\Finance\Services\JournalPostingService;
@@ -179,6 +180,37 @@ class SupplierPaymentPostingTest extends TestCase
         // balance matches what actually left that one account.
         $this->assertSame(-70000.0, $this->balance($this->bankA->id));
         $this->assertSame(-30000.0, $this->balance($this->bankB->id));
+    }
+
+    public function test_each_cheque_line_names_its_settlement_number_and_date(): void
+    {
+        $grn = $this->confirmedGrn(100000);
+
+        $payment = $this->confirmPayment([
+            'allocations' => [[
+                'reference_type' => 'grn', 'reference_id' => $grn->id,
+                'payment_amount' => 100000, 'discount' => 0,
+            ]],
+            'settlements' => [
+                $this->settlement($this->bankA, 70000, '111111'),
+                $this->settlement($this->bankA, 30000, '222222'),
+            ],
+        ]);
+
+        $settlements = $payment->settlements()->orderBy('id')->get();
+        $lines       = JournalLine::where('ledger_account_id', $this->bankA->id)->orderBy('line_no')->get();
+
+        // Two cheques on one bank stay two lines, each its own leaf, so Bank
+        // Reconciliation can clear them on different days.
+        $this->assertCount(2, $lines);
+
+        foreach ([0 => '111111', 1 => '222222'] as $i => $chequeNo) {
+            $this->assertSame(PostingRole::SOURCE_SUPPLIER_PAYMENT_SETTLEMENT, $lines[$i]->source_type);
+            $this->assertSame($settlements[$i]->id, $lines[$i]->source_id);
+            $this->assertSame('cheque', $lines[$i]->instrument_type);
+            $this->assertSame($chequeNo, $lines[$i]->instrument_no);
+            $this->assertSame('2026-04-12', $lines[$i]->instrument_date->toDateString());
+        }
     }
 
     public function test_paying_from_a_bank_without_the_money_asks_first(): void

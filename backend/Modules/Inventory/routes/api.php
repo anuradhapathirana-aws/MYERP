@@ -136,6 +136,10 @@ Route::middleware(['auth:sanctum', 'module:inventory'])->prefix('v1')->group(fun
     Route::get('customer-masters/next-code', [CustomerController::class, 'nextCustomerCode'])
         ->name('inventory.customer-masters.next-code');
 
+    Route::get('customer-masters/{customer_master}/returned-cheques', [CustomerController::class, 'returnedCheques'])
+        ->whereNumber('customer_master')
+        ->name('inventory.customer-masters.returned-cheques');
+
     Route::apiResource('customer-masters', CustomerController::class)
         ->names('inventory.customer-masters');
 

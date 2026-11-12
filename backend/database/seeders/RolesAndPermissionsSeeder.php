@@ -123,6 +123,10 @@ class RolesAndPermissionsSeeder extends Seeder
         // Bank Deposit: same split. confirm moves the money into the bank.
         'bank_deposits' => ['view', 'create', 'edit', 'delete', 'confirm', 'void'],
 
+        // Bank Reconciliation: post freezes the matching against the statement;
+        // void undoes the latest one. Both above plain create/edit.
+        'bank_reconciliations' => ['view', 'create', 'edit', 'delete', 'post', 'void'],
+
     ];
 
     /**

@@ -13,6 +13,8 @@ use Modules\Inventory\Enums\CustomerReceiptStatus;
 use Modules\Inventory\Http\Requests\StoreInvoiceRequest;
 use Modules\Inventory\Http\Requests\UpdateInvoiceRequest;
 use Modules\Inventory\Http\Resources\InvoiceResource;
+use Modules\Inventory\Models\ChequeReturn;
+use Modules\Inventory\Models\ChequeReturnAllocation;
 use Modules\Inventory\Models\Invoice;
 use Modules\Inventory\Services\InvoiceService;
 
@@ -139,6 +141,33 @@ class InvoiceController extends Controller
                 'remark'          => $s->remark,
             ])->values());
 
+        // A cheque the bank returned reopened (part of) what a receipt paid
+        // here: its own cheque, or -- via_document_id -- a cheque whose advance
+        // that receipt spent. A discount taken back shows as its own line.
+        $returnedByReceipt = DB::table('inv_cheque_return_allocations as ca')
+            ->join('inv_cheque_returns as cr', 'cr.id', '=', 'ca.cheque_return_id')
+            ->whereIn('ca.reference_type', ChequeReturnAllocation::REOPENS_INVOICE)
+            ->where('ca.reference_id', $invoice->id)
+            ->where('cr.document_type', ChequeReturn::DOCUMENT_CUSTOMER_RECEIPT)
+            ->where(fn ($q) => $q->whereIn('ca.via_document_id', $receiptIds)
+                ->orWhere(fn ($w) => $w->whereNull('ca.via_document_id')->whereIn('cr.document_id', $receiptIds)))
+            ->orderBy('cr.id')
+            ->get([
+                DB::raw('COALESCE(ca.via_document_id, cr.document_id) as receipt_id'),
+                'cr.cheque_no', 'cr.return_date', 'cr.reference', 'cr.document_no', 'ca.amount', 'ca.reference_type', 'ca.via_document_id',
+            ])
+            ->groupBy('receipt_id')
+            ->map(fn ($group) => $group->map(fn ($r) => [
+                'cheque_no'   => $r->cheque_no,
+                'return_date' => $r->return_date,
+                'reference'   => $r->reference,
+                'amount'      => (float) $r->amount,
+                'kind'        => $r->reference_type === ChequeReturnAllocation::INVOICE_DISCOUNT
+                    ? 'discount'
+                    : ($r->via_document_id !== null ? 'advance' : 'payment'),
+                'cheque_of'   => $r->via_document_id !== null ? $r->document_no : null,
+            ])->values());
+
         $rows = $allocations->map(fn ($row) => [
             'receipt_id'         => $row->receipt_id,
             'receipt_no'         => $row->receipt_no,
@@ -148,6 +177,7 @@ class InvoiceController extends Controller
             'outstanding_before' => (float) $row->outstanding_before,
             'outstanding_after'  => (float) $row->outstanding_before - (float) $row->receipt_amount - (float) $row->discount,
             'settlements'        => $settlementsByReceipt->get($row->receipt_id, collect())->values(),
+            'returned_cheques'   => $returnedByReceipt->get($row->receipt_id, collect())->values(),
         ]);
 
         return response()->json(['data' => $rows]);

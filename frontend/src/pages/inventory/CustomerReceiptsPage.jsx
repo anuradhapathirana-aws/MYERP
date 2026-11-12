@@ -26,7 +26,7 @@ const CRUMBS = [
   { label: 'Customer Receipts' },
 ]
 
-const INITIAL_FILTERS = { search: '', status: '', customer_id: '', date_from: '', date_to: '' }
+const INITIAL_FILTERS = { search: '', status: '', customer_id: '', date_from: '', date_to: '', cheque_returned: '' }
 
 const STATUS_STYLES = {
   draft:     'bg-amber-100 text-amber-700',
@@ -144,6 +144,12 @@ export default function CustomerReceiptsPage() {
             <option value="voided">Voided</option>
           </select>
         </FilterField>
+        <FilterField label="Cheques">
+          <select className={FILTER_SELECT_CLS} value={draft.cheque_returned} onChange={(e) => setDraft((d) => ({ ...d, cheque_returned: e.target.value }))}>
+            <option value="">All receipts</option>
+            <option value="1">Returned cheques only</option>
+          </select>
+        </FilterField>
         <FilterField label="Customer">
           <FilterSearchSelect
             value={draft.customer_id}
@@ -209,6 +215,11 @@ export default function CustomerReceiptsPage() {
                           <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[r.status] ?? 'bg-slate-100 text-slate-500'}`}>
                             {r.status_label}
                           </span>
+                          {r.returned_cheques > 0 && (
+                            <span className="ml-1 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700" title="The bank returned a cheque of this receipt; its invoices are owed again">
+                              Cheque Returned
+                            </span>
+                          )}
                         </td>
                         {/* stopPropagation so action buttons don't also fire the row's navigate */}
                         <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
@@ -221,7 +232,7 @@ export default function CustomerReceiptsPage() {
                                 <DeleteBtn onClick={() => handleDelete(r.id, r.receipt_no)} disabled={deleteMutation.isPending} />
                               </>
                             )}
-                            {r.status === 'confirmed' && can('void_customer_receipts') && (
+                            {r.status === 'confirmed' && !r.returned_cheques && can('void_customer_receipts') && (
                               <button type="button" title="Void Receipt" onClick={() => handleVoid(r.id, r.receipt_no)} disabled={voidMutation.isPending} className="inline-flex items-center justify-center rounded-lg p-1.5 bg-red-50 text-red-600 hover:bg-red-100 transition-colors disabled:opacity-40"><Ban size={14} strokeWidth={2} /></button>
                             )}
                           </div>

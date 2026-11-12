@@ -229,6 +229,11 @@ export default function BillPaymentsPage() {
                       <td className="px-3 py-2 text-right font-medium text-slate-700"><Money value={p.total_amount} /></td>
                       <td className="px-3 py-2">
                         <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[p.status] ?? ''}`}>{p.status_label}</span>
+                        {p.returned_date && (
+                          <span className="ml-1 inline-flex rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700" title={`Cheque returned in ${p.return_reference}`}>
+                            Returned
+                          </span>
+                        )}
                       </td>
                       <td className="sticky right-0 bg-white px-3 py-2 group-hover:bg-slate-50">
                         <div className="flex items-center justify-end gap-1">
@@ -244,7 +249,7 @@ export default function BillPaymentsPage() {
                               {can('delete_bill_payments') && <DeleteBtn onClick={() => handleDelete(p)} disabled={busy} />}
                             </>
                           )}
-                          {p.status === 'confirmed' && can('void_bill_payments') && (
+                          {p.status === 'confirmed' && !p.returned_date && can('void_bill_payments') && (
                             <button type="button" title="Void Payment" onClick={() => handleVoid(p)} disabled={busy} className="inline-flex items-center justify-center rounded-lg bg-red-50 p-1.5 text-red-600 transition-colors hover:bg-red-100 disabled:opacity-40">
                               <Ban size={14} strokeWidth={2} />
                             </button>

@@ -37,7 +37,8 @@ final class PostingRole
     public const ROUNDING_DIFFERENCE   = 'rounding_difference';
     public const OPENING_BALANCE_EQUITY = 'opening_balance_equity';
     public const BANK_CHARGES          = 'bank_charges';
-    public const GRNI_CLEARING         = 'grni_clearing';
+    public const INTEREST_INCOME       = 'interest_income';
+    public const GRNI_CLEARING        = 'grni_clearing';
     public const INVENTORY             = 'inventory';
     public const COST_OF_SALES         = 'cost_of_sales';
     public const SALES_RETURNS         = 'sales_returns';
@@ -60,6 +61,21 @@ final class PostingRole
     public const SOURCE_CUSTOMER_RETURN  = 'customer_return';
     public const SOURCE_SUPPLIER_RETURN  = 'supplier_return';
 
+    /**
+     * The bounce entry of a cheque the bank returned: Inventory's
+     * inv_cheque_returns row, or a Finance bill payment (one cheque each).
+     */
+    public const SOURCE_CHEQUE_RETURN      = 'cheque_return';
+    public const SOURCE_BILL_PAYMENT_RETURN = 'bill_payment_return';
+
+    /**
+     * On a cash or bank LINE only: the settlement row (one cheque, one
+     * transfer) that moved the money, so Bank Reconciliation can realise or
+     * return that one instrument. The header still names the payment.
+     */
+    public const SOURCE_SUPPLIER_PAYMENT_SETTLEMENT = 'supplier_payment_settlement';
+    public const SOURCE_CUSTOMER_RECEIPT_SETTLEMENT = 'customer_receipt_settlement';
+
     /** @return list<string> Every role key, for the contract test. */
     public static function all(): array
     {
@@ -77,6 +93,7 @@ final class PostingRole
             self::ROUNDING_DIFFERENCE,
             self::OPENING_BALANCE_EQUITY,
             self::BANK_CHARGES,
+            self::INTEREST_INCOME,
             self::GRNI_CLEARING,
             self::INVENTORY,
             self::COST_OF_SALES,

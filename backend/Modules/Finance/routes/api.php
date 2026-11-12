@@ -13,6 +13,7 @@ use Modules\Finance\Http\Controllers\BillController;
 use Modules\Finance\Http\Controllers\BillPaymentController;
 use Modules\Finance\Http\Controllers\ChargeTypeController;
 use Modules\Finance\Http\Controllers\ControlAccountController;
+use Modules\Finance\Http\Controllers\DashboardController;
 use Modules\Finance\Http\Controllers\FinanceReportController;
 use Modules\Finance\Http\Controllers\UnclearedChequesReportController;
 use Modules\Finance\Http\Controllers\FinanceSettingsController;
@@ -247,6 +248,10 @@ Route::middleware(['auth:sanctum', 'module:finance'])->prefix('v1')->group(funct
     Route::get('finance-attachments/{type}/{id}', [AttachmentController::class, 'index'])
         ->where('type', '[a-z_]+')->whereNumber('id')
         ->name('finance-attachments.index');
+
+    // ── Home dashboard widget ────────────────────────────────────────────────
+    Route::get('dashboard/finance/cash', [DashboardController::class, 'cash'])
+        ->name('finance.dashboard.cash');
 
     // ── Financial statements ─────────────────────────────────────────────────
     Route::get('finance-reports/trial-balance', [FinanceReportController::class, 'trialBalanceReport'])

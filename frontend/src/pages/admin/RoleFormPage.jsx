@@ -9,10 +9,13 @@ import { showError, showSuccess } from '../../utils/alerts'
 
 // Column order used across every group; a group only renders the columns
 // its resources actually use.
-const ACTION_ORDER = ['view', 'create', 'edit', 'delete', 'approve', 'confirm', 'manage']
+// Every action the backend can send must be listed here, or its checkbox
+// never renders (void / post / reverse were once missing).
+const ACTION_ORDER = ['view', 'create', 'edit', 'delete', 'approve', 'confirm', 'post', 'reverse', 'void', 'manage']
 const ACTION_LABELS = {
   view: 'View', create: 'Create', edit: 'Edit', delete: 'Delete',
-  approve: 'Approve', confirm: 'Confirm', manage: 'Manage',
+  approve: 'Approve', confirm: 'Confirm', post: 'Post', reverse: 'Reverse',
+  void: 'Void', manage: 'Manage',
 }
 
 // ── Indeterminate checkbox ────────────────────────────────────────────────────

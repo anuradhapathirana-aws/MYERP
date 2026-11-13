@@ -41,7 +41,7 @@ trait BillFixtures
     protected array $billPermissions = [
         'view_bills', 'create_bills', 'edit_bills', 'delete_bills', 'confirm_bills', 'void_bills',
         'view_journal_entries', 'create_journal_entries', 'post_journal_entries', 'reverse_journal_entries',
-        'view_finance_settings', 'manage_finance_settings',
+        'view_finance_settings', 'manage_finance_period_lock',
     ];
 
     protected function setUpBills(): void

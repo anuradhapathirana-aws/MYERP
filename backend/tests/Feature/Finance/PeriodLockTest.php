@@ -153,7 +153,7 @@ class PeriodLockTest extends TestCase
         $this->assertSame(['lock_date_changed', 'period_reopened'], $events);
     }
 
-    public function test_only_settings_managers_can_move_the_lock(): void
+    public function test_only_period_lock_managers_can_move_the_lock(): void
     {
         $clerk = $this->makeUser(['view_bills', 'create_bills']);
 

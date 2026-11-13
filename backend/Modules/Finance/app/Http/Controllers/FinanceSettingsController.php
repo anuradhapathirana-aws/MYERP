@@ -30,8 +30,15 @@ class FinanceSettingsController extends Controller
         private readonly FinanceControlService $controls,
     ) {
         $this->middleware('permission:view_finance_settings')->only(['index']);
-        $this->middleware('permission:manage_finance_settings')
-            ->only(['update', 'updatePostingMode', 'updatePartyLedgerMode', 'updateLockDate', 'updateMakerChecker']);
+
+        // Set-up that decides where every future journal lands, or switches
+        // off a fraud control: changed by the IT company (super admin) only.
+        $this->middleware('super_admin')
+            ->only(['update', 'updatePostingMode', 'updatePartyLedgerMode', 'updateMakerChecker']);
+
+        // Month-end close is the client accountant's routine job, so the lock
+        // date stays a permission a client admin can grant.
+        $this->middleware('permission:manage_finance_period_lock')->only(['updateLockDate']);
     }
 
     public function index(): JsonResponse

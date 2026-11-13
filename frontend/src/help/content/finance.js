@@ -86,7 +86,7 @@ export const topics = [
     summary: 'Tells Finance which ledger account to use for each kind of posting, such as Accounts Payable or Sales Revenue.',
     where: 'Finance › General Ledger › Account Mapping',
     route: '/finance/account-mapping',
-    who: 'View Finance Settings; Manage to change',
+    who: 'View Account Mapping (read only). Changes are made by your IT support (super admin).',
     intro: [
       'Documents do not name accounts. They name a **posting role** (for example “Accounts Payable”), and this screen says which ledger account each role uses. The mapping arrives already filled in. Change it only if your chart really differs.',
     ],
@@ -97,6 +97,7 @@ export const topics = [
       'Under **Posting Mode**, choose **Review first** or **Post immediately**.',
       'The **Period Lock & Controls** card is on the same screen. See “Period lock and maker-checker”.',
     ],
+    before: ['Mappings, Party Balances and Posting Mode decide where every journal is written, so only your **IT support (super admin)** can change them. Everyone else sees this screen read only. Ask IT support if a mapping needs to change.'],
     tables: [{
       title: 'Main posting roles',
       head: ['Role', 'Used by'],
@@ -128,10 +129,10 @@ export const topics = [
     summary: 'Lock a closed month so nothing can be posted into it, and optionally require a second person to confirm.',
     where: 'Finance › General Ledger › Account Mapping › Period Lock & Controls',
     route: '/finance/account-mapping',
-    who: 'Manage Finance Settings',
+    who: 'Period Lock – Manage (to lock a month). Maker-checker is switched on/off by your IT support (super admin).',
     steps: [
       'After closing a month (for example after filing the VAT return), set **Locked up to** to its last day and save.',
-      'Tick **maker-checker** if the person who enters a document must not be the one who confirms it.',
+      'To switch **maker-checker** on or off, ask your IT support. Only a super admin can change it, because switching it off removes a fraud control.'
     ],
     example: {
       scenario: 'October 2026 is closed and reported. Set **Locked up to** = 31-10-2026.',

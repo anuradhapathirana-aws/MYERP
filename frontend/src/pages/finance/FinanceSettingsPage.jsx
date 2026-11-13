@@ -12,6 +12,7 @@ import FilterSearchSelect from '../../components/ui/FilterSearchSelect'
 import Breadcrumb from '../../components/Breadcrumb'
 import FinanceControlsCard from './FinanceControlsCard'
 import { usePermissions } from '../../hooks/usePermissions'
+import { readProfile } from '../../utils/session'
 import { confirmAction, showError, showSuccess } from '../../utils/alerts'
 import { FILTER_SELECT_CLS } from '../../utils/fieldStyles'
 
@@ -41,7 +42,12 @@ const EMPTY_ARRAY = []
 export default function FinanceSettingsPage() {
   const { can }      = usePermissions()
   const queryClient  = useQueryClient()
-  const canManage    = can('manage_finance_settings')
+  // Mappings, posting mode, party ledger mode and maker-checker decide where
+  // every journal lands: set up by the IT company (super admin) only. Others
+  // with view_finance_settings see them read-only.
+  // Same flag the backend super_admin gate reads (users.role).
+  const canManage    = Boolean(readProfile().is_super_admin)
+  const canLock      = can('manage_finance_period_lock')
 
   // null = the global mapping every company shares. A company id shows that
   // company's overrides layered on top, which is how AccountResolver reads it.
@@ -239,6 +245,12 @@ export default function FinanceSettingsPage() {
           <h1 className="text-xl font-bold text-slate-900">Account Mapping</h1>
         </div>
 
+        {!canManage && (
+          <span className="rounded-md bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700">
+            Read only · mappings and posting settings are changed by your IT support (super admin)
+          </span>
+        )}
+
         {canManage && (
           <button
             type="button"
@@ -395,7 +407,8 @@ export default function FinanceSettingsPage() {
             key={settings?.lock_date ?? 'none'}
             lockDate={settings?.lock_date ?? null}
             makerChecker={settings?.maker_checker ?? false}
-            canManage={canManage}
+            canLock={canLock}
+            canManageSetup={canManage}
             onChanged={() => {
               queryClient.invalidateQueries({ queryKey: settingsKey })
               queryClient.invalidateQueries({ queryKey: ['bill-options'] })

@@ -35,6 +35,8 @@ class PermissionController extends Controller
                 'banks'            => ['label' => 'Banks',           'actions' => ['view', 'create', 'edit', 'delete']],
                 'bank_branches'    => ['label' => 'Bank Branches',   'actions' => ['view', 'create', 'edit', 'delete']],
                 'payment_modes'    => ['label' => 'Payment Modes',   'actions' => ['view', 'create', 'edit', 'delete']],
+                // Also guards Master Data > Tax Codes.
+                'taxes'            => ['label' => 'Taxes & Tax Codes', 'actions' => ['view', 'create', 'edit', 'delete']],
             ],
         ],
         'inventory_master' => [
@@ -65,7 +67,8 @@ class PermissionController extends Controller
                 'costings'              => ['label' => 'Costings',              'actions' => ['view', 'create', 'edit', 'delete', 'confirm']],
                 'stock_reconciliations' => ['label' => 'Stock Reconciliations', 'actions' => ['view', 'create', 'edit', 'delete', 'approve']],
                 'costing_expense_types' => ['label' => 'Costing Expense Types', 'actions' => ['manage']],
-                'sales_orders'          => ['label' => 'Sales Orders',          'actions' => ['view', 'create', 'edit', 'delete']],
+                'proforma_invoices'     => ['label' => 'Proforma Invoices',     'actions' => ['view', 'create', 'edit', 'delete']],
+                'sales_orders'          => ['label' => 'Sales Orders',         'actions' => ['view', 'create', 'edit', 'delete']],
                 'delivery_orders'       => ['label' => 'Delivery Orders',       'actions' => ['view', 'create', 'edit', 'delete']],
                 'invoices'              => ['label' => 'Invoices',              'actions' => ['view', 'create', 'edit', 'delete']],
                 'customer_returns'      => ['label' => 'Customer Returns',      'actions' => ['view', 'create', 'edit', 'delete', 'confirm']],
@@ -92,7 +95,20 @@ class PermissionController extends Controller
             'resources' => [
                 'journal_entries'  => ['label' => 'Journal Vouchers',  'actions' => ['view', 'create', 'post', 'reverse', 'delete']],
                 'finance_reports'  => ['label' => 'Financial Reports', 'actions' => ['view']],
-                'finance_settings' => ['label' => 'Account Mapping',   'actions' => ['view', 'manage']],
+                // Changing the mapping itself is super admin only.
+                'finance_settings'    => ['label' => 'Account Mapping',   'actions' => ['view']],
+                'finance_period_lock' => ['label' => 'Period Lock (month-end close)', 'actions' => ['manage']],
+            ],
+        ],
+        'finance_payables' => [
+            'label'     => 'Finance · Bills & Banking',
+            'resources' => [
+                'charge_types'         => ['label' => 'Charge Types',         'actions' => ['view', 'create', 'edit', 'delete']],
+                'bills'                => ['label' => 'Bills',                'actions' => ['view', 'create', 'edit', 'delete', 'confirm', 'void']],
+                'bill_payments'        => ['label' => 'Bill Payments',        'actions' => ['view', 'create', 'edit', 'delete', 'confirm', 'void']],
+                'bank_deposits'        => ['label' => 'Bank Deposits',        'actions' => ['view', 'create', 'edit', 'delete', 'confirm', 'void']],
+                // Post also covers adding bank charges / interest entries.
+                'bank_reconciliations' => ['label' => 'Bank Reconciliations', 'actions' => ['view', 'create', 'edit', 'delete', 'post', 'void']],
             ],
         ],
         'administration' => [

@@ -157,7 +157,10 @@ class RolesAndPermissionsSeeder extends Seeder
      */
     private const FINANCE_RESTRICTED_RESOURCES = [
         'finance_reports'  => ['view'],
-        'finance_settings' => ['view', 'manage'],
+        // Changing mappings / posting mode / party ledger mode / maker-checker
+        // is super admin only (no permission row); only viewing is grantable.
+        'finance_settings'    => ['view'],
+        'finance_period_lock' => ['manage'],
     ];
 
     /**

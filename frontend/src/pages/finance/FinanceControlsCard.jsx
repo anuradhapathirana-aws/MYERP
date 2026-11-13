@@ -17,7 +17,10 @@ const firstError = (e, fallback) => {
  * lock it so nothing can be posted, voided or back-dated into it again.
  * Moving it back reopens a period -- allowed, but recorded in the audit trail.
  */
-export default function FinanceControlsCard({ lockDate, makerChecker, canManage, onChanged }) {
+// canLock: manage_finance_period_lock (client accountant, month-end close).
+// canManageSetup: super admin only -- switching maker-checker off removes a
+// fraud control, so it is changed by the IT company on the client's request.
+export default function FinanceControlsCard({ lockDate, makerChecker, canLock, canManageSetup, onChanged }) {
   // The parent keys this card by lockDate, so a saved change remounts it
   // with the new value -- no effect needed to sync the input.
   const [date, setDate] = useState(lockDate ?? '')
@@ -69,9 +72,9 @@ export default function FinanceControlsCard({ lockDate, makerChecker, canManage,
               value={date}
               max={today}
               onChange={(e) => setDate(e.target.value)}
-              disabled={!canManage || lockMutation.isPending}
+              disabled={!canLock || lockMutation.isPending}
             />
-            {canManage && (
+            {canLock && (
               <button
                 type="button"
                 onClick={saveLock}
@@ -88,18 +91,19 @@ export default function FinanceControlsCard({ lockDate, makerChecker, canManage,
           </p>
         </div>
 
-        <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 px-2.5 py-2">
+        <label className="flex items-start gap-2 rounded-lg border border-slate-200 px-2.5 py-2">
           <input
             type="checkbox"
             className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-indigo-600"
             checked={Boolean(makerChecker)}
-            disabled={!canManage || makerMutation.isPending}
+            disabled={!canManageSetup || makerMutation.isPending}
             onChange={(e) => makerMutation.mutate(e.target.checked)}
           />
           <span>
             <span className="flex items-center gap-1 text-xs font-bold text-slate-800"><ShieldCheck size={12} /> Maker-checker</span>
             <span className="mt-0.5 block text-[10px] leading-snug text-slate-500">
               The person who enters a bill cannot also confirm it. Needs at least two Finance users.
+              {!canManageSetup && ' Changed by your IT support (super admin).'}
             </span>
           </span>
         </label>

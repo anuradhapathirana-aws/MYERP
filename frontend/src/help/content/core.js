@@ -476,7 +476,8 @@ export const topics = [
           ['Approve', 'Approve or reject (Purchase Requests, Stock Reconciliations).'],
           ['Confirm', 'Confirm documents so stock and accounts change.'],
           ['Void / Cancel', 'Void or cancel confirmed documents.'],
-          ['Post / Reverse', 'Post and reverse journal vouchers (Finance).'],
+          ['Post / Reverse', 'Post and reverse journal vouchers; Post on Bank Reconciliations also finalises the reconciliation and adds bank charge / interest entries (Finance).'],
+          ['Manage', 'Change a setting screen as a whole (Period Lock, Costing Expense Types, Roles & Permissions). Account Mapping, Posting Mode and Maker-checker are changed by IT support (super admin) only.'],
         ],
       },
       {

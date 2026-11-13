@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Finance;
 
+use App\Enums\UserRole;
 use App\Models\User;
 use App\Services\SettingsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -15,6 +16,7 @@ use Modules\Finance\Models\AccountDefault;
 use Modules\Finance\Models\JournalEntry;
 use Modules\Finance\Models\LedgerAccount;
 use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 /**
@@ -42,7 +44,7 @@ class JournalVoucherApiTest extends TestCase
         $permissions = [
             'view_journal_entries', 'create_journal_entries', 'post_journal_entries',
             'reverse_journal_entries', 'delete_journal_entries',
-            'view_finance_reports', 'view_finance_settings', 'manage_finance_settings',
+            'view_finance_reports', 'view_finance_settings', 'manage_finance_period_lock',
         ];
 
         foreach ($permissions as $perm) {
@@ -335,7 +337,7 @@ class JournalVoucherApiTest extends TestCase
     {
         $salesRevenue = LedgerAccount::firstWhere('ledger_account_name', 'Sales Revenue');
 
-        $this->actingAs($this->user)
+        $this->actingAs($this->superAdmin())
             ->putJson('/api/v1/finance-settings/mappings', [
                 'mappings' => ['accounts_payable' => $salesRevenue->id],
             ])
@@ -355,7 +357,7 @@ class JournalVoucherApiTest extends TestCase
     {
         $customerAdvances = LedgerAccount::firstWhere('ledger_account_name', 'Customer Advances');
 
-        $this->actingAs($this->user)
+        $this->actingAs($this->superAdmin())
             ->putJson('/api/v1/finance-settings/mappings', [
                 'mappings' => ['accounts_payable' => $customerAdvances->id],
             ])
@@ -369,7 +371,7 @@ class JournalVoucherApiTest extends TestCase
 
     public function test_a_required_role_cannot_be_unmapped(): void
     {
-        $this->actingAs($this->user)
+        $this->actingAs($this->superAdmin())
             ->putJson('/api/v1/finance-settings/mappings', ['mappings' => ['accounts_payable' => null]])
             ->assertStatus(422)
             ->assertJsonValidationErrors('mappings.accounts_payable');
@@ -377,7 +379,7 @@ class JournalVoucherApiTest extends TestCase
 
     public function test_the_posting_mode_can_be_switched(): void
     {
-        $this->actingAs($this->user)
+        $this->actingAs($this->superAdmin())
             ->putJson('/api/v1/finance-settings/posting-mode', ['posting_mode' => 'immediate'])
             ->assertOk()
             ->assertJsonPath('data.posting_mode', 'immediate');
@@ -386,7 +388,45 @@ class JournalVoucherApiTest extends TestCase
             ->assertJsonPath('data.posting_mode', 'immediate');
     }
 
+    /** Mappings, posting mode, party ledger mode, maker-checker: IT (super admin) only. */
+    private function superAdmin(): User
+    {
+        Role::findOrCreate('super_admin', 'web');
+        $it = User::factory()->create(['role' => UserRole::SuperAdmin, 'active_modules' => ['finance']]);
+        $it->assignRole('super_admin');
+
+        return $it;
+    }
+
     // ── Access control ───────────────────────────────────────────────────────
+
+    public function test_finance_setup_is_super_admin_only_even_with_the_period_lock_permission(): void
+    {
+        // $this->user holds view_finance_settings + manage_finance_period_lock:
+        // the most a client admin can grant on this screen.
+        $writes = [
+            ['/api/v1/finance-settings/mappings', ['mappings' => ['bank_charges' => null]]],
+            ['/api/v1/finance-settings/posting-mode', ['posting_mode' => 'immediate']],
+            ['/api/v1/finance-settings/party-ledger-mode', ['party_type' => 'supplier', 'mode' => 'control']],
+            ['/api/v1/finance-settings/maker-checker', ['enabled' => true]],
+        ];
+
+        foreach ($writes as [$url, $body]) {
+            $this->actingAs($this->user)->putJson($url, $body)->assertForbidden();
+        }
+
+        $this->actingAs($this->superAdmin())
+            ->putJson('/api/v1/finance-settings/maker-checker', ['enabled' => true])
+            ->assertOk()
+            ->assertJsonPath('data.maker_checker', true);
+    }
+
+    public function test_the_period_lock_permission_closes_a_month(): void
+    {
+        $this->actingAs($this->user)
+            ->putJson('/api/v1/finance-settings/lock-date', ['lock_date' => now()->subMonth()->endOfMonth()->toDateString()])
+            ->assertOk();
+    }
 
     public function test_mapping_needs_its_own_permission(): void
     {
@@ -396,8 +436,7 @@ class JournalVoucherApiTest extends TestCase
         // Can look at the mapping...
         $this->actingAs($viewer)->getJson('/api/v1/finance-settings')->assertOk();
 
-        // ...but not change it. This is the split that lets a senior accountant
-        // hold mapping rights without being an administrator, and vice versa.
+        // ...but not change it: changing the mapping is super admin only.
         $this->actingAs($viewer)
             ->putJson('/api/v1/finance-settings/mappings', ['mappings' => ['bank_charges' => null]])
             ->assertForbidden();

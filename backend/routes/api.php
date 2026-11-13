@@ -7,6 +7,7 @@ use App\Http\Controllers\GlobalSettingController;
 use App\Http\Controllers\ModuleController;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\RoleController;
+use App\Http\Controllers\SupportContactController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -33,6 +34,9 @@ Route::middleware(['auth:sanctum', 'super_admin'])->group(function (): void {
     // System Settings > Modules: the one place a module is switched on or off.
     Route::get('/system/modules', [ModuleController::class, 'index'])->name('system.modules.index');
     Route::put('/system/modules/{key}', [ModuleController::class, 'update'])->name('system.modules.update');
+
+    // System Settings > Support Contact: the IT company shown in the User Manual.
+    Route::put('/system/support-contact', [SupportContactController::class, 'update'])->name('system.support-contact.update');
 });
 
 // ── Any authenticated user ─────────────────────────────────────────────────────
@@ -42,6 +46,9 @@ Route::middleware('auth:sanctum')->group(function (): void {
 
     // Lightweight user lookup for document dropdowns (sales person, order taken by)
     Route::get('users/all', [UserController::class, 'all'])->name('users.all');
+
+    // User Manual "Need help?" card: who to contact for IT support.
+    Route::get('system/support-contact', [SupportContactController::class, 'show'])->name('system.support-contact.show');
 });
 
 // ── Permission-gated administration ─────────────────────────────────────────────

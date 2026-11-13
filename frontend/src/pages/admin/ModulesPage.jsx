@@ -3,6 +3,7 @@ import { Blocks, Database, Loader2, Power, PowerOff } from 'lucide-react'
 import { getModules, setModuleEnabled } from '../../api/system'
 import Breadcrumb from '../../components/Breadcrumb'
 import { confirmAction, escapeHtml, showError, showSuccess } from '../../utils/alerts'
+import SupportContactCard from './SupportContactCard'
 
 const CRUMBS = [{ label: 'System Settings' }, { label: 'Modules' }]
 
@@ -124,6 +125,8 @@ export default function ModulesPage() {
           })}
         </div>
       )}
+
+      <SupportContactCard />
     </div>
   )
 }

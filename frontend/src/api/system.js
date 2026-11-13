@@ -11,3 +11,11 @@ export const getModules = () =>
 /** Switch one module on or off for the whole installation. Data is never deleted. */
 export const setModuleEnabled = (key, enabled) =>
   api.put(`/api/system/modules/${key}`, { enabled }).then((r) => r.data?.data)
+
+/** The IT support contact shown in the User Manual (every signed-in user). */
+export const getSupportContact = () =>
+  api.get('/api/system/support-contact').then((r) => r.data?.data ?? {})
+
+/** System Settings > Support Contact (super admin). */
+export const updateSupportContact = (payload) =>
+  api.put('/api/system/support-contact', payload).then((r) => r.data?.data)

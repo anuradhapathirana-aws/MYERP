@@ -289,3 +289,19 @@
   margin: 3px 0 0 !important;
   padding: 3px 8px !important;
 }
+
+/* ── User Manual printing ───────────────────────────
+   The Help Center adds html.print-help just before window.print() so only
+   the manual's content prints: no sidebar, search box or navigation, and the
+   app's fixed-height scroll containers expand to the full content. */
+@media print {
+  html.print-help aside,
+  html.print-help header,
+  html.print-help .no-print { display: none !important; }
+  html.print-help .h-screen,
+  html.print-help main { height: auto !important; overflow: visible !important; }
+  html.print-help body { background: #fff !important; }
+  html.print-help .help-layout { display: block !important; }
+  html.print-help .help-print-root .shadow-sm { box-shadow: none !important; }
+  html.print-help details > *:not(summary) { display: block !important; }
+}

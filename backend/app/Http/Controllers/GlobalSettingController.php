@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Services\ModuleService;
 use App\Services\SettingsService;
+use App\Services\SupportContactService;
 use App\Support\Modules\ModuleCatalog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -42,6 +43,13 @@ class GlobalSettingController extends Controller
             $this->modules->setEnabled($module, $request->boolean('value'));
 
             return response()->json(['data' => ['key' => $key, 'value' => $this->settings->get($key)]]);
+        }
+
+        // The support contact has its own validated, audited endpoint.
+        if ($key === SupportContactService::SETTING_KEY) {
+            return response()->json([
+                'message' => 'Update the support contact through System Settings > Support Contact.',
+            ], 422);
         }
 
         $this->settings->set($key, $request->input('value'));

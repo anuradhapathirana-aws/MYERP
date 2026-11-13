@@ -26,6 +26,7 @@ import {
   FlaskConical,
   FolderTree,
   LayoutDashboard,
+  LifeBuoy,
   Landmark,
   Percent,
   Tags,
@@ -80,6 +81,11 @@ const NAV_ITEMS = [
     label: 'Dashboard',
     to: '/dashboard',
     icon: LayoutDashboard,
+  },
+  {
+    label: 'User Manual',
+    to: '/help',
+    icon: LifeBuoy,
   },
   {
     label: 'Inventory',

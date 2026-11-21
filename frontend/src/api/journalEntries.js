@@ -34,6 +34,20 @@ export const getNextJournalNo = (journalDate) =>
   api.get(`${BASE}/next-no`, { params: { journal_date: journalDate } })
     .then((r) => r.data?.data?.journal_no ?? '')
 
+/**
+ * One Trial Balance account's transactions: opening, running and closing
+ * balances, 50 lines a page.
+ * @returns {Promise<{ account, summary, source_types, rows, meta }>}
+ */
+export const getAccountTransactions = (accountId, params = {}) =>
+  api.get(`/api/v1/finance-reports/trial-balance/accounts/${accountId}/transactions`, { params })
+    .then((r) => r.data?.data)
+
+/** The account as a balanced T-account for the whole period, as a PDF Blob. */
+export const downloadTAccountPdf = (accountId, params = {}) =>
+  api.get(`/api/v1/finance-reports/trial-balance/accounts/${accountId}/t-account/pdf`, { params, responseType: 'blob' })
+    .then((r) => r.data)
+
 /** @returns {Promise<{ rows: object[], totals: object }>} */
 export const getTrialBalance = (filters = {}) =>
   api.get('/api/v1/finance-reports/trial-balance', { params: filters })

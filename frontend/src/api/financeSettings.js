@@ -54,6 +54,11 @@ export const updateLockDate = (lockDate) =>
   api.put(`${BASE}/lock-date`, { lock_date: lockDate || null })
     .then((r) => r.data?.data ?? {})
 
+/** Company default for the Trial Balance account popup: 'list' or 't_account'. Super admin. */
+export const updateLedgerView = (ledgerView) =>
+  api.put(`${BASE}/ledger-view`, { ledger_view: ledgerView })
+    .then((r) => r.data?.data ?? {})
+
 /** When on, the person who entered a document cannot also confirm it. */
 export const updateMakerChecker = (enabled) =>
   api.put(`${BASE}/maker-checker`, { enabled })

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { Lock, ShieldCheck } from 'lucide-react'
-import { updateLockDate, updateMakerChecker } from '../../api/financeSettings'
+import { BookOpen, Columns2, List, Lock, ShieldCheck } from 'lucide-react'
+import { updateLedgerView, updateLockDate, updateMakerChecker } from '../../api/financeSettings'
 import { confirmAction, showError, showSuccess } from '../../utils/alerts'
 import { FILTER_INPUT_CLS } from '../../utils/fieldStyles'
 
@@ -20,7 +20,8 @@ const firstError = (e, fallback) => {
 // canLock: manage_finance_period_lock (client accountant, month-end close).
 // canManageSetup: super admin only -- switching maker-checker off removes a
 // fraud control, so it is changed by the IT company on the client's request.
-export default function FinanceControlsCard({ lockDate, makerChecker, canLock, canManageSetup, onChanged }) {
+// ledgerView: how a Trial Balance account opens by default ('list' | 't_account').
+export default function FinanceControlsCard({ lockDate, makerChecker, ledgerView = 'list', canLock, canManageSetup, onChanged }) {
   // The parent keys this card by lockDate, so a saved change remounts it
   // with the new value -- no effect needed to sync the input.
   const [date, setDate] = useState(lockDate ?? '')
@@ -37,6 +38,12 @@ export default function FinanceControlsCard({ lockDate, makerChecker, canLock, c
     mutationFn: updateMakerChecker,
     onSuccess: (d) => { onChanged?.(); showSuccess(d.maker_checker ? 'Maker-checker switched on.' : 'Maker-checker switched off.') },
     onError: (e) => showError(firstError(e, 'Could not change maker-checker.')),
+  })
+
+  const viewMutation = useMutation({
+    mutationFn: updateLedgerView,
+    onSuccess: (d) => { onChanged?.(); showSuccess(d.ledger_view === 't_account' ? 'Accounts now open as T-accounts by default.' : 'Accounts now open as a list by default.') },
+    onError: (e) => showError(firstError(e, 'Could not change the default ledger view.')),
   })
 
   const saveLock = async () => {
@@ -107,6 +114,32 @@ export default function FinanceControlsCard({ lockDate, makerChecker, canLock, c
             </span>
           </span>
         </label>
+
+        <div className="rounded-lg border border-slate-200 px-2.5 py-2">
+          <span className="flex items-center gap-1 text-xs font-bold text-slate-800"><BookOpen size={12} /> Default ledger view</span>
+          <div className="mt-1 inline-flex rounded-md border-2 border-slate-200 bg-slate-50 p-0.5 text-[11px] font-semibold">
+            {[
+              ['list', 'List', List],
+              ['t_account', 'T-Account', Columns2],
+            ].map(([v, label, Icon]) => (
+              <button
+                key={v}
+                type="button"
+                disabled={!canManageSetup || viewMutation.isPending}
+                onClick={() => v !== ledgerView && viewMutation.mutate(v)}
+                className={`inline-flex items-center gap-1 rounded px-2 py-0.5 transition-colors disabled:cursor-not-allowed ${
+                  ledgerView === v ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-white disabled:hover:bg-transparent'
+                }`}
+              >
+                <Icon size={12} /> {label}
+              </button>
+            ))}
+          </div>
+          <span className="mt-1 block text-[10px] leading-snug text-slate-500">
+            How an account opens when clicked on the Trial Balance. Each user can still switch, and their own choice is remembered.
+            {!canManageSetup && ' Changed by your IT support (super admin).'}
+          </span>
+        </div>
       </div>
     </div>
   )

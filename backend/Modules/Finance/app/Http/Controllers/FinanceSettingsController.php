@@ -7,9 +7,11 @@ namespace Modules\Finance\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Validation\Rule;
 use Modules\Finance\Enums\PartyLedgerMode;
 use Modules\Finance\Http\Requests\AccountMappingRequest;
 use Modules\Finance\Services\AccountMappingService;
+use Modules\Finance\Services\AccountTransactionsService;
 use Modules\Finance\Services\FinanceControlService;
 use Modules\Finance\Services\JournalPostingService;
 
@@ -28,13 +30,14 @@ class FinanceSettingsController extends Controller
     public function __construct(
         private readonly AccountMappingService $service,
         private readonly FinanceControlService $controls,
+        private readonly AccountTransactionsService $ledger,
     ) {
         $this->middleware('permission:view_finance_settings')->only(['index']);
 
         // Set-up that decides where every future journal lands, or switches
         // off a fraud control: changed by the IT company (super admin) only.
         $this->middleware('super_admin')
-            ->only(['update', 'updatePostingMode', 'updatePartyLedgerMode', 'updateMakerChecker']);
+            ->only(['update', 'updatePostingMode', 'updatePartyLedgerMode', 'updateMakerChecker', 'updateLedgerView']);
 
         // Month-end close is the client accountant's routine job, so the lock
         // date stays a permission a client admin can grant.
@@ -54,6 +57,9 @@ class FinanceSettingsController extends Controller
                 // Period lock and maker-checker (FinanceControlService).
                 'lock_date'        => $this->controls->lockDate()?->toDateString(),
                 'maker_checker'    => $this->controls->makerCheckerEnabled(),
+
+                // How an account's ledger opens from the Trial Balance: list or T-account.
+                'ledger_view'      => $this->ledger->defaultView(),
 
                 // Which side of the chart keeps one account per party, and the
                 // two choices with the reasoning behind each.
@@ -124,6 +130,18 @@ class FinanceSettingsController extends Controller
 
         return response()->json([
             'data' => ['maker_checker' => $this->controls->setMakerChecker((bool) $validated['enabled'])],
+        ]);
+    }
+
+    /** The company's default ledger layout; each user's own choice overrides it in their browser. */
+    public function updateLedgerView(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'ledger_view' => ['required', 'string', Rule::in(AccountTransactionsService::VIEWS)],
+        ]);
+
+        return response()->json([
+            'data' => ['ledger_view' => $this->ledger->setDefaultView($validated['ledger_view'])],
         ]);
     }
 

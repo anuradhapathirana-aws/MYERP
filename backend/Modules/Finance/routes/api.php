@@ -91,6 +91,8 @@ Route::middleware(['auth:sanctum', 'module:finance'])->prefix('v1')->group(funct
         ->name('finance-settings.mappings');
     Route::put('finance-settings/posting-mode', [FinanceSettingsController::class, 'updatePostingMode'])
         ->name('finance-settings.posting-mode');
+    Route::put('finance-settings/ledger-view', [FinanceSettingsController::class, 'updateLedgerView'])
+        ->name('finance-settings.ledger-view');
     Route::put('finance-settings/party-ledger-mode', [FinanceSettingsController::class, 'updatePartyLedgerMode'])
         ->name('finance-settings.party-ledger-mode');
     Route::put('finance-settings/lock-date', [FinanceSettingsController::class, 'updateLockDate'])
@@ -256,6 +258,12 @@ Route::middleware(['auth:sanctum', 'module:finance'])->prefix('v1')->group(funct
     // ── Financial statements ─────────────────────────────────────────────────
     Route::get('finance-reports/trial-balance', [FinanceReportController::class, 'trialBalanceReport'])
         ->name('finance-reports.trial-balance');
+    Route::get('finance-reports/trial-balance/accounts/{ledgerAccount}/transactions', [FinanceReportController::class, 'accountTransactions'])
+        ->whereNumber('ledgerAccount')
+        ->name('finance-reports.trial-balance.account-transactions');
+    Route::get('finance-reports/trial-balance/accounts/{ledgerAccount}/t-account/pdf', [FinanceReportController::class, 'accountTAccountPdf'])
+        ->whereNumber('ledgerAccount')
+        ->name('finance-reports.trial-balance.account-t-account-pdf');
     Route::get('finance-reports/uncleared-cheques/options', [UnclearedChequesReportController::class, 'options'])
         ->name('finance-reports.uncleared-cheques.options');
     Route::get('finance-reports/uncleared-cheques/pdf', [UnclearedChequesReportController::class, 'pdf'])

@@ -407,6 +407,7 @@ export default function FinanceSettingsPage() {
             key={settings?.lock_date ?? 'none'}
             lockDate={settings?.lock_date ?? null}
             makerChecker={settings?.maker_checker ?? false}
+            ledgerView={settings?.ledger_view ?? 'list'}
             canLock={canLock}
             canManageSetup={canManage}
             onChanged={() => {

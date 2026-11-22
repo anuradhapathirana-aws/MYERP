@@ -1,7 +1,5 @@
 import { CornerDownRight, Info } from 'lucide-react'
-
-const money = (n) =>
-  Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+import { money } from './format'
 
 const nextDay = (iso) => {
   if (!iso) return ''

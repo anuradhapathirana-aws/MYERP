@@ -44,6 +44,7 @@ import {
   Ruler,
   Scale,
   BookOpenCheck,
+  BookOpenText,
   NotebookPen,
   Search,
   Settings2,
@@ -218,6 +219,7 @@ const NAV_ITEMS = [
         children: [
           { label: 'Journal Vouchers', to: '/finance/journal-entries', icon: NotebookPen, permissionGuard: 'view_journal_entries' },
           { label: 'Trial Balance',    to: '/finance/trial-balance',   icon: Scale,       permissionGuard: 'view_finance_reports' },
+          { label: 'Ledger Details',   to: '/finance/ledger-details',  icon: BookOpenText, permissionGuard: 'view_finance_reports' },
           { label: 'Account Mapping', to: '/finance/account-mapping', icon: Settings2,   permissionGuard: 'view_finance_settings' },
         ],
       },

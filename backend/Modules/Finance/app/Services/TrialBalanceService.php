@@ -7,7 +7,8 @@ namespace Modules\Finance\Services;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Modules\Finance\Enums\AccountType;
-use Modules\Finance\Enums\JournalStatus;
+use Modules\Finance\Support\Ledger\JournalLineQuery;
+use Modules\Finance\Support\Ledger\LedgerMoney;
 
 /**
  * The Trial Balance -- and the proof that the ledger is sound.
@@ -59,26 +60,12 @@ final class TrialBalanceService
         $detailed = filter_var($filters['detailed'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
         // ── The period ──
-        $period = $this->base($filters);
-
-        if (! empty($filters['date_from'])) {
-            $period->where('je.journal_date', '>=', $filters['date_from']);
-        }
-
-        if (! empty($filters['date_to'])) {
-            $period->where('je.journal_date', '<=', $filters['date_to']);
-        }
-
-        $periodRecords = $this->grouped($period)->keyBy('ledger_account_id');
+        $periodRecords = $this->grouped(JournalLineQuery::inPeriod($this->base($filters), $filters))
+            ->keyBy('ledger_account_id');
 
         // ── Brought forward: everything before date_from ──
-        $openingRecords = collect();
-
-        if (! empty($filters['date_from'])) {
-            $openingRecords = $this->grouped(
-                $this->base($filters)->where('je.journal_date', '<', $filters['date_from']),
-            )->keyBy('ledger_account_id');
-        }
+        $before         = JournalLineQuery::beforePeriod($this->base($filters), $filters);
+        $openingRecords = $before === null ? collect() : $this->grouped($before)->keyBy('ledger_account_id');
 
         $accounts = $detailed
             ? $periodRecords->union($openingRecords)
@@ -96,11 +83,17 @@ final class TrialBalanceService
             $p = $periodRecords->get($id);
             $o = $openingRecords->get($id);
 
-            $debitTotal  = round((float) ($p->debit_total ?? 0), 2);
-            $creditTotal = round((float) ($p->credit_total ?? 0), 2);
-            $net         = round($debitTotal - $creditTotal, 2);
-            $opening     = $o === null ? 0.0 : round((float) $o->debit_total - (float) $o->credit_total, 2);
-            $closing     = round($opening + $net, 2);
+            // Exact units, rounded once (LedgerMoney): the same figures the
+            // drill-down and Ledger Details show for this account.
+            $debitUnits   = LedgerMoney::units($p->debit_total ?? 0);
+            $creditUnits  = LedgerMoney::units($p->credit_total ?? 0);
+            $openingUnits = $o === null ? 0 : LedgerMoney::units($o->debit_total) - LedgerMoney::units($o->credit_total);
+
+            $debitTotal  = LedgerMoney::money($debitUnits);
+            $creditTotal = LedgerMoney::money($creditUnits);
+            $net         = LedgerMoney::money($debitUnits - $creditUnits);
+            $opening     = LedgerMoney::money($openingUnits);
+            $closing     = LedgerMoney::money($openingUnits + $debitUnits - $creditUnits);
 
             // The net lands on exactly one side. An account that nets to zero
             // shows zero on both, but still appears, because its gross
@@ -174,31 +167,13 @@ final class TrialBalanceService
         ];
     }
 
-    /** Counted lines, with company and location applied but no dates. */
+    /** Counted lines (see JournalLineQuery) joined to the chart, no dates. */
     private function base(array $filters): Builder
     {
-        $query = DB::table('fin_journal_lines as jl')
-            ->join('fin_journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
+        return JournalLineQuery::counted($filters)
             ->join('fin_ledger_accounts as la', 'la.id', '=', 'jl.ledger_account_id')
             ->join('fin_control_accounts as ctrl', 'ctrl.id', '=', 'la.control_account_id')
-            ->join('fin_account_categories as cat', 'cat.id', '=', 'ctrl.account_category_id')
-            // Posted AND reversed. A reversal adds a mirror journal rather than
-            // retracting the original, so both sides have to be counted or the
-            // reversal would invert the balance it was meant to cancel.
-            ->whereIn('je.status', [JournalStatus::Posted->value, JournalStatus::Reversed->value])
-            ->whereNull('je.deleted_at');
-
-        // Filtered on the LINE, not the header: the line is authoritative for
-        // reporting, so a voucher whose lines span locations reports correctly.
-        if (! empty($filters['company_id'])) {
-            $query->where('jl.company_id', (int) $filters['company_id']);
-        }
-
-        if (! empty($filters['location_id'])) {
-            $query->where('jl.location_id', (int) $filters['location_id']);
-        }
-
-        return $query;
+            ->join('fin_account_categories as cat', 'cat.id', '=', 'ctrl.account_category_id');
     }
 
     /** @return \Illuminate\Support\Collection<int, object> */

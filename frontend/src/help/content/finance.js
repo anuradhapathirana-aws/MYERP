@@ -223,7 +223,36 @@ export const topics = [
       'Searching or filtering by document type in the popup hides the running balance, because a balance over only some entries would be misleading.',
     ],
     tips: ['If a figure looks wrong, click the account to see the entries behind it, then open the source document that created the wrong one.'],
-    related: ['fin-journal-voucher'],
+    related: ['fin-journal-voucher', 'fin-ledger-details'],
+  },
+
+  {
+    id: 'fin-ledger-details',
+    section: 'finance',
+    title: 'Ledger Details',
+    keywords: ['ledger details', 'general ledger', 'GL', 'ledger', 'account ledger', 'account statement', 'ledger report', 'running balance', 'balance b/f', 'balance c/f', 'opening balance', 'closing balance', 'T-account', 'supplier ledger', 'customer ledger', 'print ledger'],
+    summary: 'The General Ledger for any set of accounts: each account’s opening balance, every entry with a running balance, and its closing balance.',
+    where: 'Finance › General Ledger › Ledger Details',
+    route: '/finance/ledger-details',
+    who: 'View Financial Reports',
+    steps: [
+      'Set the period. It opens on **this month**; set **From** and **To** for any other range, and a **Location** if needed.',
+      'Choose the accounts. Pick them by hand in **Accounts**, or select a whole **Account Type**, **Category** or **Control Account**, or a **Code From / Code To** range. The choices narrow together; leave them all empty for the whole General Ledger.',
+      'A **Code To** of “2” includes every code starting with 2, so **From 1 To 2** covers all assets and liabilities.',
+      'Each account appears as a card showing **B/F** (opening), period **Debits** and **Credits**, **C/F** (closing) and the number of lines. The totals strip above sums the whole selection.',
+      'Click a card (or **Expand all**, **Alt+E**) to see its entries: Balance b/f, each line with its source document, party, contra account and running balance, then Balance c/f. Long ledgers run over pages of 50, carrying the balance from page to page.',
+      'Click a blue **document number** (GRN, Invoice, Bill, Bill Payment, Bank Deposit) to open that document in a new tab.',
+      'Switch to **T-Account** (**Alt+T**) to see the cards as traditional two-sided accounts.',
+      'Use **Print** or **PDF** (top right) to print every selected account, in the view you are using: List prints landscape with running balances; T-Account prints each account as a balanced T-account.',
+    ],
+    howItWorks: [
+      'Figures come from posted (and reversed) journal lines, the same as the Trial Balance, so an account’s period movement here always matches its Trial Balance row.',
+      'Accounts with no opening balance and no movement are hidden; tick **Accounts with no activity** to list them too. Untick **Supplier / customer accounts** to leave out per-party ledgers.',
+      'Inside a card, searching or filtering by document type hides the running balance, because a balance over only some entries would be misleading.',
+      'The printout stops adding lines after 3,000 (and accounts after 300) and says so; narrow the dates or accounts for a complete print.',
+    ],
+    tips: ['To check one supplier or customer, type their name in **Accounts** and pick their ledger.'],
+    related: ['fin-trial-balance', 'fin-journal-voucher'],
   },
 
   {

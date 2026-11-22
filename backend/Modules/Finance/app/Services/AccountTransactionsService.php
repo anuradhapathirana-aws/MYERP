@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Modules\Finance\Services;
 
-use App\Models\Company;
-use App\Models\Location;
 use App\Services\SettingsService;
 use Carbon\CarbonImmutable;
 use App\Support\Journal\PostingRole;
@@ -16,6 +14,9 @@ use Illuminate\Support\Facades\Schema;
 use Modules\Finance\Enums\JournalStatus;
 use Modules\Finance\Enums\JournalType;
 use Modules\Finance\Models\LedgerAccount;
+use Modules\Finance\Support\Ledger\JournalLineQuery;
+use Modules\Finance\Support\Ledger\LedgerMoney;
+use Modules\Finance\Support\Ledger\ReportHeader;
 
 /**
  * One account's ledger, as the Trial Balance drill-down shows it:
@@ -62,7 +63,7 @@ final class AccountTransactionsService
     public const VIEWS               = [self::VIEW_LIST, self::VIEW_T_ACCOUNT];
 
     private const COLUMNS = [
-        'jl.id', 'jl.journal_entry_id', 'jl.debit', 'jl.credit', 'jl.description',
+        'jl.id', 'jl.journal_entry_id', 'jl.ledger_account_id', 'jl.debit', 'jl.credit', 'jl.description',
         'jl.party_type', 'jl.party_id',
         'je.journal_no', 'je.journal_date', 'je.journal_type', 'je.status', 'je.narration',
         'je.source_type', 'je.source_id', 'je.reverses_journal_id',
@@ -115,7 +116,7 @@ final class AccountTransactionsService
         $filtered  = ! empty($filters['search']) || ! empty($filters['source_type']);
 
         // ── Summary: always the whole account, never the filtered subset ──
-        [$openingNet, $periodDebit, $periodCredit, $periodNet, $closingNet] = $this->balances($accountId, $filters);
+        [$summary, $openingUnits] = $this->accountSummary($accountId, $filters);
 
         // ── The page ──
         $listQuery = $this->period($accountId, $filters);
@@ -129,17 +130,19 @@ final class AccountTransactionsService
             ->limit(self::PER_PAGE)
             ->get(self::COLUMNS);
 
+        // The running balance, in exact units (LedgerMoney). Null while a
+        // filter is set: a balance over a subset is not a balance of anything.
         $running = null;
 
         if (! $filtered) {
-            $running = $openingNet;
+            $running = $openingUnits;
 
             if ($offset > 0) {
-                $before  = $this->ordered($this->period($accountId, $filters))
+                $before   = $this->ordered($this->period($accountId, $filters))
                     ->limit($offset)
                     ->select(['jl.debit', 'jl.credit']);
-                [$d, $c] = $this->sums(DB::query()->fromSub($before, 'prior'), 'prior');
-                $running = round($running + $d - $c, 2);
+                [$d, $c]  = $this->unitSums(DB::query()->fromSub($before, 'prior'), 'prior');
+                $running += $d - $c;
             }
         }
 
@@ -147,19 +150,12 @@ final class AccountTransactionsService
         // page's carried-forward figure on every page after it.
         $balanceBf = $running;
 
-        [$rows, $running] = $this->present($records, $accountId, $running);
+        [$rows, $running] = $this->present($records, $running, $this->lookups($records));
 
         return [
             'account'      => $this->accountInfo($account),
             'default_view' => $this->defaultView(),
-            'summary' => [
-                'opening'       => $openingNet,
-                'period_debit'  => $periodDebit,
-                'period_credit' => $periodCredit,
-                'period_net'    => $periodNet,
-                'closing'       => $closingNet,
-                'is_filtered'   => $filtered,
-            ],
+            'summary'      => [...$summary, 'is_filtered' => $filtered],
             'source_types' => $this->sourceTypes($accountId, $filters),
             'rows'         => $rows,
             'meta'         => [
@@ -168,8 +164,8 @@ final class AccountTransactionsService
                 'per_page'     => self::PER_PAGE,
                 'total'        => $total,
                 // Null while a filter is set: a b/f over a subset means nothing.
-                'balance_bf'   => $balanceBf,
-                'balance_cf'   => $running,
+                'balance_bf'   => $balanceBf === null ? null : LedgerMoney::money($balanceBf),
+                'balance_cf'   => $running === null ? null : LedgerMoney::money($running),
             ],
         ];
     }
@@ -189,18 +185,29 @@ final class AccountTransactionsService
      * @param  array<string, mixed> $filters
      * @return array<string, mixed>
      */
-    public function tAccount(LedgerAccount $account, array $filters): array
+    public function tAccount(LedgerAccount $account, array $filters, int $limit = self::MAX_STATEMENT_ROWS): array
     {
-        $accountId = (int) $account->id;
+        return [
+            'header' => ReportHeader::for($filters),
+            'period' => ReportHeader::period($filters),
+            ...$this->tAccountOf($this->statement($account, $filters, $limit), $filters),
+        ];
+    }
 
-        [$opening, $periodDebit, $periodCredit, , $closing] = $this->balances($accountId, $filters);
-
-        $records = $this->ordered($this->period($accountId, $filters))
-            ->limit(self::MAX_STATEMENT_ROWS + 1)
-            ->get(self::COLUMNS);
-
-        $truncated = $records->count() > self::MAX_STATEMENT_ROWS;
-        [$rows]    = $this->present($records->take(self::MAX_STATEMENT_ROWS)->values(), $accountId, $opening);
+    /**
+     * A statement (see statements()) laid out as a balanced T-account: the
+     * body the PDFs print, without the letterhead.
+     *
+     * @param  array<string, mixed> $statement
+     * @param  array<string, mixed> $filters
+     * @return array<string, mixed> account, summary, debit, credit, total, reopen, truncated
+     */
+    public function tAccountOf(array $statement, array $filters): array
+    {
+        [
+            'summary' => ['opening' => $opening, 'period_debit' => $periodDebit, 'period_credit' => $periodCredit, 'closing' => $closing],
+            'rows' => $rows,
+        ] = $statement;
 
         $periodStart = $filters['date_from'] ?? ($rows[0]['journal_date'] ?? null);
         $periodEnd   = $filters['date_to'] ?? now()->toDateString();
@@ -254,18 +261,8 @@ final class AccountTransactionsService
 
         $reopen = CarbonImmutable::parse($periodEnd)->addDay()->toDateString();
 
-        $company  = ! empty($filters['company_id']) ? Company::query()->find((int) $filters['company_id']) : null;
-        $location = ! empty($filters['location_id']) ? Location::query()->find((int) $filters['location_id']) : null;
-
         return [
-            'header'    => [
-                'company_name'  => $company?->company_name ?? config('app.name'),
-                'location_name' => $location?->location_name,
-                'generated_by'  => auth()->user()?->name,
-                'generated_at'  => now()->format('d-m-Y H:i'),
-            ],
-            'account'   => $this->accountInfo($account),
-            'period'    => ['from' => $filters['date_from'] ?? null, 'to' => $filters['date_to'] ?? null],
+            'account'   => $statement['account'],
             'summary'   => [
                 'opening'       => $opening,
                 'period_debit'  => $periodDebit,
@@ -282,8 +279,88 @@ final class AccountTransactionsService
                 'amount' => abs($closing),
                 'particulars' => ($closing > 0 ? 'To' : 'By') . ' Balance b/d',
             ],
-            'truncated' => $truncated,
+            'truncated' => $statement['truncated'],
         ];
+    }
+
+    /**
+     * The whole period in one go, every line with its running balance: what
+     * the printed ledgers (T-account PDF, Ledger Details PDF) are drawn from.
+     * Search and the document filter are ignored, so the balances are real.
+     *
+     * $limit caps the lines read; past it `truncated` is true and the caller
+     * says so on the page. Accounts with heavy traffic narrow the dates.
+     *
+     * @param  array<string, mixed> $filters date_from, date_to, company_id, location_id
+     * @return array{
+     *     account: array<string, mixed>,
+     *     summary: array{opening: float, period_debit: float, period_credit: float, period_net: float, closing: float},
+     *     rows: list<array<string, mixed>>,
+     *     truncated: bool
+     * }
+     */
+    public function statement(LedgerAccount $account, array $filters, int $limit = self::MAX_STATEMENT_ROWS): array
+    {
+        return $this->statements([$account], $filters, $limit)[0];
+    }
+
+    /**
+     * statement() for many accounts at once, in a fixed number of queries
+     * whatever their count: grouped balances (2), every line (1), then one
+     * lookup per document type, per party type, and for the contra accounts.
+     * This is what keeps a 300-account Ledger Details PDF fast.
+     *
+     * Lines share one $limit across all accounts, consumed in account-code
+     * order (the order the PDF prints). An account whose lines did not all
+     * fit is marked truncated; its balances are always complete.
+     *
+     * @param  iterable<LedgerAccount> $accounts
+     * @param  array<string, mixed>    $filters
+     * @return list<array<string, mixed>> one statement per account, in the order given
+     */
+    public function statements(iterable $accounts, array $filters, int $limit = self::MAX_STATEMENT_ROWS): array
+    {
+        $accounts = collect($accounts)->values();
+
+        if ($accounts->isEmpty()) {
+            return [];
+        }
+
+        $ids   = $accounts->map(fn (LedgerAccount $a): int => (int) $a->id)->all();
+        $limit = max(0, $limit);
+
+        $period  = $this->groupedUnits(JournalLineQuery::inPeriod(JournalLineQuery::counted($filters), $filters), $ids);
+        $before  = JournalLineQuery::beforePeriod(JournalLineQuery::counted($filters), $filters);
+        $opening = $before === null ? collect() : $this->groupedUnits($before, $ids);
+
+        $records = $limit === 0 ? collect() : $this->ordered(
+            JournalLineQuery::inPeriod(JournalLineQuery::counted($filters), $filters)
+                ->join('fin_ledger_accounts as la', 'la.id', '=', 'jl.ledger_account_id')
+                ->whereIn('jl.ledger_account_id', $ids)
+                ->orderBy('la.code')
+                ->orderBy('la.id'),
+        )->limit($limit)->get(self::COLUMNS);
+
+        $lookups = $this->lookups($records);
+        $byId    = $records->groupBy(fn (object $r): int => (int) $r->ledger_account_id);
+
+        return $accounts->map(function (LedgerAccount $account) use ($period, $opening, $byId, $lookups): array {
+            $id = (int) $account->id;
+            $p  = $period->get($id);
+            $o  = $opening->get($id);
+
+            $openingUnits = $o === null ? 0 : $o->debit - $o->credit;
+            $lines        = $byId->get($id, collect())->values();
+
+            [$rows] = $this->present($lines, $openingUnits, $lookups);
+
+            return [
+                'account'   => $this->accountInfo($account),
+                'summary'   => $this->summaryOf($openingUnits, $p->debit ?? 0, $p->credit ?? 0),
+                'rows'      => $rows,
+                'truncated' => count($rows) < ($p->line_count ?? 0),
+            ];
+        })->all();
     }
 
     /** 'list' or 't_account': the company's default ledger layout. */
@@ -318,46 +395,81 @@ final class AccountTransactionsService
     }
 
     /**
-     * Opening (b/f), period debits and credits, period net, closing (c/f).
+     * One account's summary, plus its opening in exact units for a running balance.
      *
-     * @return array{0: float, 1: float, 2: float, 3: float, 4: float}
+     * @return array{0: array<string, float>, 1: int}
      */
-    private function balances(int $accountId, array $filters): array
+    private function accountSummary(int $accountId, array $filters): array
     {
-        $opening = 0.0;
+        $openingUnits = 0;
+        $before       = JournalLineQuery::beforePeriod($this->lines($accountId, $filters), $filters);
 
-        if (! empty($filters['date_from'])) {
-            [$d, $c] = $this->sums($this->lines($accountId, $filters)->where('je.journal_date', '<', $filters['date_from']));
-            $opening = round($d - $c, 2);
+        if ($before !== null) {
+            [$d, $c]      = $this->unitSums($before);
+            $openingUnits = $d - $c;
         }
 
-        [$periodDebit, $periodCredit] = $this->sums($this->period($accountId, $filters));
-        $periodNet = round($periodDebit - $periodCredit, 2);
+        [$debit, $credit] = $this->unitSums($this->period($accountId, $filters));
 
-        return [$opening, $periodDebit, $periodCredit, $periodNet, round($opening + $periodNet, 2)];
+        return [$this->summaryOf($openingUnits, $debit, $credit), $openingUnits];
+    }
+
+    /**
+     * Opening (b/f), period debits and credits, period net, closing (c/f).
+     * Each is the exact figure rounded once, so the closing always equals
+     * the last running balance.
+     *
+     * @return array{opening: float, period_debit: float, period_credit: float, period_net: float, closing: float}
+     */
+    private function summaryOf(int $openingUnits, int $debitUnits, int $creditUnits): array
+    {
+        return [
+            'opening'       => LedgerMoney::money($openingUnits),
+            'period_debit'  => LedgerMoney::money($debitUnits),
+            'period_credit' => LedgerMoney::money($creditUnits),
+            'period_net'    => LedgerMoney::money($debitUnits - $creditUnits),
+            'closing'       => LedgerMoney::money($openingUnits + $debitUnits - $creditUnits),
+        ];
+    }
+
+    /**
+     * The lookups present() needs, for any set of lines, in one pass:
+     * document numbers, party names and contra accounts.
+     *
+     * @param  Collection<int, object> $records
+     * @return array{documents: array<string, array<int, string>>, parties: array<string, string>, contras: array<int, array<string, mixed>>}
+     */
+    private function lookups(Collection $records): array
+    {
+        return [
+            'documents' => $this->documents($records),
+            'parties'   => $this->parties($records),
+            'contras'   => $this->contras($records),
+        ];
     }
 
     /**
      * Lines as the UI and PDF show them. $running is the balance before the
-     * first line, or null to leave balances out (a filtered list).
+     * first line in exact units, or null to leave balances out (a filtered list).
      *
-     * @param  Collection<int, object> $records
-     * @return array{0: list<array<string, mixed>>, 1: ?float} rows, balance after the last row
+     * @param  Collection<int, object> $records lines of ONE account, in order
+     * @param  array<string, mixed>    $lookups from lookups()
+     * @return array{0: list<array<string, mixed>>, 1: ?int} rows, balance (units) after the last row
      */
-    private function present(Collection $records, int $accountId, ?float $running): array
+    private function present(Collection $records, ?int $running, array $lookups): array
     {
-        $documents = $this->documents($records);
-        $parties   = $this->parties($records);
-        $contras   = $this->contras($records, $accountId);
+        ['documents' => $documents, 'parties' => $parties, 'contras' => $contras] = $lookups;
 
         $rows = [];
 
         foreach ($records as $r) {
-            $debit  = round((float) $r->debit, 2);
-            $credit = round((float) $r->credit, 2);
+            $debitUnits  = LedgerMoney::units($r->debit);
+            $creditUnits = LedgerMoney::units($r->credit);
+            $debit       = LedgerMoney::money($debitUnits);
+            $credit      = LedgerMoney::money($creditUnits);
 
             if ($running !== null) {
-                $running = round($running + $debit - $credit, 2);
+                $running += $debitUnits - $creditUnits;
             }
 
             $type   = JournalType::tryFrom((string) $r->journal_type);
@@ -372,6 +484,9 @@ final class AccountTransactionsService
                 'journal_type_label' => $type?->label(),
                 'is_reversed'        => $r->status === JournalStatus::Reversed->value,
                 'source_type'        => $source['type'],
+                // The document's own id, so a screen can link to it. Null for
+                // a hand-entered voucher or a reversal.
+                'source_id'          => $r->source_type === null ? null : (int) $r->source_id,
                 'source_label'       => $source['label'],
                 'document_no'        => $source['document_no'],
                 'narration'          => $r->narration,
@@ -383,7 +498,7 @@ final class AccountTransactionsService
                 'contra'             => $contras[(int) $r->id] ?? ['label' => null, 'accounts' => []],
                 'debit'              => $debit,
                 'credit'             => $credit,
-                'balance'            => $running,
+                'balance'            => $running === null ? null : LedgerMoney::money($running),
             ];
         }
 
@@ -409,40 +524,16 @@ final class AccountTransactionsService
         ];
     }
 
-    /** Every counted line of the account, with company and location applied. */
+    /** Every counted line of the account (see JournalLineQuery). */
     private function lines(int $accountId, array $filters): Builder
     {
-        $query = DB::table('fin_journal_lines as jl')
-            ->join('fin_journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
-            ->where('jl.ledger_account_id', $accountId)
-            ->whereIn('je.status', [JournalStatus::Posted->value, JournalStatus::Reversed->value])
-            ->whereNull('je.deleted_at');
-
-        if (! empty($filters['company_id'])) {
-            $query->where('jl.company_id', (int) $filters['company_id']);
-        }
-
-        if (! empty($filters['location_id'])) {
-            $query->where('jl.location_id', (int) $filters['location_id']);
-        }
-
-        return $query;
+        return JournalLineQuery::counted($filters)->where('jl.ledger_account_id', $accountId);
     }
 
     /** The lines inside the date range. */
     private function period(int $accountId, array $filters): Builder
     {
-        $query = $this->lines($accountId, $filters);
-
-        if (! empty($filters['date_from'])) {
-            $query->where('je.journal_date', '>=', $filters['date_from']);
-        }
-
-        if (! empty($filters['date_to'])) {
-            $query->where('je.journal_date', '<=', $filters['date_to']);
-        }
-
-        return $query;
+        return JournalLineQuery::inPeriod($this->lines($accountId, $filters), $filters);
     }
 
     private function applyListFilters(Builder $query, array $filters): void
@@ -469,12 +560,36 @@ final class AccountTransactionsService
         return $query->orderBy('je.journal_date')->orderBy('je.id')->orderBy('jl.id');
     }
 
-    /** @return array{0: float, 1: float} debit, credit */
-    private function sums(Builder $query, string $alias = 'jl'): array
+    /** @return array{0: int, 1: int} debit, credit in exact units */
+    private function unitSums(Builder $query, string $alias = 'jl'): array
     {
         $row = $query->selectRaw("COALESCE(SUM({$alias}.debit), 0) as d, COALESCE(SUM({$alias}.credit), 0) as c")->first();
 
-        return [round((float) ($row->d ?? 0), 2), round((float) ($row->c ?? 0), 2)];
+        return [LedgerMoney::units($row->d ?? 0), LedgerMoney::units($row->c ?? 0)];
+    }
+
+    /**
+     * Debit, credit (exact units) and line count per account, for these accounts.
+     *
+     * @param  list<int> $accountIds
+     * @return Collection<int, object{debit:int, credit:int, line_count:int}> keyed by account id
+     */
+    private function groupedUnits(Builder $lines, array $accountIds): Collection
+    {
+        return $lines
+            ->whereIn('jl.ledger_account_id', $accountIds)
+            ->groupBy('jl.ledger_account_id')
+            ->get([
+                'jl.ledger_account_id',
+                DB::raw('SUM(jl.debit) as debit'),
+                DB::raw('SUM(jl.credit) as credit'),
+                DB::raw('COUNT(*) as line_count'),
+            ])
+            ->mapWithKeys(fn (object $r): array => [(int) $r->ledger_account_id => (object) [
+                'debit'      => LedgerMoney::units($r->debit),
+                'credit'     => LedgerMoney::units($r->credit),
+                'line_count' => (int) $r->line_count,
+            ]]);
     }
 
     /**
@@ -591,10 +706,13 @@ final class AccountTransactionsService
      * The other side of each line: the accounts on the opposite side of the
      * same journal. One account reads as its name; several as "Split".
      *
+     * Each line's "other side" excludes that line's OWN account, so one call
+     * serves lines of many accounts (the batched PDF) as well as one.
+     *
      * @param  Collection<int, object> $records
      * @return array<int, array{label:?string, accounts:list<array{code:string, name:string}>}>
      */
-    private function contras(Collection $records, int $accountId): array
+    private function contras(Collection $records): array
     {
         $entryIds = $this->ids($records, 'journal_entry_id');
 
@@ -602,10 +720,9 @@ final class AccountTransactionsService
             return [];
         }
 
-        $others = DB::table('fin_journal_lines as jl')
+        $journalLines = DB::table('fin_journal_lines as jl')
             ->join('fin_ledger_accounts as la', 'la.id', '=', 'jl.ledger_account_id')
             ->whereIn('jl.journal_entry_id', $entryIds)
-            ->where('jl.ledger_account_id', '<>', $accountId)
             ->orderBy('jl.line_no')
             ->get(['jl.journal_entry_id', 'jl.ledger_account_id', 'jl.debit', 'jl.credit', 'la.code', 'la.ledger_account_name'])
             ->groupBy('journal_entry_id');
@@ -613,7 +730,8 @@ final class AccountTransactionsService
         $result = [];
 
         foreach ($records as $r) {
-            $lines    = $others->get($r->journal_entry_id, collect());
+            $lines    = $journalLines->get($r->journal_entry_id, collect())
+                ->filter(fn (object $l): bool => (int) $l->ledger_account_id !== (int) $r->ledger_account_id);
             $isDebit  = (float) $r->debit > 0;
             $opposite = $lines->filter(fn (object $l): bool => $isDebit ? (float) $l->credit > 0 : (float) $l->debit > 0);
 

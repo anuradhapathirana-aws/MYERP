@@ -19,6 +19,7 @@ use Modules\Finance\Http\Controllers\UnclearedChequesReportController;
 use Modules\Finance\Http\Controllers\FinanceSettingsController;
 use Modules\Finance\Http\Controllers\JournalEntryController;
 use Modules\Finance\Http\Controllers\LedgerAccountController;
+use Modules\Finance\Http\Controllers\LedgerDetailsController;
 
 /*
 |--------------------------------------------------------------------------
@@ -264,6 +265,15 @@ Route::middleware(['auth:sanctum', 'module:finance'])->prefix('v1')->group(funct
     Route::get('finance-reports/trial-balance/accounts/{ledgerAccount}/t-account/pdf', [FinanceReportController::class, 'accountTAccountPdf'])
         ->whereNumber('ledgerAccount')
         ->name('finance-reports.trial-balance.account-t-account-pdf');
+
+    // Ledger Details: the General Ledger over a selection of accounts. Each
+    // account's lines come from the drill-down endpoint above.
+    Route::get('finance-reports/ledger-details/options', [LedgerDetailsController::class, 'options'])
+        ->name('finance-reports.ledger-details.options');
+    Route::get('finance-reports/ledger-details/pdf', [LedgerDetailsController::class, 'pdf'])
+        ->name('finance-reports.ledger-details.pdf');
+    Route::get('finance-reports/ledger-details', [LedgerDetailsController::class, 'index'])
+        ->name('finance-reports.ledger-details');
     Route::get('finance-reports/uncleared-cheques/options', [UnclearedChequesReportController::class, 'options'])
         ->name('finance-reports.uncleared-cheques.options');
     Route::get('finance-reports/uncleared-cheques/pdf', [UnclearedChequesReportController::class, 'pdf'])

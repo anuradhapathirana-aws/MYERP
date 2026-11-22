@@ -14,6 +14,16 @@
  * on a PDF viewer tab), the tab still opens with the PDF visible, and the user
  * can print from its native toolbar — a normal, reliable fallback.
  */
+/** Saves a PDF Blob to the user's downloads under the given file name. */
+export function downloadPdfBlob(blob, fileName) {
+  const url = URL.createObjectURL(blob)
+  const a   = document.createElement('a')
+  a.href     = url
+  a.download = fileName
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 export function printPdfBlob(blob) {
   const url = URL.createObjectURL(blob)
   const win = window.open(url, '_blank')

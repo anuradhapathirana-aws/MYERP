@@ -13,6 +13,8 @@ use Modules\Inventory\Console\Commands\RecalculateStockBalances;
 use Modules\Inventory\Console\Commands\VerifyVariantBackfill;
 use Modules\Inventory\Console\Commands\WarmPieceQrCodes;
 use Modules\Inventory\Services\ChequeReturnService;
+use Modules\Inventory\Support\InventoryAmountPrecision;
+use App\Contracts\AmountPrecisionUsage;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
 class InventoryServiceProvider extends ModuleServiceProvider
@@ -48,5 +50,9 @@ class InventoryServiceProvider extends ModuleServiceProvider
         // Bank Reconciliation returns a receipt's or a payment's cheque here:
         // the invoices / GRNs it settled reopen.
         $this->app->tag([ChequeReturnService::class], ChequeReturnSource::TAG);
+
+        // Inventory documents lock the Amount decimals setting; its money
+        // columns feed the precision audit.
+        $this->app->tag([InventoryAmountPrecision::class], AmountPrecisionUsage::TAG);
     }
 }

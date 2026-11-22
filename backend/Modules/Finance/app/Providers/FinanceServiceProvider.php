@@ -15,6 +15,8 @@ use Modules\Finance\Services\FundBalanceService;
 use Modules\Finance\Services\JournalPostingService;
 use Modules\Finance\Support\BillLandedChargeSource;
 use Modules\Finance\Support\BillPaymentChequeReturns;
+use Modules\Finance\Support\FinanceAmountPrecision;
+use App\Contracts\AmountPrecisionUsage;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
 class FinanceServiceProvider extends ModuleServiceProvider
@@ -50,6 +52,10 @@ class FinanceServiceProvider extends ModuleServiceProvider
 
         // Bank Reconciliation returns a bill payment's cheque here.
         $this->app->tag([BillPaymentChequeReturns::class], ChequeReturnSource::TAG);
+
+        // Finance documents lock the Amount decimals setting; its money
+        // columns feed the precision audit.
+        $this->app->tag([FinanceAmountPrecision::class], AmountPrecisionUsage::TAG);
     }
 
     public function boot(): void

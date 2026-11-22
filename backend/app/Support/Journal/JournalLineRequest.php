@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Support\Journal;
 
+use App\Support\Money\Amount;
 use InvalidArgumentException;
 
 /**
@@ -116,13 +117,13 @@ final class JournalLineRequest
         ?int       $companyId,
         ?int       $locationId,
     ): self {
-        // Rounded to cents at the boundary. Money is stored at 4 decimals but
-        // every existing decision in the payment services rounds to 2 with a
-        // 1c tolerance, so posting 4dp values would drift the ledger away from
+        // Rounded to the system's Amount decimals (2 today) at the boundary.
+        // Money is stored at 4 decimals but every document rounds to that
+        // precision, so posting 4dp values would drift the ledger away from
         // the documents it is meant to mirror. Residue goes to the rounding
         // account, which JournalPostingService handles.
-        $debit  = round($debit, 2);
-        $credit = round($credit, 2);
+        $debit  = Amount::round($debit);
+        $credit = Amount::round($credit);
 
         if ($debit < 0 || $credit < 0) {
             throw new InvalidArgumentException(

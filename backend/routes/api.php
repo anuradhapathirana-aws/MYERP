@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\AmountPrecisionController;
 use App\Http\Controllers\GlobalSettingController;
 use App\Http\Controllers\ModuleController;
 use App\Http\Controllers\PermissionController;
@@ -37,6 +38,9 @@ Route::middleware(['auth:sanctum', 'super_admin'])->group(function (): void {
 
     // System Settings > Support Contact: the IT company shown in the User Manual.
     Route::put('/system/support-contact', [SupportContactController::class, 'update'])->name('system.support-contact.update');
+
+    // System Settings > Number Format: Amount decimals, locked once documents exist.
+    Route::put('/system/amount-precision', [AmountPrecisionController::class, 'update'])->name('system.amount-precision.update');
 });
 
 // ── Any authenticated user ─────────────────────────────────────────────────────
@@ -49,6 +53,9 @@ Route::middleware('auth:sanctum')->group(function (): void {
 
     // User Manual "Need help?" card: who to contact for IT support.
     Route::get('system/support-contact', [SupportContactController::class, 'show'])->name('system.support-contact.show');
+
+    // Every screen formats money with the system's Amount decimals.
+    Route::get('system/amount-precision', [AmountPrecisionController::class, 'show'])->name('system.amount-precision.show');
 });
 
 // ── Permission-gated administration ─────────────────────────────────────────────

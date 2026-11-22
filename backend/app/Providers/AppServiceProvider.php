@@ -11,6 +11,7 @@ use App\Contracts\LandedChargeSource;
 use App\Contracts\LandedCostTargets;
 use App\Contracts\TaxCodeUsage;
 use App\Models\User;
+use App\Services\AmountPrecision;
 use App\Services\CompanyAccessService;
 use App\Services\SettingsService;
 use App\Support\Banking\ChequeReturnRouter;
@@ -31,6 +32,10 @@ class AppServiceProvider extends ServiceProvider
         // Scoped, not singleton: it memoises each user's companies, and that
         // memo must not outlive the request (or leak between queue jobs).
         $this->app->scoped(CompanyAccessService::class);
+
+        // Scoped for the same reason: it memoises the Amount decimals setting,
+        // which a long-running queue worker must re-read per job.
+        $this->app->scoped(AmountPrecision::class);
 
         // Default: no general ledger. FinanceServiceProvider binds its own
         // posting service when the module is installed, so a document can

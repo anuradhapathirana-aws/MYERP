@@ -43,6 +43,8 @@ Route::middleware(['auth:sanctum', 'module:finance'])->prefix('v1')->group(funct
     // ── Chart of accounts: level 1 ───────────────────────────────────────────
     Route::get('account-categories/account-types', [AccountCategoryController::class, 'accountTypes'])
         ->name('account-categories.account-types');
+    Route::get('account-categories/pl-sections', [AccountCategoryController::class, 'plSections'])
+        ->name('account-categories.pl-sections');
     Route::get('account-categories/all', [AccountCategoryController::class, 'all'])
         ->name('account-categories.all');
     Route::get('account-categories/next-code', [AccountCategoryController::class, 'nextCode'])
@@ -99,6 +101,9 @@ Route::middleware(['auth:sanctum', 'module:finance'])->prefix('v1')->group(funct
     Route::put('finance-settings/lock-date', [FinanceSettingsController::class, 'updateLockDate'])
         ->middleware('throttle:finance-writes')
         ->name('finance-settings.lock-date');
+    Route::put('finance-settings/go-live-date', [FinanceSettingsController::class, 'updateGoLiveDate'])
+        ->middleware('throttle:finance-writes')
+        ->name('finance-settings.go-live-date');
     Route::put('finance-settings/maker-checker', [FinanceSettingsController::class, 'updateMakerChecker'])
         ->middleware('throttle:finance-writes')
         ->name('finance-settings.maker-checker');

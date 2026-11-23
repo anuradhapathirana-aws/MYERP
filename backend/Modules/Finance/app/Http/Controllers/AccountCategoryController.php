@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
 use Modules\Finance\DTOs\AccountCategoryData;
 use Modules\Finance\Enums\AccountType;
+use Modules\Finance\Enums\PlSection;
 use Modules\Finance\Http\Requests\AccountCategoryRequest;
 use Modules\Finance\Http\Resources\AccountCategoryResource;
 use Modules\Finance\Models\AccountCategory;
@@ -17,7 +18,7 @@ class AccountCategoryController extends Controller
 {
     public function __construct(private readonly AccountCategoryService $service)
     {
-        $this->middleware('permission:view_account_categories')->only(['index', 'show', 'all', 'accountTypes', 'nextCode']);
+        $this->middleware('permission:view_account_categories')->only(['index', 'show', 'all', 'accountTypes', 'plSections', 'nextCode']);
         $this->middleware('permission:create_account_categories')->only(['store']);
         $this->middleware('permission:edit_account_categories')->only(['update']);
         $this->middleware('permission:delete_account_categories')->only(['destroy']);
@@ -56,6 +57,15 @@ class AccountCategoryController extends Controller
     public function accountTypes(): JsonResponse
     {
         return response()->json(['data' => AccountType::options()]);
+    }
+
+    /**
+     * The P&L sections, each with the one account type it suits, served from
+     * the enum for the same reason as accountTypes().
+     */
+    public function plSections(): JsonResponse
+    {
+        return response()->json(['data' => PlSection::options()]);
     }
 
     /**

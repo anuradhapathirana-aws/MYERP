@@ -8,6 +8,7 @@ use App\Models\Company;
 use Illuminate\Database\Seeder;
 use Modules\Finance\Enums\AccountType;
 use Modules\Finance\Enums\CashBookType;
+use Modules\Finance\Enums\PlSection;
 use Modules\Finance\Models\AccountCategory;
 use Modules\Finance\Models\ControlAccount;
 use Modules\Finance\Models\LedgerAccount;
@@ -129,6 +130,19 @@ class FinanceChartOfAccountsSeeder extends Seeder
         ],
     ];
 
+    /**
+     * category name => P&L section. Same map as the migration that added
+     * pl_section, so a new installation and an upgraded one classify alike.
+     */
+    private const PL_SECTIONS = [
+        'Revenue'                         => PlSection::Revenue,
+        'Other Income'                    => PlSection::OtherIncome,
+        'Cost of Sales'                   => PlSection::CostOfSales,
+        'Administrative Expenses'         => PlSection::Administration,
+        'Selling & Distribution Expenses' => PlSection::SellingDistribution,
+        'Finance Costs'                   => PlSection::Finance,
+    ];
+
     public function run(): void
     {
         // Run-once guard. Anything already in the chart means this installation
@@ -157,6 +171,7 @@ class FinanceChartOfAccountsSeeder extends Seeder
                     category_name: $categoryName,
                     description:   null,
                     is_active:     true,
+                    pl_section:    self::PL_SECTIONS[$categoryName] ?? null,
                 ));
                 $categoryCount++;
 

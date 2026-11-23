@@ -9,6 +9,7 @@ use App\Contracts\FundBalanceGuard;
 use App\Contracts\JournalPoster;
 use App\Contracts\LandedChargeSource;
 use App\Contracts\LandedCostTargets;
+use App\Contracts\StockValuationSource;
 use App\Contracts\TaxCodeUsage;
 use App\Models\User;
 use App\Services\AmountPrecision;
@@ -19,6 +20,7 @@ use App\Support\Journal\NullFundBalanceGuard;
 use App\Support\Journal\NullJournalPoster;
 use App\Support\Landed\NullLandedChargeSource;
 use App\Support\Landed\NullLandedCostTargets;
+use App\Support\Stock\NullStockValuationSource;
 use App\Support\Tax\SupplierDefaultTaxCodeUsage;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -63,6 +65,11 @@ class AppServiceProvider extends ServiceProvider
         // other module works on its own. bindIf for the reason given above.
         $this->app->bindIf(LandedChargeSource::class, NullLandedChargeSource::class);
         $this->app->bindIf(LandedCostTargets::class, NullLandedCostTargets::class);
+
+        // The P&L's opening and closing stock come from Inventory's stock
+        // ledger; without Inventory the null answers "not available" and the
+        // user enters them. bindIf for the reason given above.
+        $this->app->bindIf(StockValuationSource::class, NullStockValuationSource::class);
 
         // Bank Reconciliation asks the document that wrote a cheque to take it
         // back. The router finds that document among the ChequeReturnSource

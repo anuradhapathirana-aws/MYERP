@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Edit2, FolderTree, Save, Search, X } from 'lucide-react'
 import {
   createAccountCategory, deleteAccountCategory, getAccountCategories, getAccountCategory,
-  getAccountTypes, getNextAccountCategoryCode, updateAccountCategory,
+  getAccountTypes, getNextAccountCategoryCode, getPlSections, updateAccountCategory,
 } from '../../api/accountCategories'
 import Pagination from '../../components/ui/Pagination'
 import Breadcrumb from '../../components/Breadcrumb'
@@ -17,7 +17,10 @@ import {
 
 const CRUMBS = [{ label: 'Finance' }, { label: 'Account Categories' }]
 
-const EMPTY_FORM = { account_type: '', category_name: '', description: '', is_active: true }
+const EMPTY_FORM = { account_type: '', category_name: '', pl_section: '', description: '', is_active: true }
+
+// What an unclassified category falls back to on the P&L (mirrors PlSection::fallbackFor).
+const PL_FALLBACK = { income: 'Other Income', expense: 'Other Expenses' }
 
 const ERR_CLS = 'mt-0.5 text-[10px] text-red-500'
 
@@ -42,7 +45,7 @@ function validate(field, value) {
   return ''
 }
 
-function AccountCategoryForm({ editId, accountTypes, onDone, onCancel }) {
+function AccountCategoryForm({ editId, accountTypes, plSections, onDone, onCancel }) {
   const isEditing   = Boolean(editId)
   const queryClient = useQueryClient()
   const typeRef     = useRef(null)
@@ -79,6 +82,7 @@ function AccountCategoryForm({ editId, accountTypes, onDone, onCancel }) {
       setForm({
         account_type:  c.account_type  ?? '',
         category_name: c.category_name ?? '',
+        pl_section:    c.pl_section    ?? '',
         description:   c.description   ?? '',
         is_active:     c.is_active     ?? true,
       })
@@ -93,7 +97,8 @@ function AccountCategoryForm({ editId, accountTypes, onDone, onCancel }) {
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target
     const newVal = type === 'checkbox' ? checked : value
-    setForm((prev) => ({ ...prev, [name]: newVal }))
+    // A section only suits one account type, so changing the type clears it.
+    setForm((prev) => ({ ...prev, [name]: newVal, ...(name === 'account_type' ? { pl_section: '' } : {}) }))
     if (touched[name]) setErrors((prev) => ({ ...prev, [name]: validate(name, newVal) }))
   }
 
@@ -136,6 +141,7 @@ function AccountCategoryForm({ editId, accountTypes, onDone, onCancel }) {
     mutation.mutate({
       account_type:  form.account_type,
       category_name: form.category_name.trim(),
+      pl_section:    form.pl_section || null,
       description:   form.description.trim() || null,
       is_active:     form.is_active,
     })
@@ -146,6 +152,9 @@ function AccountCategoryForm({ editId, accountTypes, onDone, onCancel }) {
   }
 
   const codeValue = isEditing ? (fetchedData?.data?.code ?? '') : previewCode
+
+  // Assets and liabilities never reach the P&L; equity only as Reserves.
+  const sectionOptions = plSections.filter((s) => s.account_type === form.account_type)
 
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-2 p-2.5">
@@ -205,6 +214,28 @@ function AccountCategoryForm({ editId, accountTypes, onDone, onCancel }) {
         />
         {errors.category_name && touched.category_name && <p className={ERR_CLS}>{errors.category_name}</p>}
       </div>
+
+      {sectionOptions.length > 0 && (
+        <div>
+          <label className={LABEL_CLS}>P&amp;L Section</label>
+          <select
+            name="pl_section"
+            value={form.pl_section}
+            onChange={handleChange}
+            onBlur={handleBlur}
+            className={errors.pl_section && touched.pl_section ? SELECT_ERR_CLS : SELECT_CLS}
+          >
+            <option value="">
+              {PL_FALLBACK[form.account_type] ? `— Not set (reports as ${PL_FALLBACK[form.account_type]}) —` : '— Not on the P&L —'}
+            </option>
+            {sectionOptions.map((s) => (
+              <option key={s.value} value={s.value}>{s.label}</option>
+            ))}
+          </select>
+          {errors.pl_section && touched.pl_section && <p className={ERR_CLS}>{errors.pl_section}</p>}
+          <p className="mt-0.5 text-[10px] text-slate-400">Where this category's accounts appear on the Profit &amp; Loss.</p>
+        </div>
+      )}
 
       <div>
         <label className={LABEL_CLS}>Description</label>
@@ -268,6 +299,12 @@ export default function AccountCategoriesPage() {
     queryKey: ['account-types'],
     queryFn:  getAccountTypes,
     staleTime: Infinity, // Five fixed values backed by a PHP enum.
+  })
+
+  const { data: plSections = [] } = useQuery({
+    queryKey: ['pl-sections'],
+    queryFn:  getPlSections,
+    staleTime: Infinity, // Fixed values backed by a PHP enum.
   })
 
   const { data, isLoading, isError } = useQuery({
@@ -351,6 +388,7 @@ export default function AccountCategoriesPage() {
                       <th className="px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Code</th>
                       <th className="px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Account Type</th>
                       <th className="px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Account Category</th>
+                      <th className="px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">P&amp;L Section</th>
                       <th className="w-20 px-3 py-2 text-right font-semibold uppercase tracking-wider text-slate-500">Controls</th>
                       <th className="w-20 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Status</th>
                       <th className="w-16 px-3 py-2 text-right font-semibold uppercase tracking-wider text-slate-500">Actions</th>
@@ -359,7 +397,7 @@ export default function AccountCategoriesPage() {
                   <tbody className="divide-y divide-slate-100">
                     {rows.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-400">
+                        <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-400">
                           No account categories yet. Use the form to create the first one.
                         </td>
                       </tr>
@@ -373,6 +411,16 @@ export default function AccountCategoriesPage() {
                             </span>
                           </td>
                           <td className="px-3 py-2 font-medium text-slate-800">{row.category_name}</td>
+                          <td className="px-3 py-2">
+                            {row.pl_section ? (
+                              <span className="text-slate-700">{row.pl_section_label}</span>
+                            ) : row.pl_section_label ? (
+                              // Not classified: falls back, shown amber so it gets set.
+                              <span className="text-amber-600" title="Not set — reports under this fallback section">{row.pl_section_label} *</span>
+                            ) : (
+                              <span className="text-slate-300">—</span>
+                            )}
+                          </td>
                           <td className="px-3 py-2 text-right text-slate-500">{row.control_accounts_count ?? 0}</td>
                           <td className="px-3 py-2">
                             {row.is_active ? (
@@ -428,6 +476,7 @@ export default function AccountCategoriesPage() {
               key={editId ?? 'create'}
               editId={editId}
               accountTypes={accountTypes}
+              plSections={plSections}
               onDone={() => setEditId(null)}
               onCancel={() => setEditId(null)}
             />

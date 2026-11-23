@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { BookOpen, Columns2, List, Lock, ShieldCheck } from 'lucide-react'
-import { updateLedgerView, updateLockDate, updateMakerChecker } from '../../api/financeSettings'
+import { BookOpen, Columns2, Flag, List, Lock, ShieldCheck } from 'lucide-react'
+import { updateGoLiveDate, updateLedgerView, updateLockDate, updateMakerChecker } from '../../api/financeSettings'
 import { confirmAction, showError, showSuccess } from '../../utils/alerts'
 import { FILTER_INPUT_CLS } from '../../utils/fieldStyles'
 
@@ -21,10 +21,12 @@ const firstError = (e, fallback) => {
 // canManageSetup: super admin only -- switching maker-checker off removes a
 // fraud control, so it is changed by the IT company on the client's request.
 // ledgerView: how a Trial Balance account opens by default ('list' | 't_account').
-export default function FinanceControlsCard({ lockDate, makerChecker, ledgerView = 'list', canLock, canManageSetup, onChanged }) {
-  // The parent keys this card by lockDate, so a saved change remounts it
-  // with the new value -- no effect needed to sync the input.
+// goLiveDate: first day the ledger is complete (cut-over); statements start here.
+export default function FinanceControlsCard({ lockDate, goLiveDate, makerChecker, ledgerView = 'list', canLock, canManageSetup, onChanged }) {
+  // The parent keys this card by lockDate + goLiveDate, so a saved change
+  // remounts it with the new value -- no effect needed to sync the inputs.
   const [date, setDate] = useState(lockDate ?? '')
+  const [goLive, setGoLive] = useState(goLiveDate ?? '')
 
   const today = new Date().toLocaleDateString('en-CA')
 
@@ -33,6 +35,26 @@ export default function FinanceControlsCard({ lockDate, makerChecker, ledgerView
     onSuccess: (d) => { onChanged?.(); showSuccess(d.lock_date ? `Period locked up to ${d.lock_date}.` : 'Period lock removed.') },
     onError: (e) => showError(firstError(e, 'Could not change the lock date.')),
   })
+
+  const goLiveMutation = useMutation({
+    mutationFn: updateGoLiveDate,
+    onSuccess: (d) => { onChanged?.(); showSuccess(d.go_live_date ? `Finance go-live date set to ${d.go_live_date}.` : 'Finance go-live date cleared.') },
+    onError: (e) => showError(firstError(e, 'Could not change the go-live date.')),
+  })
+
+  const saveGoLive = async () => {
+    const next = goLive || null
+    if (next === (goLiveDate ?? null)) return
+    const ok = await confirmAction({
+      title: next ? 'Set the Finance go-live date?' : 'Clear the go-live date?',
+      message: next
+        ? `Financial statements (Profit &amp; Loss) will start from <strong>${next}</strong>. Post the opening balances on this date.`
+        : 'Financial statements will no longer be limited to a start date.',
+      confirmText: 'Yes, Apply',
+      confirmColor: '#4f46e5',
+    })
+    if (ok) goLiveMutation.mutate(next)
+  }
 
   const makerMutation = useMutation({
     mutationFn: updateMakerChecker,
@@ -95,6 +117,36 @@ export default function FinanceControlsCard({ lockDate, makerChecker, ledgerView
           <p className="mt-1 text-[10px] leading-snug text-slate-500">
             {lockDate ? <>Closed up to <strong className="text-amber-700">{lockDate}</strong>. </> : 'No period is locked. '}
             Lock each month once it is reported. Clear the date to remove the lock.
+          </p>
+        </div>
+
+        <div>
+          <label className="mb-1 flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            <Flag size={11} /> Finance go-live date
+          </label>
+          <div className="flex items-center gap-1.5">
+            <input
+              type="date"
+              className={FILTER_INPUT_CLS}
+              value={goLive}
+              onChange={(e) => setGoLive(e.target.value)}
+              disabled={!canManageSetup || goLiveMutation.isPending}
+            />
+            {canManageSetup && (
+              <button
+                type="button"
+                onClick={saveGoLive}
+                disabled={goLiveMutation.isPending || (goLive || null) === (goLiveDate ?? null)}
+                className="shrink-0 rounded-md bg-slate-900 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-slate-800 disabled:opacity-40"
+              >
+                Apply
+              </button>
+            )}
+          </div>
+          <p className="mt-1 text-[10px] leading-snug text-slate-500">
+            {goLiveDate ? <>Ledger complete from <strong className="text-indigo-700">{goLiveDate}</strong>. </> : 'Not set. '}
+            Documents before this date never reached the ledger, so the Profit &amp; Loss starts here.
+            {!canManageSetup && ' Changed by your IT support (super admin).'}
           </p>
         </div>
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\Finance\DTOs;
 
 use Modules\Finance\Enums\AccountType;
+use Modules\Finance\Enums\PlSection;
 use Modules\Finance\Http\Requests\AccountCategoryRequest;
 
 final class AccountCategoryData
@@ -14,15 +15,19 @@ final class AccountCategoryData
         public readonly string      $category_name,
         public readonly ?string     $description,
         public readonly bool        $is_active,
+        public readonly ?PlSection  $pl_section = null,
     ) {}
 
     public static function fromRequest(AccountCategoryRequest $request): self
     {
+        $section = $request->input('pl_section');
+
         return new self(
             account_type:  AccountType::from((string) $request->input('account_type')),
             category_name: trim((string) $request->input('category_name')),
             description:   self::nullableTrim($request->input('description')),
             is_active:     (bool) $request->input('is_active', true),
+            pl_section:    is_string($section) && $section !== '' ? PlSection::from($section) : null,
         );
     }
 

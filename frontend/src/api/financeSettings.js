@@ -54,6 +54,14 @@ export const updateLockDate = (lockDate) =>
   api.put(`${BASE}/lock-date`, { lock_date: lockDate || null })
     .then((r) => r.data?.data ?? {})
 
+/**
+ * First day the ledger is complete (cut-over). Financial statements refuse
+ * periods that start before it. May be in the future; null clears. Super admin.
+ */
+export const updateGoLiveDate = (goLiveDate) =>
+  api.put(`${BASE}/go-live-date`, { go_live_date: goLiveDate || null })
+    .then((r) => r.data?.data ?? {})
+
 /** Company default for the Trial Balance account popup: 'list' or 't_account'. Super admin. */
 export const updateLedgerView = (ledgerView) =>
   api.put(`${BASE}/ledger-view`, { ledger_view: ledgerView })

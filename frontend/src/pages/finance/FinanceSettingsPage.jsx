@@ -404,8 +404,9 @@ export default function FinanceSettingsPage() {
         {/* ── Posting mode + explanation ──────────────────────────────────── */}
         <div className="flex flex-col gap-2">
           <FinanceControlsCard
-            key={settings?.lock_date ?? 'none'}
+            key={`${settings?.lock_date ?? 'none'}|${settings?.go_live_date ?? 'none'}`}
             lockDate={settings?.lock_date ?? null}
+            goLiveDate={settings?.go_live_date ?? null}
             makerChecker={settings?.maker_checker ?? false}
             ledgerView={settings?.ledger_view ?? 'list'}
             canLock={canLock}

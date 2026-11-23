@@ -5,10 +5,12 @@ namespace Modules\Inventory\Providers;
 use App\Contracts\ChequeReturnSource;
 use App\Contracts\LandedChargeUsage;
 use App\Contracts\LandedCostTargets;
+use App\Contracts\StockValuationSource;
 use App\Contracts\TaxCodeUsage;
 use Modules\Inventory\Support\CostingLandedChargeUsage;
 use Modules\Inventory\Support\GrnTaxCodeUsage;
 use Modules\Inventory\Support\InventoryLandedCostTargets;
+use Modules\Inventory\Support\InventoryStockValuation;
 use Modules\Inventory\Console\Commands\RecalculateStockBalances;
 use Modules\Inventory\Console\Commands\VerifyVariantBackfill;
 use Modules\Inventory\Console\Commands\WarmPieceQrCodes;
@@ -46,6 +48,10 @@ class InventoryServiceProvider extends ModuleServiceProvider
         // pulled into a costing must not be voided from under it.
         $this->app->bind(LandedCostTargets::class, InventoryLandedCostTargets::class);
         $this->app->tag([CostingLandedChargeUsage::class], LandedChargeUsage::TAG);
+
+        // The P&L's opening and closing stock: stock on hand by document date
+        // at weighted average GRN cost.
+        $this->app->bind(StockValuationSource::class, InventoryStockValuation::class);
 
         // Bank Reconciliation returns a receipt's or a payment's cheque here:
         // the invoices / GRNs it settled reopen.

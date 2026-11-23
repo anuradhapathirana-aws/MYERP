@@ -7,6 +7,7 @@ namespace Modules\Finance\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Modules\Finance\Enums\AccountType;
+use Modules\Finance\Enums\PlSection;
 
 /**
  * `code` is never accepted from input — it is generated server-side and is
@@ -37,7 +38,18 @@ class AccountCategoryRequest extends FormRequest
             ],
             'description' => ['nullable', 'string', 'max:1000'],
             'is_active'   => ['boolean'],
+            // Only the sections that suit the category's type. Assets and
+            // liabilities never reach the P&L, so they take none at all.
+            'pl_section'  => ['nullable', 'string', Rule::in($this->allowedSections())],
         ];
+    }
+
+    /** @return list<string> */
+    private function allowedSections(): array
+    {
+        $type = AccountType::tryFrom((string) $this->input('account_type'));
+
+        return $type === null ? [] : PlSection::valuesFor($type);
     }
 
     /** @return array<string, string> */
@@ -55,6 +67,7 @@ class AccountCategoryRequest extends FormRequest
         return [
             'category_name.unique' => 'An account category with this name already exists under the selected account type.',
             'account_type.in'      => 'Select a valid account type.',
+            'pl_section.in'        => 'This P&L section does not suit the selected account type.',
         ];
     }
 }

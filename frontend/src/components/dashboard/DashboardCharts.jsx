@@ -3,6 +3,7 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import Money from '../ui/Money'
+import { fmtMoney } from '../../utils/currency'
 import { ChartTooltip, EmptyState } from './DashboardUi'
 import { SERIES, fmtCompact } from './dashboardTheme'
 
@@ -191,7 +192,7 @@ export function MiniDonut({ rows, centerLabel, emptyText }) {
       <ul className="mt-1 w-full space-y-0.5">
         {rows.map((r) => (
           <li key={r.key} className="flex items-center justify-between gap-1 text-[11px]"
-              title={r.value !== undefined ? `${r.label}: ${r.count} · ${Number(r.value).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : undefined}>
+              title={r.value !== undefined ? `${r.label}: ${r.count} · ${fmtMoney(r.value)}` : undefined}>
             <span className="flex min-w-0 items-center gap-1">
               <span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: r.color }} />
               <span className="truncate text-slate-600">{r.label}</span>

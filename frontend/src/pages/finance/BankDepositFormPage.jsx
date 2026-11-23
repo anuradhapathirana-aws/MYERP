@@ -21,6 +21,7 @@ import {
 } from '../../utils/alerts'
 import { INPUT_DISABLED_CLS, LABEL_CLS, inputCls, selectCls, textareaCls } from '../../utils/fieldStyles'
 import { printPdfBlob } from '../../utils/pdf'
+import { amountDecimalsRule, fmtMinor, fromMinor, isPlainAmount, toMinor } from '../../utils/currency'
 
 const today = () => new Date().toLocaleDateString('en-CA')
 
@@ -39,10 +40,11 @@ const newRequestId = () => {
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
 }
 
-// Money is worked in integer cents, never floats.
-const toCents = (v) => Math.round((Number(v) || 0) * 100)
-const fromCents = (c) => (c / 100).toFixed(2)
-const fmt = (c) => (c / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+// Money is worked in integer minor units (cents at 2 decimals), never floats —
+// sized by the Amount decimals setting.
+const toCents = toMinor
+const fromCents = fromMinor
+const fmt = fmtMinor
 
 const emptyForm = (companyId = '') => ({
   deposit_date: today(),
@@ -247,7 +249,7 @@ export default function BankDepositFormPage() {
     if (!f.company_id) e.company_id = 'Select the company.'
     if (!f.bank_account_id) e.bank_account_id = 'Select the bank account.'
     const cash = String(f.cash_amount ?? '').trim()
-    if (cash !== '' && !/^\d+(\.\d{1,2})?$/.test(cash)) e.cash_amount = 'Enter an amount with at most 2 decimals.'
+    if (cash !== '' && !isPlainAmount(cash)) e.cash_amount = `Enter an amount with ${amountDecimalsRule()}.`
     else if (toCents(cash) > 0) {
       if (!f.cash_account_id) e.cash_account_id = 'Select the cash book the cash is taken from.'
       else if (cashAccount && toCents(cash) > toCents(cashAccount.available)) e.cash_amount = `Only ${fmt(toCents(cashAccount.available))} is available.`

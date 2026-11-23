@@ -10,6 +10,7 @@ import {
 } from '../../api/proformaInvoices'
 import Breadcrumb from '../../components/Breadcrumb'
 import Money from '../../components/ui/Money'
+import { fmtMoney } from '../../utils/currency'
 import KeyboardShortcuts from '../../components/ui/KeyboardShortcuts'
 import { usePermissions } from '../../hooks/usePermissions'
 import { confirmAction, confirmDelete, showError, showSuccess } from '../../utils/alerts'
@@ -251,7 +252,7 @@ export default function ProformaInvoiceViewPage() {
               <Field label="Issued" value={pf.issued_at?.slice(0, 10)} />
               <Field label="Converted" value={pf.converted_at?.slice(0, 10)} />
               <Field label="Cancelled" value={pf.cancelled_at?.slice(0, 10)} />
-              <Field label="Transport" value={Number(pf.transport_charge) > 0 ? Number(pf.transport_charge).toFixed(2) : ''} />
+              <Field label="Transport" value={Number(pf.transport_charge) > 0 ? fmtMoney(pf.transport_charge) : ''} />
               <div className="col-span-2"><Field label="Payment Terms" value={pf.payment_terms} /></div>
               <div className="col-span-2"><Field label="Billing / Delivery Address" value={pf.delivery_address} /></div>
               {pf.remarks && <div className="col-span-2 md:col-span-4"><Field label="Remarks" value={pf.remarks} /></div>}

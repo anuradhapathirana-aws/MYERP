@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { fmtMoney } from '../utils/currency'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import {
@@ -175,7 +176,7 @@ function cashNote(d) {
       points={[
         'Balance = posted debits − credits in each account\'s ledger (Finance).',
         'Only money posted in Finance counts: receipts and payments recorded before Finance was switched on, or without a cash/bank account, are not included until opening balances are entered.',
-        `Cash books exclude cheques not yet banked (${d.cheques_in_hand.toLocaleString(undefined, { minimumFractionDigits: 2 })} shown separately as cheques in hand) and never go below zero.`,
+        `Cash books exclude cheques not yet banked (${fmtMoney(d.cheques_in_hand)} shown separately as cheques in hand) and never go below zero.`,
         'A bank can be negative when it is overdrawn. Only the companies you have access to.',
       ]}
       source="Ledger of each cash / bank account, Uncleared Cheques report"

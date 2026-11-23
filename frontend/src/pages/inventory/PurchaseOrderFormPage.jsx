@@ -24,7 +24,7 @@ import { getAllAttributes } from '../../api/attributes'
 import Breadcrumb from '../../components/Breadcrumb'
 import KeyboardShortcuts from '../../components/ui/KeyboardShortcuts'
 import Money from '../../components/ui/Money'
-import { CURRENCY, fmtMoney } from '../../utils/currency'
+import { CURRENCY, fmtMoney, roundAmount } from '../../utils/currency'
 import { showError, showSuccess } from '../../utils/alerts'
 import VariantSelect from '../../components/inventory/VariantSelect'
 import { getProductVariants } from '../../api/variants'
@@ -336,15 +336,16 @@ function isColorAttributeTypeName(name) {
   return n === 'color' || n === 'colour'
 }
 
+// The unit price is a cost and keeps its precision; the line total rounds to the
+// Amount decimals setting, exactly as PurchaseOrderService does on save.
 function calcItem(row) {
   const qty     = parseFloat(row.quantity_ordered) || 0
   const price   = parseFloat(row.unit_price)       || 0
   const discPct = parseFloat(row.discount)         || 0
   const gross    = qty * price
-  const discAmt  = gross * (discPct / 100)
   const taxAmt   = 0 // item-wise tax feature hidden — always inert
-  const amount   = gross - discAmt + taxAmt
-  return { gross, discAmt, taxAmt, amount }
+  const amount   = roundAmount(gross - gross * (discPct / 100) + taxAmt)
+  return { gross, discAmt: gross + taxAmt - amount, taxAmt, amount }
 }
 
 const EMPTY_FORM = {
@@ -782,6 +783,9 @@ export default function PurchaseOrderFormPage() {
     },
     { gross: 0, disc: 0, tax: 0, total: 0 },
   )
+  totals.gross = roundAmount(totals.gross)
+  totals.total = roundAmount(totals.total)
+  totals.disc  = roundAmount(totals.gross - totals.total)
 
   const saveMutation = useMutation({
     mutationFn: (payload) => isEdit ? updatePurchaseOrder(id, payload) : createPurchaseOrder(payload),

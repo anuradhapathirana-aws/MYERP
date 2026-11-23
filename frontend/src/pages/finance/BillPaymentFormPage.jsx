@@ -20,6 +20,7 @@ import {
   confirmAction, confirmBankOverdraw, confirmDelete, confirmWithReasonAndDate, showError, showSuccess, showWarning,
 } from '../../utils/alerts'
 import { INPUT_DISABLED_CLS, LABEL_CLS, inputCls, selectCls, textareaCls } from '../../utils/fieldStyles'
+import { amountDecimalsRule, fmtMinor, fromMinor, isPlainAmount, toMinor } from '../../utils/currency'
 
 const today = () => new Date().toLocaleDateString('en-CA')
 
@@ -36,10 +37,11 @@ const newRequestId = () => {
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
 }
 
-// Money is worked in integer cents, never floats.
-const toCents = (v) => Math.round((Number(v) || 0) * 100)
-const fromCents = (c) => (c / 100).toFixed(2)
-const fmt = (c) => (c / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+// Money is worked in integer minor units (cents at 2 decimals), never floats —
+// sized by the Amount decimals setting.
+const toCents = toMinor
+const fromCents = fromMinor
+const fmt = fmtMinor
 
 const emptyForm = (companyId = '') => ({
   payment_date: today(),
@@ -403,7 +405,7 @@ export default function BillPaymentFormPage() {
     rows.forEach((r) => {
       const raw = String(effectiveAmount(r) ?? '').trim()
       if (raw === '' || Number(raw) === 0) return
-      if (!/^\d+(\.\d{1,2})?$/.test(raw)) e[r.bill_id] = 'Max 2 decimals.'
+      if (!isPlainAmount(raw)) e[r.bill_id] = `Use ${amountDecimalsRule()}.`
       else if (toCents(raw) > toCents(r.balance)) e[r.bill_id] = `Max ${fmt(toCents(r.balance))}.`
     })
     return e

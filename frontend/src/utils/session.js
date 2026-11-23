@@ -2,11 +2,15 @@
 // and refreshed from GET /api/me on every app load (see Sidebar), so a module a
 // super admin switches on or off shows after a page refresh, without a new login.
 
+import { setAmountDecimals } from './currency'
+
+// amount_decimals is NOT cleared on logout: it is the installation's setting, not the user's.
 const KEYS = ['auth_token', 'user_id', 'user_name', 'user_email', 'active_modules', 'is_super_admin', 'user_roles', 'user_permissions']
 
 /** Store what /api/login or /api/me returned (the token only comes from login). */
 export function saveProfile(data) {
   if (!data) return
+  if (data.amount_decimals != null) setAmountDecimals(data.amount_decimals)
   if (data.token) localStorage.setItem('auth_token', data.token)
   localStorage.setItem('user_id', String(data.user_id ?? ''))
   localStorage.setItem('user_name', data.user_name ?? '')

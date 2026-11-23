@@ -4,6 +4,7 @@ import { Hash, Loader2, Lock, Save } from 'lucide-react'
 import { getAmountPrecision, updateAmountPrecision } from '../../api/system'
 import { SELECT_CLS, LABEL_CLS } from '../../utils/fieldStyles'
 import { confirmAction, showError, showSuccess } from '../../utils/alerts'
+import { setAmountDecimals } from '../../utils/currency'
 
 const sample = (d) => (1234.5678).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d })
 
@@ -30,7 +31,8 @@ function NumberFormatForm({ status, isLoading }) {
     mutationFn: updateAmountPrecision,
     onSuccess: (d) => {
       queryClient.invalidateQueries({ queryKey: ['amount-precision'] })
-      showSuccess(`Amounts now use ${d.decimals} decimal place${d.decimals === 1 ? '' : 's'}. Users see it after signing in again.`)
+      setAmountDecimals(d.decimals)
+      showSuccess(`Amounts now use ${d.decimals} decimal place${d.decimals === 1 ? '' : 's'}. Other users see it after refreshing the page.`)
     },
     onError: (err) => {
       showError(err.response?.data?.errors?.decimals?.[0] ?? err.response?.data?.message ?? 'Could not save the number format.')

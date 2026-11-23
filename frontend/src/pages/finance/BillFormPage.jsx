@@ -10,6 +10,7 @@ import {
 } from '../../api/bills'
 import { purchaseTaxCodesQuery } from '../../api/taxCodes'
 import { calculateTax } from '../../utils/taxCalc'
+import { fmtMoney } from '../../utils/currency'
 import { deleteAttachment, downloadAttachment, getAttachments, uploadAttachment } from '../../api/financeAttachments'
 import { getAllSuppliers } from '../../api/suppliers'
 import Breadcrumb from '../../components/Breadcrumb'
@@ -889,7 +890,7 @@ export default function BillFormPage() {
                           <FieldError msg={lerr('amount')} />
                         </td>
                         <td className="py-1 pr-1.5 pt-2 text-right tabular-nums"
-                          title={p.tax ? `Before tax ${p.base.toFixed(2)} + tax ${p.tax.toFixed(2)}${p.claimable ? ` · ${p.claimable.toFixed(2)} claimable` : ''}` : undefined}>
+                          title={p.tax ? `Before tax ${fmtMoney(p.base)} + tax ${fmtMoney(p.tax)}${p.claimable ? ` · ${fmtMoney(p.claimable)} claimable` : ''}` : undefined}>
                           <span className="font-semibold text-slate-800"><Money value={p.total} /></span>
                           {p.tax > 0 && <span className="block text-[10px] text-green-700">VAT <Money value={p.tax} /></span>}
                         </td>

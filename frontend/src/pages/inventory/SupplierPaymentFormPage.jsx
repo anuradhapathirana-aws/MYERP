@@ -20,7 +20,7 @@ import Breadcrumb from '../../components/Breadcrumb'
 import Money from '../../components/ui/Money'
 import ChequeStatusChip from '../../components/ui/ChequeStatusChip'
 import { confirmAction, confirmBankOverdraw, showError, showSuccess } from '../../utils/alerts'
-import { fmtMoneyWithSymbol } from '../../utils/currency'
+import { amountStep, amountTolerance, amountUnit, fixedAmount, fmtMoneyWithSymbol } from '../../utils/currency'
 import { INPUT_CLS, INPUT_DISABLED_CLS, LABEL_CLS, SELECT_CLS } from '../../utils/fieldStyles'
 
 const EMPTY_ARRAY = []
@@ -274,7 +274,7 @@ export default function SupplierPaymentFormPage() {
     if (!pct || pct <= 0) return
     setRows((prev) => prev.map((r) => {
       if (!r.checked) return r
-      const discount = ((r.amount * pct) / 100).toFixed(2)
+      const discount = fixedAmount((r.amount * pct) / 100)
       const cap = Math.max(0, r.amount - parseFloat(discount))
       return { ...r, discount, payAmount: String(cap) }
     }))
@@ -289,7 +289,7 @@ export default function SupplierPaymentFormPage() {
   const applySetoffPct = () => {
     const pct = parseFloat(setoffPct)
     if (!pct || pct <= 0) return
-    setCreditNoteRows((prev) => prev.map((c) => c.checked ? { ...c, setoff_amount: Math.min(c.remaining_balance, (c.remaining_balance * pct) / 100).toFixed(2) } : c))
+    setCreditNoteRows((prev) => prev.map((c) => c.checked ? { ...c, setoff_amount: fixedAmount(Math.min(c.remaining_balance, (c.remaining_balance * pct) / 100)) } : c))
   }
 
   const checkedCreditNotes = creditNoteRows.filter((c) => c.checked && parseFloat(c.setoff_amount) > 0)
@@ -299,15 +299,15 @@ export default function SupplierPaymentFormPage() {
   const remaining = target - setoffTotal - settlementTotal
   // Underfunded (remaining > 0) blocks saving. Overfunded (remaining < 0) is allowed — the
   // excess becomes an over_payment credit note, available for setoff later, once confirmed.
-  const isUnderfunded = remaining > 0.01
-  const isOverfunded  = remaining < -0.01
+  const isUnderfunded = remaining > amountUnit()
+  const isOverfunded  = remaining < -amountUnit()
 
   // Prefill the next settlement's amount with the outstanding remaining balance — recomputed
   // whenever it changes (GRN selection, setoffs, prior settlements). Only applies to a fresh
   // draft (no pay mode chosen yet), so it never clobbers an amount the user is editing.
   useEffect(() => {
     setSettlementDraft((d) => (
-      d.payment_mode_id ? d : { ...d, amount: remaining > 0.01 ? remaining.toFixed(2) : '' }
+      d.payment_mode_id ? d : { ...d, amount: remaining > amountUnit() ? fixedAmount(remaining) : '' }
     ))
   }, [remaining])
 
@@ -355,7 +355,7 @@ export default function SupplierPaymentFormPage() {
       .filter((s) => String(s.ledger_account_id) === String(settlementDraft.ledger_account_id))
       .reduce((t, s) => t + (parseFloat(s.amount) || 0), 0)
     : null
-  const payFromShort = payFromLeft !== null && (parseFloat(settlementDraft.amount) || 0) - payFromLeft > 0.005
+  const payFromShort = payFromLeft !== null && (parseFloat(settlementDraft.amount) || 0) - payFromLeft > amountTolerance()
 
   // Cheque numbers must be exactly 6 digits — validated live while typing and again on Add
   // (the backend re-validates on save as well).
@@ -618,7 +618,7 @@ export default function SupplierPaymentFormPage() {
             <div className="p-2.5 md:w-64">
               <label className={LABEL_CLS}>Amount <span className="text-red-500">*</span></label>
               <input
-                type="number" min="0" step="0.01"
+                type="number" min="0" step={amountStep()}
                 className={err('advance_amount') ? INPUT_CLS.replace('border-slate-200', 'border-red-300') : INPUT_CLS}
                 value={advanceAmount}
                 onChange={(e) => setAdvanceAmount(e.target.value)}
@@ -746,7 +746,7 @@ export default function SupplierPaymentFormPage() {
                           <td className="px-2 py-1 text-right text-slate-600"><Money value={r.amount} /></td>
                           <td className="px-2 py-1">
                             <input
-                              type="number" min="0" step="0.01"
+                              type="number" min="0" step={amountStep()}
                               className="w-full rounded-md border-2 border-slate-200 bg-slate-50 px-1.5 py-0.5 text-right text-xs outline-none focus:border-indigo-400 disabled:cursor-not-allowed disabled:bg-slate-100"
                               value={r.discount}
                               disabled={!isDraft}
@@ -755,18 +755,18 @@ export default function SupplierPaymentFormPage() {
                           </td>
                           <td className="px-2 py-1">
                             <input
-                              type="number" min="0" step="0.01"
+                              type="number" min="0" step={amountStep()}
                               className="w-full rounded-md border-2 border-slate-200 bg-slate-50 px-1.5 py-0.5 text-right text-xs font-medium text-slate-700 outline-none focus:border-indigo-400 disabled:cursor-not-allowed disabled:bg-slate-100"
                               value={r.payAmount}
                               disabled={!isDraft}
                               onChange={(e) => setRowPayAmount(r.grn_id, e.target.value)}
                             />
-                            {remainderAfterThis > 0.01 && (
+                            {remainderAfterThis > amountUnit() && (
                               <div className="mt-0.5 text-right text-[9px] font-semibold text-amber-500">
                                 {fmt(remainderAfterThis)} stays outstanding
                               </div>
                             )}
-                            {overpaidAfterThis > 0.01 && (
+                            {overpaidAfterThis > amountUnit() && (
                               <div className="mt-0.5 text-right text-[9px] font-semibold text-emerald-600">
                                 {fmt(overpaidAfterThis)} extra → credit for setoff
                               </div>
@@ -845,7 +845,7 @@ export default function SupplierPaymentFormPage() {
                             <td className="px-2 py-1 text-right text-slate-600"><Money value={c.remaining_balance} /></td>
                             <td className="px-2 py-1">
                               <input
-                                type="number" min="0" max={c.remaining_balance} step="0.01"
+                                type="number" min="0" max={c.remaining_balance} step={amountStep()}
                                 className="w-full rounded-md border-2 border-slate-200 bg-slate-50 px-1.5 py-0.5 text-right text-xs outline-none focus:border-amber-400 disabled:cursor-not-allowed disabled:bg-slate-100"
                                 value={c.setoff_amount}
                                 disabled={!isDraft || !c.checked}
@@ -895,7 +895,7 @@ export default function SupplierPaymentFormPage() {
                 <div>
                   <label className={LABEL_CLS}>Amount</label>
                   <input
-                    type="number" min="0" step="0.01"
+                    type="number" min="0" step={amountStep()}
                     className={INPUT_CLS}
                     value={settlementDraft.amount}
                     onChange={(e) => setSettlementDraft((d) => ({ ...d, amount: e.target.value }))}

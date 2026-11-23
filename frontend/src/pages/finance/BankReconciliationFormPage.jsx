@@ -19,6 +19,7 @@ import { usePermissions } from '../../hooks/usePermissions'
 import { confirmAction, confirmDelete, confirmWithReason, escapeHtml, showError, showSuccess, showWarning } from '../../utils/alerts'
 import { INPUT_DISABLED_CLS, LABEL_CLS, inputCls, selectCls, textareaCls } from '../../utils/fieldStyles'
 import { printPdfBlob } from '../../utils/pdf'
+import { amountDecimalsRule, fixedAmount, fmtMinor, fromMinor, hasAmountPrecision, toMinor } from '../../utils/currency'
 
 const today = () => new Date().toLocaleDateString('en-CA')
 
@@ -32,15 +33,17 @@ const newRequestId = () => {
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
 }
 
-// Money is worked in integer cents, never floats. A typed amount is digits with an
-// optional minus and at most 2 decimals (thousands commas allowed); anything else is
-// refused on blur and before saving -- never quietly turned into 0.00.
-const MONEY_RE = /^-?\d+(\.\d{1,2})?$/
+// Money is worked in integer minor units (cents at 2 decimals), never floats. A typed
+// amount is digits with an optional minus and no more decimals than the Amount decimals
+// setting (thousands commas allowed); anything else is refused on blur and before
+// saving -- never quietly turned into 0.00.
+const MONEY_RE = /^-?\d+(\.\d+)?$/
 const cleanMoney = (v) => String(v ?? '').replace(/,/g, '').trim()
-const isMoney = (v) => MONEY_RE.test(cleanMoney(v))
-const toCents = (v) => (isMoney(v) ? Math.round(Number(cleanMoney(v)) * 100) : 0)
-const moneyError = (v, label) => (cleanMoney(v) === '' ? null : isMoney(v) ? null : `${label}: enter a number with at most 2 decimals, e.g. 125000.50 or -3500.`)
-const fmt = (c) => (c / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const isMoney = (v) => MONEY_RE.test(cleanMoney(v)) && hasAmountPrecision(cleanMoney(v))
+const toCents = (v) => (isMoney(v) ? toMinor(cleanMoney(v)) : 0)
+const decimalsHint = () => `a number with ${amountDecimalsRule()}, e.g. ${fixedAmount(125000.5)} or -3500`
+const moneyError = (v, label) => (cleanMoney(v) === '' ? null : isMoney(v) ? null : `${label}: enter ${decimalsHint()}.`)
+const fmt = fmtMinor
 
 const firstError = (err, fallback) => {
   const errors = err?.response?.data?.errors
@@ -598,7 +601,7 @@ export default function BankReconciliationFormPage() {
     if (!entryType) { showError('Choose Bank Charges or Interest Income.'); return }
     if (!entryType.mapped) { showError(`No ${entryType.label} account is set up. Map one under Finance > Account Mapping first.`); return }
     if (!entry.entry_date) { showError('Enter the date shown on the statement.'); return }
-    if (!isMoney(entry.amount) || toCents(entry.amount) <= 0) { showError('Enter an amount above zero, with at most 2 decimals.'); return }
+    if (!isMoney(entry.amount) || toCents(entry.amount) <= 0) { showError(`Enter an amount above zero: ${decimalsHint()}.`); return }
     if ((entry.description ?? '').trim().length < 3) { showError('Enter a description.'); return }
     const into = entryType.direction === 'deposit'
     const ok = await confirmAction({
@@ -614,7 +617,7 @@ export default function BankReconciliationFormPage() {
         bank_account_id: Number(applied.bank_account_id),
         entry_date: entry.entry_date,
         type: entry.type,
-        amount: (toCents(entry.amount) / 100).toFixed(2),
+        amount: fromMinor(toCents(entry.amount)),
         description: entry.description.trim(),
         reference: entry.reference.trim() || null,
       })
@@ -661,7 +664,7 @@ export default function BankReconciliationFormPage() {
     if (andPost && !canPost) return
     const e = validateCriteria()
     if (isFirst && !form.date_from) e.date_from = 'First reconciliation of this account: enter the start date. Entries before it count as already cleared.'
-    if (isFirst && cleanMoney(form.opening_balance) === '') e.opening_balance = 'First reconciliation of this account: enter the opening balance shown on the bank statement (0.00 if it was empty).'
+    if (isFirst && cleanMoney(form.opening_balance) === '') e.opening_balance = `First reconciliation of this account: enter the opening balance shown on the bank statement (${fmtMinor(0)} if it was empty).`
     else if (isFirst) { const m = moneyError(form.opening_balance, 'Opening balance'); if (m) e.opening_balance = m }
     if (cleanMoney(form.statement_balance) === '') e.statement_balance = 'Enter the closing balance on the bank statement.'
     else { const m = moneyError(form.statement_balance, 'Statement balance'); if (m) e.statement_balance = m }
@@ -673,7 +676,7 @@ export default function BankReconciliationFormPage() {
     }
 
     if (andPost) {
-      if (!balanced) { showError(`The variance is ${fmt(varianceCents)}. It must be 0.00 to post.`); return }
+      if (!balanced) { showError(`The variance is ${fmt(varianceCents)}. It must be ${fmtMinor(0)} to post.`); return }
       const returned = Object.values(statuses).filter((s) => s === 'returned').length + lateRows.length
       const ok = await confirmAction({
         title: 'Post this reconciliation?',
@@ -1027,7 +1030,7 @@ export default function BankReconciliationFormPage() {
           <StatCard label="Closing Balance" hint={`Opening + ${fmt(realizedIn)} in − ${fmt(realizedOut)} out${lateRows.length ? ' (incl. returned after clearing)' : ''}`}>
             <div className="text-lg font-bold text-slate-800">{fmt(closingCents)}</div>
           </StatCard>
-          <StatCard label="Variance" tone={varianceTone} hint={isView ? null : 'Post is enabled when the variance is 0.00'}>
+          <StatCard label="Variance" tone={varianceTone} hint={isView ? null : `Post is enabled when the variance is ${fmtMinor(0)}`}>
             <div className={`text-lg font-bold ${varianceTone === 'green' ? 'text-green-700' : varianceTone === 'red' ? 'text-red-600' : 'text-slate-800'}`}>{fmt(varianceCents)}</div>
           </StatCard>
         </div>
@@ -1209,7 +1212,7 @@ export default function BankReconciliationFormPage() {
                 </button>
                 {canPost && (
                   <button type="button" onClick={() => save(true)} disabled={saving || !loaded || !balanced}
-                    title={balanced ? 'Post this reconciliation' : 'The variance must be 0.00 to post'}
+                    title={balanced ? 'Post this reconciliation' : `The variance must be ${fmtMinor(0)} to post`}
                     className="flex items-center gap-1.5 rounded-md bg-green-600 px-5 py-1.5 text-xs font-bold text-white hover:bg-green-700 disabled:opacity-40">
                     <CheckCircle size={12} /> Post
                   </button>
@@ -1244,7 +1247,7 @@ export default function BankReconciliationFormPage() {
                 )}
                 {recon.status === 'draft' && canPost && (
                   <button type="button" onClick={handlePost} disabled={postMutation.isPending || toCents(recon.difference) !== 0}
-                    title={toCents(recon.difference) !== 0 ? 'The variance must be 0.00 to post' : 'Post'}
+                    title={toCents(recon.difference) !== 0 ? `The variance must be ${fmtMinor(0)} to post` : 'Post'}
                     className="flex items-center gap-1 rounded-md bg-green-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-green-700 disabled:opacity-40">
                     <CheckCircle size={12} /> Post
                   </button>
@@ -1332,7 +1335,7 @@ export default function BankReconciliationFormPage() {
         <KeyboardShortcuts shortcuts={[
           { keys: ['Alt', 'R'], desc: 'Refresh: load the uncleared entries' },
           { keys: ['Ctrl', 'S'], desc: 'Save Draft' },
-          { keys: ['Ctrl', 'Enter'], desc: 'Post (when the variance is 0.00)' },
+          { keys: ['Ctrl', 'Enter'], desc: `Post (when the variance is ${fmtMinor(0)})` },
           { keys: ['Alt', 'C'], desc: 'Clear all marks' },
           { keys: ['Enter'], desc: 'Find (in the Add Transaction search box)' },
           { keys: ['Space'], desc: 'Choose Realize / Return / Not Presented (on its radio)' },

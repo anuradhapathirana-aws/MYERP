@@ -110,7 +110,7 @@ class JournalEntryRequest extends FormRequest
 
             $difference = Amount::round($totalDebit - $totalCredit);
 
-            if (abs($difference) > Amount::unit()) {
+            if (abs($difference) >= Amount::tolerance()) {
                 $v->errors()->add('lines', sprintf(
                     'This journal does not balance. Debits total %s, credits total %s, difference %s.',
                     Amount::display($totalDebit),

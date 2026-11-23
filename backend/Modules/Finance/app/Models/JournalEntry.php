@@ -137,12 +137,11 @@ class JournalEntry extends Model
     /**
      * Whether the stored totals agree with each other.
      *
-     * Compared at two decimals: the source amounts are stored at four and
-     * every decision in the payment services rounds to cents, so an exact
-     * comparison would fail on float noise rather than on a real imbalance.
+     * Compared at the Amount decimals setting, so float noise is ignored but
+     * a real gap -- even one cent -- is not.
      */
     public function isBalanced(): bool
     {
-        return abs(Amount::round((float) $this->total_debit - (float) $this->total_credit)) <= Amount::unit();
+        return Amount::equals($this->total_debit, $this->total_credit);
     }
 }

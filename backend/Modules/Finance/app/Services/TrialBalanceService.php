@@ -150,7 +150,7 @@ final class TrialBalanceService
                 // If this is ever false, something wrote to the tables without
                 // going through JournalPostingService. It is the single
                 // cheapest health check on the whole ledger.
-                'balanced'   => abs($difference) <= Amount::unit(),
+                'balanced'   => abs($difference) < Amount::tolerance(),
             ],
             // Each Dr/Cr pair must agree on its own; any one that does not
             // points at the period (opening, movement, closing) that is broken.
@@ -161,9 +161,9 @@ final class TrialBalanceService
                 'period_credit'  => $totals['period_credit'],
                 'closing_debit'  => $totals['closing_debit'],
                 'closing_credit' => $totals['closing_credit'],
-                'balanced'       => abs($totals['opening_debit'] - $totals['opening_credit']) <= Amount::unit()
-                    && abs($totals['period_debit'] - $totals['period_credit']) <= Amount::unit()
-                    && abs($totals['closing_debit'] - $totals['closing_credit']) <= Amount::unit(),
+                'balanced'       => Amount::equals($totals['opening_debit'], $totals['opening_credit'])
+                    && Amount::equals($totals['period_debit'], $totals['period_credit'])
+                    && Amount::equals($totals['closing_debit'], $totals['closing_credit']),
             ],
         ];
     }

@@ -90,9 +90,11 @@ final class JournalRequest
         return Amount::round($this->totalDebit() - $this->totalCredit());
     }
 
-    /** @param float|null $tolerance defaults to one smallest unit (a cent at 2 decimals) */
+    /** @param float|null $tolerance defaults to exact at the Amount decimals setting (no one-cent licence) */
     public function isBalanced(?float $tolerance = null): bool
     {
-        return abs($this->imbalance()) <= ($tolerance ?? Amount::unit());
+        return $tolerance === null
+            ? abs($this->imbalance()) < Amount::tolerance()
+            : abs($this->imbalance()) <= $tolerance;
     }
 }

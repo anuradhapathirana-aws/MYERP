@@ -262,6 +262,10 @@ Route::middleware(['auth:sanctum', 'module:finance'])->prefix('v1')->group(funct
         ->name('finance.dashboard.cash');
 
     // ── Financial statements ─────────────────────────────────────────────────
+    Route::get('finance-reports/profit-loss/pdf', [FinanceReportController::class, 'profitLossPdf'])
+        ->name('finance-reports.profit-loss.pdf');
+    Route::get('finance-reports/profit-loss', [FinanceReportController::class, 'profitLoss'])
+        ->name('finance-reports.profit-loss');
     Route::get('finance-reports/trial-balance', [FinanceReportController::class, 'trialBalanceReport'])
         ->name('finance-reports.trial-balance');
     Route::get('finance-reports/trial-balance/accounts/{ledgerAccount}/transactions', [FinanceReportController::class, 'accountTransactions'])

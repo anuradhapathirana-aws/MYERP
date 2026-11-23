@@ -10,10 +10,13 @@ use Illuminate\Http\Response;
 use Illuminate\Routing\Controller;
 use Modules\Finance\Http\Requests\AccountTransactionsRequest;
 use Modules\Finance\Http\Requests\LedgerFilterRequest;
+use Modules\Finance\Http\Requests\ProfitLossRequest;
 use Modules\Finance\Http\Requests\TrialBalanceRequest;
 use Modules\Finance\Models\LedgerAccount;
 use Modules\Finance\Services\AccountTransactionsService;
+use Modules\Finance\Services\ProfitLossService;
 use Modules\Finance\Services\TrialBalanceService;
+use Modules\Finance\Support\Ledger\ReportHeader;
 
 /**
  * Financial statements, all derived from the two journal tables.
@@ -29,6 +32,7 @@ class FinanceReportController extends Controller
     public function __construct(
         private readonly TrialBalanceService $trialBalance,
         private readonly AccountTransactionsService $accountTransactions,
+        private readonly ProfitLossService $profitLoss,
     ) {
         $this->middleware('permission:view_finance_reports');
     }
@@ -36,6 +40,35 @@ class FinanceReportController extends Controller
     public function trialBalanceReport(TrialBalanceRequest $request): JsonResponse
     {
         return response()->json(['data' => $this->trialBalance->build($request->filters())]);
+    }
+
+    /** Profit & Loss in the periodic (trading account) format, with an optional comparative period. */
+    public function profitLoss(ProfitLossRequest $request): JsonResponse
+    {
+        return response()->json(['data' => $this->profitLoss->build($request->filters())]);
+    }
+
+    /**
+     * The same statement as an A4 portrait PDF. It takes the same parameters
+     * as the screen, including any stock figure the user typed, so what is
+     * printed is exactly what was on screen.
+     */
+    public function profitLossPdf(ProfitLossRequest $request): Response
+    {
+        $filters = $request->filters();
+
+        return Pdf::loadView('finance::pdf.profit_loss', [
+            'report' => $this->profitLoss->build($filters),
+            'header' => ReportHeader::for($filters),
+        ])
+            ->setPaper('a4', 'portrait')
+            ->setOptions([
+                'defaultFont'          => 'DejaVu Sans',
+                'isHtml5ParserEnabled' => true,
+                'isPhpEnabled'         => false,
+                'dpi'                  => 150,
+            ])
+            ->download('Profit_and_Loss_' . $filters['date_from'] . '_to_' . $filters['date_to'] . '.pdf');
     }
 
     /**

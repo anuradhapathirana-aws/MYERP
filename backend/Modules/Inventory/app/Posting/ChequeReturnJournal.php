@@ -8,6 +8,7 @@ use App\Enums\PaymentModeType;
 use App\Support\Journal\JournalLineRequest;
 use App\Support\Journal\JournalRequest;
 use App\Support\Journal\PostingRole;
+use App\Support\Money\Amount;
 use Modules\Inventory\Models\ChequeReturn;
 use Modules\Inventory\Models\ChequeReturnAllocation;
 
@@ -47,7 +48,7 @@ final class ChequeReturnJournal
         $lines    = [];
 
         foreach ($return->allocations->sortBy('id')->values() as $i => $allocation) {
-            $amount = round((float) $allocation->amount, 2);
+            $amount = Amount::round((float) $allocation->amount);
 
             if ($amount <= 0) {
                 continue;
@@ -89,7 +90,7 @@ final class ChequeReturnJournal
             }
         }
 
-        $amount      = round((float) $return->amount, 2);
+        $amount      = Amount::round((float) $return->amount);
         $bankNote    = $note . ' (' . $return->document_no . ')';
         $lines[]     = ($received
             ? JournalLineRequest::credit((int) $return->bank_account_id, $amount, description: $bankNote, sourceType: $return->settlement_type, sourceId: $return->settlement_id)

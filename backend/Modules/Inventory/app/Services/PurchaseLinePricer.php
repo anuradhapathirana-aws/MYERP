@@ -7,6 +7,7 @@ namespace Modules\Inventory\Services;
 use App\DTOs\TaxBreakdown;
 use App\Models\TaxCode;
 use App\Services\TaxCalculator;
+use App\Support\Money\Amount;
 use DateTimeInterface;
 use Modules\Inventory\DTOs\PurchaseLinePrice;
 
@@ -43,7 +44,7 @@ class PurchaseLinePricer
             return new PurchaseLinePrice(
                 unitPrice:      $price,
                 unitPriceIncl:  $inclusive ? $price : null,
-                lineTotal:      $afterDiscount,
+                lineTotal:      Amount::round($afterDiscount),
                 taxAmount:      0.0,
                 recoverableTax: 0.0,
                 effectiveRate:  0.0,

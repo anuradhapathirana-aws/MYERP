@@ -6,6 +6,7 @@ namespace Modules\Inventory\Services;
 
 use App\Contracts\JournalPoster;
 use App\Support\Journal\PostingRole;
+use App\Support\Money\Amount;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -411,7 +412,7 @@ class SupplierReturnService
             }
         }
 
-        $return->update(['total_amount' => round($total, 2)]);
+        $return->update(['total_amount' => Amount::round($total)]);
     }
 
     /**
@@ -772,14 +773,14 @@ class SupplierReturnService
      */
     private function debitSupplier(SupplierReturn $return, GoodsReceivedNote $grn): void
     {
-        $total       = round((float) $return->total_amount, 2);
-        $outstanding = max(0.0, round($this->balances->outstanding($grn->id), 2));
+        $total       = Amount::round((float) $return->total_amount);
+        $outstanding = max(0.0, Amount::round($this->balances->outstanding($grn->id)));
         $applied     = min($total, $outstanding);
-        $excess      = round($total - $applied, 2);
+        $excess      = Amount::round($total - $applied);
 
         $creditNoteId = null;
 
-        if ($excess > 0.01) {
+        if ($excess > Amount::unit()) {
             $creditNoteId = SupplierCreditNote::create([
                 'credit_note_no'    => $this->balances->generateCreditNoteNo(),
                 'supplier_id'       => $return->supplier_id,
@@ -806,7 +807,7 @@ class SupplierReturnService
     {
         $received = (float) $item->quantity_received;
 
-        return $received > 0 ? round((float) $item->line_total * $quantity / $received, 2) : 0.0;
+        return $received > 0 ? Amount::round((float) $item->line_total * $quantity / $received) : 0.0;
     }
 
     /** Line UOM -> stocking UOM, as the GRN posted it (stamped on the line at confirm). */

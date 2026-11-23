@@ -30,8 +30,9 @@ use Illuminate\Validation\ValidationException;
  * so MAX is 2 until those columns are widened by a migration. 0 and 1 are
  * allowed (currencies without cents).
  *
- * Registered as a singleton: decimals() is read on every amount, so it is
- * memoised for the request on top of SettingsService's cache.
+ * Registered as a scoped binding: decimals() is read on every amount, so it is
+ * memoised for the request (or queued job) on top of SettingsService's cache,
+ * and a long-running worker still picks up a new value on the next job.
  */
 final class AmountPrecision
 {

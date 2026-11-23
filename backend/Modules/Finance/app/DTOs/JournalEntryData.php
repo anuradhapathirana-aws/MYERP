@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Finance\DTOs;
 
+use App\Support\Money\Amount;
 use Modules\Finance\Enums\JournalType;
 use Modules\Finance\Http\Requests\JournalEntryRequest;
 
@@ -38,8 +39,8 @@ final class JournalEntryData
         $lines = [];
 
         foreach ((array) $request->input('lines', []) as $row) {
-            $debit  = round((float) ($row['debit'] ?? 0), 2);
-            $credit = round((float) ($row['credit'] ?? 0), 2);
+            $debit  = Amount::round((float) ($row['debit'] ?? 0));
+            $credit = Amount::round((float) ($row['credit'] ?? 0));
 
             // The grid always renders a fixed number of rows, so blank ones
             // arrive on every save. Dropping them here keeps the "at least two

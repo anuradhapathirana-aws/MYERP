@@ -8,6 +8,7 @@ use App\Contracts\FundBalanceGuard;
 use App\Contracts\JournalPoster;
 use App\Services\ChequeStatusRegistry;
 use App\Support\Journal\PostingRole;
+use App\Support\Money\Amount;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -231,7 +232,7 @@ class SupplierPaymentService
 
         $target = $data->isAdvance ? (float) $data->advanceAmount : $grossAmount;
 
-        if ($target - $setoffAmount - $settlementAmount > 0.01) {
+        if ($target - $setoffAmount - $settlementAmount > Amount::unit()) {
             abort(422, 'Payment is underfunded — cover the full Total Payable with Setoffs and/or Payment Details before saving.');
         }
 
@@ -293,8 +294,8 @@ class SupplierPaymentService
                 // the credit note instead of being available for setoff. Rounded to cents with
                 // a 1c tolerance so float noise from GRN totals stored at 4-decimal precision
                 // (e.g. 21131.3179) never spawns a phantom overpayment credit note.
-                $rowExcess = round($paymentAmount - $maxPayable, 2);
-                if ($rowExcess > 0.01) {
+                $rowExcess = Amount::round($paymentAmount - $maxPayable);
+                if ($rowExcess > Amount::unit()) {
                     $overpaymentExcess += $rowExcess;
                 }
             }
@@ -373,10 +374,10 @@ class SupplierPaymentService
             // row, e.g. a Payment Details line bigger than the Remaining figure. Merged into
             // the same aggregate over_payment credit note as any GRN-row overpayment above.
             $target = $payment->is_advance ? (float) $payment->advance_amount : $grossAmount;
-            $overpaymentExcess += max(0.0, round($setoffAmountTotal + $netAmount - $target, 2));
-            $overpaymentExcess = round($overpaymentExcess, 2);
+            $overpaymentExcess += max(0.0, Amount::round($setoffAmountTotal + $netAmount - $target));
+            $overpaymentExcess = Amount::round($overpaymentExcess);
 
-            if ($overpaymentExcess > 0.01) {
+            if ($overpaymentExcess > Amount::unit()) {
                 SupplierCreditNote::create([
                     'credit_note_no'    => $this->generateCreditNoteNo(),
                     'supplier_id'       => $payment->supplier_id,
@@ -524,7 +525,7 @@ class SupplierPaymentService
             $minted = SupplierCreditNote::where('source_payment_id', $payment->id)->lockForUpdate()->get();
 
             foreach ($minted as $note) {
-                if (round((float) $note->remaining_balance, 2) < round((float) $note->amount, 2)) {
+                if (Amount::round((float) $note->remaining_balance) < Amount::round((float) $note->amount)) {
                     abort(422, 'Credit note ' . $note->credit_note_no . ' from this payment has already '
                         . 'been used on another payment. Void that one first.');
                 }

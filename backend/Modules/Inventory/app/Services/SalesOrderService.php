@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Services;
 
+use App\Support\Money\Amount;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -673,11 +674,20 @@ class SalesOrderService
         $so->pieces()->delete();
     }
 
+    /**
+     * Rounds exactly like InvoiceService: the selling price to the Amount
+     * decimals first, then the line. A printed line therefore always adds up
+     * (qty x printed price = printed total) and the invoice raised from this
+     * order carries the same figures. Costing keeps its precise selling price;
+     * only the copy on the order is rounded. Old orders are never re-saved.
+     */
     private function recalculateLineTotal(SalesOrderItem $item): void
     {
-        $gross = (float) $item->quantity * (float) $item->unit_price;
+        $item->unit_price = Amount::round($item->unit_price);
 
-        $item->line_total = $gross - ($gross * (float) $item->discount / 100);
+        $gross = (float) $item->quantity * $item->unit_price;
+
+        $item->line_total = Amount::round($gross - ($gross * (float) $item->discount / 100));
 
         $item->save();
     }
@@ -689,8 +699,8 @@ class SalesOrderService
         $lineTotals = (float) $so->items()->sum(DB::raw('line_total'));
 
         $so->update([
-            'subtotal'    => $subtotal,
-            'grand_total' => $lineTotals + (float) $so->transport_charge,
+            'subtotal'    => Amount::round($subtotal),
+            'grand_total' => Amount::round($lineTotals + (float) $so->transport_charge),
         ]);
     }
 }

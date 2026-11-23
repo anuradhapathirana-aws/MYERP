@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Finance\Services;
 
+use App\Support\Money\Amount;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Modules\Finance\Enums\AccountType;
@@ -137,8 +138,8 @@ final class TrialBalanceService
             $rows[] = $row;
         }
 
-        $totals     = array_map(fn (float $v): float => round($v, 2), $totals);
-        $difference = round($totals['debit'] - $totals['credit'], 2);
+        $totals     = array_map(fn (float $v): float => Amount::round($v), $totals);
+        $difference = Amount::round($totals['debit'] - $totals['credit']);
 
         return [
             'rows'   => $rows,
@@ -149,7 +150,7 @@ final class TrialBalanceService
                 // If this is ever false, something wrote to the tables without
                 // going through JournalPostingService. It is the single
                 // cheapest health check on the whole ledger.
-                'balanced'   => abs($difference) <= 0.01,
+                'balanced'   => abs($difference) <= Amount::unit(),
             ],
             // Each Dr/Cr pair must agree on its own; any one that does not
             // points at the period (opening, movement, closing) that is broken.
@@ -160,9 +161,9 @@ final class TrialBalanceService
                 'period_credit'  => $totals['period_credit'],
                 'closing_debit'  => $totals['closing_debit'],
                 'closing_credit' => $totals['closing_credit'],
-                'balanced'       => abs($totals['opening_debit'] - $totals['opening_credit']) <= 0.01
-                    && abs($totals['period_debit'] - $totals['period_credit']) <= 0.01
-                    && abs($totals['closing_debit'] - $totals['closing_credit']) <= 0.01,
+                'balanced'       => abs($totals['opening_debit'] - $totals['opening_credit']) <= Amount::unit()
+                    && abs($totals['period_debit'] - $totals['period_credit']) <= Amount::unit()
+                    && abs($totals['closing_debit'] - $totals['closing_credit']) <= Amount::unit(),
             ],
         ];
     }

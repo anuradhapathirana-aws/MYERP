@@ -16,6 +16,7 @@ use App\Support\Journal\JournalLineRequest;
 use App\Support\Journal\JournalRequest;
 use App\Support\Journal\PostingRole;
 use App\Models\PaymentMode;
+use App\Support\Money\Amount;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -377,7 +378,7 @@ class BillPaymentService
 
                 if (Bill::toCents($allocation->amount) > Bill::toCents($bill->balance())) {
                     throw ValidationException::withMessages([
-                        'allocations' => $bill->bill_no . ' now has only ' . number_format((float) $bill->balance(), 2)
+                        'allocations' => $bill->bill_no . ' now has only ' . Amount::display((float) $bill->balance())
                             . ' owing. Another payment was confirmed against it; edit this payment and try again.',
                     ]);
                 }

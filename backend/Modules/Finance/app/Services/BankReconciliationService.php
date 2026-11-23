@@ -14,6 +14,7 @@ use App\Services\CompanyAccessService;
 use App\Support\Banking\ChequeReturnRequest;
 use App\Support\Journal\JournalLineRequest;
 use App\Support\Journal\JournalRequest;
+use App\Support\Money\Amount;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Query\Builder;
@@ -414,7 +415,7 @@ class BankReconciliationService
 
         $like   = '%' . addcslashes($term, '%_\\') . '%';
         $number = str_replace(',', '', $term);
-        $amount = is_numeric($number) ? round((float) $number, 2) : null;
+        $amount = is_numeric($number) ? Amount::round((float) $number) : null;
 
         if ($by === 'returned') {
             $rows = $this->realizedChequeQuery($account->id)
@@ -627,7 +628,7 @@ class BankReconciliationService
             if (abs($totals['difference_cents']) > self::TOLERANCE_CENTS) {
                 throw ValidationException::withMessages([
                     'statement_balance' => 'The reconciliation does not balance: the difference is '
-                        . number_format($totals['difference_cents'] / 100, 2)
+                        . Amount::display($totals['difference_cents'] / 100)
                         . '. Realize the entries the statement shows, or add the missing bank entries, until it is 0.00.',
                 ]);
             }
@@ -1230,7 +1231,7 @@ class BankReconciliationService
                 'journal_no'             => $r->journal_no,
                 'journal_date'           => substr((string) $r->journal_date, 0, 10),
                 'direction'              => $deposit ? BankReconciliationLine::DEPOSIT : BankReconciliationLine::WITHDRAWAL,
-                'amount'                 => number_format($deposit ? (float) $r->debit : (float) $r->credit, 2, '.', ''),
+                'amount'                 => Amount::fixed($deposit ? (float) $r->debit : (float) $r->credit),
                 'instrument_type'        => $r->instrument_type,
                 'instrument_no'          => $r->instrument_no,
                 'instrument_date'        => $r->instrument_date === null ? null : substr((string) $r->instrument_date, 0, 10),
@@ -1334,7 +1335,7 @@ class BankReconciliationService
                 'instrument_no'          => $row->instrument_no,
                 'instrument_date'        => $row->instrument_date === null ? null : substr((string) $row->instrument_date, 0, 10),
                 'description'            => mb_substr((string) ($row->description ?: $row->narration), 0, 255) ?: null,
-                'amount'                 => number_format($deposit ? (float) $row->debit : (float) $row->credit, 2, '.', ''),
+                'amount'                 => Amount::fixed($deposit ? (float) $row->debit : (float) $row->credit),
                 'created_at'             => $now,
                 'updated_at'             => $now,
             ];
@@ -1428,7 +1429,7 @@ class BankReconciliationService
             'instrument_no'     => $row->instrument_no,
             'instrument_date'   => $row->instrument_date === null ? null : substr((string) $row->instrument_date, 0, 10),
             'description'       => mb_substr((string) $row->description, 0, 255) ?: null,
-            'amount'            => number_format($deposit ? (float) $row->debit : (float) $row->credit, 2, '.', ''),
+            'amount'            => Amount::fixed($deposit ? (float) $row->debit : (float) $row->credit),
             'return_journal_no' => $journalNo,
         ]);
     }

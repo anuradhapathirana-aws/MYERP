@@ -7,6 +7,7 @@ namespace Modules\Inventory\Posting;
 use App\Support\Journal\JournalLineRequest;
 use App\Support\Journal\JournalRequest;
 use App\Support\Journal\PostingRole;
+use App\Support\Money\Amount;
 use Modules\Inventory\Models\CustomerReturn;
 use Modules\Inventory\Models\InvoiceItem;
 
@@ -55,12 +56,12 @@ final class CustomerReturnJournal
             $sscl += $split['sscl'];
         }
 
-        $total    = round((float) $return->total_amount, 2);
-        $tax      = round($tax, 2);
-        $sscl     = round($sscl, 2);
-        $net      = round($total - $tax - $sscl, 2);
-        $applied  = round((float) $return->applied_to_invoice, 2);
-        $excess   = round($total - $applied, 2);
+        $total    = Amount::round((float) $return->total_amount);
+        $tax      = Amount::round($tax);
+        $sscl     = Amount::round($sscl);
+        $net      = Amount::round($total - $tax - $sscl);
+        $applied  = Amount::round((float) $return->applied_to_invoice);
+        $excess   = Amount::round($total - $applied);
 
         $lines = [
             JournalLineRequest::debit(

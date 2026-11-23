@@ -7,6 +7,7 @@ namespace Modules\Inventory\Services;
 use App\Models\Company;
 use App\Models\Tax;
 use App\Services\TaxService;
+use App\Support\Money\Amount;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -38,8 +39,6 @@ class ProformaInvoiceService
 {
     /** Default offer validity when the form leaves valid_until empty. */
     private const DEFAULT_VALID_DAYS = 14;
-
-    private const MONEY_SCALE = 2;
 
     private const EPSILON = 0.0001;
 
@@ -512,6 +511,6 @@ class ProformaInvoiceService
 
     private function money(float $value): float
     {
-        return round($value, self::MONEY_SCALE);
+        return Amount::round($value);
     }
 }

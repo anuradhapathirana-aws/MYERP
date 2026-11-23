@@ -8,6 +8,7 @@ use App\Contracts\JournalPoster;
 use App\Services\SettingsService;
 use App\Support\Journal\JournalLineRequest;
 use App\Support\Journal\JournalRequest;
+use App\Support\Money\Amount;
 use Carbon\CarbonImmutable;
 use DateTimeInterface;
 use Illuminate\Support\Facades\Auth;
@@ -46,11 +47,8 @@ final class JournalPostingService implements JournalPoster
     public const MODE_REVIEW          = 'review';
     public const MODE_IMMEDIATE       = 'immediate';
 
-    /**
-     * Exact-balance tolerance, matching the 1c tolerance every decision in the
-     * payment services already uses.
-     */
-    private const BALANCE_TOLERANCE = 0.01;
+    // Exact balance means within Amount::unit() (a cent at 2 decimals), the
+    // same tolerance every payment-service decision uses.
 
     /**
      * The most residue that may be written off to the rounding account. Beyond
@@ -93,16 +91,16 @@ final class JournalPostingService implements JournalPoster
             // document may post into it, whichever module it comes from.
             $this->controls->assertBankPeriodOpen(array_column($rows, 'ledger_account_id'), $request->journalDate);
 
-            $totalDebit  = round(array_sum(array_column($rows, 'debit')), 2);
-            $totalCredit = round(array_sum(array_column($rows, 'credit')), 2);
+            $totalDebit  = Amount::round(array_sum(array_column($rows, 'debit')));
+            $totalCredit = Amount::round(array_sum(array_column($rows, 'credit')));
 
-            if (abs($totalDebit - $totalCredit) > self::BALANCE_TOLERANCE) {
+            if (abs($totalDebit - $totalCredit) > Amount::unit()) {
                 throw ValidationException::withMessages([
                     'lines' => sprintf(
                         'This journal does not balance. Debits total %s and credits total %s, a difference of %s.',
-                        number_format($totalDebit, 2),
-                        number_format($totalCredit, 2),
-                        number_format($totalDebit - $totalCredit, 2),
+                        Amount::display($totalDebit),
+                        Amount::display($totalCredit),
+                        Amount::display($totalDebit - $totalCredit),
                     ),
                 ]);
             }
@@ -498,14 +496,13 @@ final class JournalPostingService implements JournalPoster
      */
     private function applyRounding(JournalRequest $request, array $rows, ?int $companyId): array
     {
-        $imbalance = round(
+        $imbalance = Amount::round(
             array_sum(array_column($rows, 'debit')) - array_sum(array_column($rows, 'credit')),
-            2,
         );
 
         // Already square, or within the cent the rest of the system tolerates --
         // a rounding line would be noise on the voucher for no gain.
-        if (abs($imbalance) <= self::BALANCE_TOLERANCE) {
+        if (abs($imbalance) <= Amount::unit()) {
             return $rows;
         }
 

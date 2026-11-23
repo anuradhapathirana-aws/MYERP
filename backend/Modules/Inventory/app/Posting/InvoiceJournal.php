@@ -7,6 +7,7 @@ namespace Modules\Inventory\Posting;
 use App\Support\Journal\JournalLineRequest;
 use App\Support\Journal\JournalRequest;
 use App\Support\Journal\PostingRole;
+use App\Support\Money\Amount;
 use Modules\Inventory\Models\Invoice;
 
 /**
@@ -61,19 +62,19 @@ final class InvoiceJournal
             $sscl += $split['sscl'];
         }
 
-        $tax  = round($tax, 2);
-        $sscl = round($sscl, 2);
+        $tax  = Amount::round($tax);
+        $sscl = Amount::round($sscl);
 
         // Revenue is what is left of the bill once the levies are taken out:
         // the goods net of tax and trade discount, plus transport (which
         // carries no tax of its own in this schema). Derived rather than summed
         // so the journal always balances to the grand total.
-        $revenue = round((float) $invoice->grand_total - $tax - $sscl, 2);
+        $revenue = Amount::round((float) $invoice->grand_total - $tax - $sscl);
 
         $lines = [
             JournalLineRequest::debit(
                 PostingRole::ACCOUNTS_RECEIVABLE,
-                round((float) $invoice->grand_total, 2),
+                Amount::round((float) $invoice->grand_total),
                 description: $invoice->invoice_no,
                 partyType:   PostingRole::PARTY_CUSTOMER,
                 partyId:     (int) $invoice->customer_id,

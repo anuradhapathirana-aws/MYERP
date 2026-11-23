@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Services;
 
+use App\Support\Money\Amount;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -40,9 +41,6 @@ use Modules\Inventory\Models\SalesOrderItem;
  */
 class InvoiceService
 {
-    /** Decimal places every invoice money amount is rounded and stored at. */
-    private const MONEY_SCALE = 2;
-
     public function __construct(
         private readonly ProductPricingService $pricing,
         private readonly UnitConversionService $units,
@@ -539,10 +537,10 @@ class InvoiceService
             ->exists();
     }
 
-    /** Every invoice money amount — unit prices, totals, transport charge — rounds to 2dp before it is stored. */
+    /** Every invoice money amount — unit prices, totals, transport charge — rounds to the Amount decimals setting (2 today) before it is stored. */
     private function money(float $value): float
     {
-        return round($value, self::MONEY_SCALE);
+        return Amount::round($value);
     }
 
     private function recalculateLineTotal(InvoiceItem $item): void

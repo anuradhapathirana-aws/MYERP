@@ -6,6 +6,7 @@ namespace Modules\Inventory\Services;
 
 use App\Contracts\JournalPoster;
 use App\Support\Journal\PostingRole;
+use App\Support\Money\Amount;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -429,7 +430,7 @@ class CustomerReturnService
             }
         }
 
-        $return->update(['total_amount' => round($total, 2)]);
+        $return->update(['total_amount' => Amount::round($total)]);
     }
 
     /**
@@ -693,14 +694,14 @@ class CustomerReturnService
      */
     private function creditCustomer(CustomerReturn $return, Invoice $invoice): void
     {
-        $total       = round((float) $return->total_amount, 2);
-        $outstanding = max(0.0, round($this->balances->outstanding($invoice->id), 2));
+        $total       = Amount::round((float) $return->total_amount);
+        $outstanding = max(0.0, Amount::round($this->balances->outstanding($invoice->id)));
         $applied     = min($total, $outstanding);
-        $excess      = round($total - $applied, 2);
+        $excess      = Amount::round($total - $applied);
 
         $creditNoteId = null;
 
-        if ($excess > 0.01) {
+        if ($excess > Amount::unit()) {
             $creditNoteId = CustomerCreditNote::create([
                 'credit_note_no'    => $this->balances->generateCreditNoteNo(),
                 'customer_id'       => $return->customer_id,
@@ -747,7 +748,7 @@ class CustomerReturnService
     {
         $invoiced = (float) $item->quantity;
 
-        return $invoiced > 0 ? round((float) $item->line_total * $quantity / $invoiced, 2) : 0.0;
+        return $invoiced > 0 ? Amount::round((float) $item->line_total * $quantity / $invoiced) : 0.0;
     }
 
     /** Line UOM -> stocking UOM. */

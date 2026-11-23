@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Services;
 
+use App\Support\Money\Amount;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -91,7 +92,7 @@ class OutstandingSummaryReportService
                 $returned    = $returnedByInvoice[$inv->id] ?? 0.0;
                 $outstanding = $amount - $received - $returned;
 
-                if ($outstanding <= 0.01) {
+                if ($outstanding <= Amount::unit()) {
                     continue;
                 }
 

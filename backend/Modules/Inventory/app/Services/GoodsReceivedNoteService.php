@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Services;
 
+use App\Support\Money\Amount;
 use Illuminate\Pagination\LengthAwarePaginator;
 use App\Contracts\JournalPoster;
 use App\DTOs\TaxBreakdown;
@@ -848,6 +849,6 @@ class GoodsReceivedNoteService
     {
         $grn->refresh();
         $total = $grn->items()->sum('line_total');
-        $grn->update(['total_amount' => $total]);
+        $grn->update(['total_amount' => Amount::round($total)]);
     }
 }

@@ -6,6 +6,7 @@ namespace Modules\Finance\Models;
 
 use App\Models\Company;
 use App\Models\Location;
+use App\Support\Money\Amount;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -142,6 +143,6 @@ class JournalEntry extends Model
      */
     public function isBalanced(): bool
     {
-        return abs(round((float) $this->total_debit - (float) $this->total_credit, 2)) <= 0.01;
+        return abs(Amount::round((float) $this->total_debit - (float) $this->total_credit)) <= Amount::unit();
     }
 }

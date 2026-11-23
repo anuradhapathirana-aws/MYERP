@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Finance\Http\Requests;
 
+use App\Support\Money\Amount;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -76,8 +77,8 @@ class JournalEntryRequest extends FormRequest
             $totalCredit = 0.0;
 
             foreach ($lines as $i => $row) {
-                $debit  = round((float) ($row['debit'] ?? 0), 2);
-                $credit = round((float) ($row['credit'] ?? 0), 2);
+                $debit  = Amount::round((float) ($row['debit'] ?? 0));
+                $credit = Amount::round((float) ($row['credit'] ?? 0));
 
                 // The grid renders blank rows, so an empty one is normal input
                 // rather than an error. It is simply not a line.
@@ -107,14 +108,14 @@ class JournalEntryRequest extends FormRequest
                 return;
             }
 
-            $difference = round($totalDebit - $totalCredit, 2);
+            $difference = Amount::round($totalDebit - $totalCredit);
 
-            if (abs($difference) > 0.01) {
+            if (abs($difference) > Amount::unit()) {
                 $v->errors()->add('lines', sprintf(
                     'This journal does not balance. Debits total %s, credits total %s, difference %s.',
-                    number_format($totalDebit, 2),
-                    number_format($totalCredit, 2),
-                    number_format($difference, 2),
+                    Amount::display($totalDebit),
+                    Amount::display($totalCredit),
+                    Amount::display($difference),
                 ));
             }
 

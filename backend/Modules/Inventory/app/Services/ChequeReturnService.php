@@ -11,6 +11,7 @@ use App\Models\PaymentMode;
 use App\Models\SupplierMaster;
 use App\Support\Banking\ChequeReturnRequest;
 use App\Support\Journal\PostingRole;
+use App\Support\Money\Amount;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -212,7 +213,7 @@ final class ChequeReturnService implements ChequeReturnSource
             ->map(fn (ChequeReturn $r): array => [
                 'cheque_no'   => $r->cheque_no,
                 'cheque_date' => $r->cheque_date?->toDateString(),
-                'amount'      => number_format((float) $r->amount, 2, '.', ''),
+                'amount'      => Amount::fixed((float) $r->amount),
                 'return_date' => $r->return_date->toDateString(),
                 'document_no' => $r->document_no,
                 'reference'   => $r->reference,
@@ -376,7 +377,7 @@ final class ChequeReturnService implements ChequeReturnSource
         if ($left > 0) {
             throw ValidationException::withMessages([
                 'lines' => 'Cheque ' . $chequeNo . ' of ' . $documentNo . ' cannot be returned: '
-                    . number_format($left / 100, 2) . ' of it has nothing left to reopen. '
+                    . Amount::display($left / 100) . ' of it has nothing left to reopen. '
                     . 'An invoice or GRN it paid (or its advance paid) was voided or credited since. Check those documents first.',
             ]);
         }
@@ -566,7 +567,7 @@ final class ChequeReturnService implements ChequeReturnSource
         $invoices = Invoice::whereIn('id', $invoiceIds)->orderBy('id')->lockForUpdate()->get();
 
         foreach ($invoices as $invoice) {
-            if ($invoice->status === InvoiceStatus::Paid && $this->invoices->outstanding((int) $invoice->id) > 0.01) {
+            if ($invoice->status === InvoiceStatus::Paid && $this->invoices->outstanding((int) $invoice->id) > Amount::unit()) {
                 $invoice->update(['status' => InvoiceStatus::Issued, 'paid_at' => null]);
             }
         }

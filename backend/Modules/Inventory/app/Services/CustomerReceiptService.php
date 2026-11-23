@@ -8,6 +8,7 @@ use App\Contracts\JournalPoster;
 use App\Services\ChequeStatusRegistry;
 use App\Services\ReceivedChequeRegistry;
 use App\Support\Journal\PostingRole;
+use App\Support\Money\Amount;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\DTOs\CustomerReceiptData;
@@ -225,7 +226,7 @@ class CustomerReceiptService
 
         $target = $data->isAdvance ? (float) $data->advanceAmount : $grossAmount;
 
-        if ($target - $setoffAmount - $settlementAmount > 0.01) {
+        if ($target - $setoffAmount - $settlementAmount > Amount::unit()) {
             abort(422, 'Receipt is underfunded — cover the full Total Receivable with Setoffs and/or Receipt Details before saving.');
         }
 
@@ -288,8 +289,8 @@ class CustomerReceiptService
                 // the credit note instead of being available for setoff. Rounded to cents with
                 // a 1c tolerance so float noise from invoice totals stored at 4-decimal precision
                 // never spawns a phantom overpayment credit note.
-                $rowExcess = round($receiptAmount - $maxReceivable, 2);
-                if ($rowExcess > 0.01) {
+                $rowExcess = Amount::round($receiptAmount - $maxReceivable);
+                if ($rowExcess > Amount::unit()) {
                     $overpaymentExcess += $rowExcess;
                 }
             }
@@ -367,10 +368,10 @@ class CustomerReceiptService
             // invoice row. Merged into the same aggregate over_payment credit note as any
             // invoice-row overpayment above.
             $target = $receipt->is_advance ? (float) $receipt->advance_amount : $grossAmount;
-            $overpaymentExcess += max(0.0, round($setoffAmountTotal + $netAmount - $target, 2));
-            $overpaymentExcess = round($overpaymentExcess, 2);
+            $overpaymentExcess += max(0.0, Amount::round($setoffAmountTotal + $netAmount - $target));
+            $overpaymentExcess = Amount::round($overpaymentExcess);
 
-            if ($overpaymentExcess > 0.01) {
+            if ($overpaymentExcess > Amount::unit()) {
                 CustomerCreditNote::create([
                     'credit_note_no'    => $this->balances->generateCreditNoteNo(),
                     'customer_id'       => $receipt->customer_id,
@@ -508,7 +509,7 @@ class CustomerReceiptService
             $minted = CustomerCreditNote::where('source_receipt_id', $receipt->id)->lockForUpdate()->get();
 
             foreach ($minted as $note) {
-                if (round((float) $note->remaining_balance, 2) < round((float) $note->amount, 2)) {
+                if (Amount::round((float) $note->remaining_balance) < Amount::round((float) $note->amount)) {
                     abort(422, 'Credit note ' . $note->credit_note_no . ' from this receipt has already '
                         . 'been used on another receipt. Void that one first.');
                 }

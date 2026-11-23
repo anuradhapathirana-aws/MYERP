@@ -6,6 +6,7 @@ namespace Modules\Finance\Http\Requests;
 
 use App\Models\PaymentMode;
 use App\Services\CompanyAccessService;
+use App\Support\Money\Amount;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
@@ -275,7 +276,7 @@ class BillPaymentRequest extends FormRequest
             if (Bill::toCents((string) $row['amount']) > Bill::toCents($bill->balance())) {
                 $v->errors()->add(
                     "allocations.{$i}.amount",
-                    'More than the ' . number_format((float) $bill->balance(), 2) . ' still owed on ' . $bill->bill_no . '.',
+                    'More than the ' . Amount::display((float) $bill->balance()) . ' still owed on ' . $bill->bill_no . '.',
                 );
             }
         }

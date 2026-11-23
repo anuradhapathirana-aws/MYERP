@@ -11,6 +11,7 @@ use App\Services\AuditLogger;
 use App\Services\CompanyAccessService;
 use App\Services\ReceivedChequeRegistry;
 use App\Support\Journal\PostingRole;
+use App\Support\Money\Amount;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -232,7 +233,7 @@ class BankDepositService
         $available = $this->cashAvailable($accountId, $date);
 
         if ($cents > Bill::toCents($available)) {
-            return ['cash_amount' => 'Only ' . number_format((float) $available, 2) . ' is available in '
+            return ['cash_amount' => 'Only ' . Amount::display((float) $available) . ' is available in '
                 . $account->ledger_account_name . ' on ' . CarbonImmutable::parse($date)->format('d-m-Y') . '.'];
         }
 

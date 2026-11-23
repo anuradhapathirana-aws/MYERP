@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Finance\Services;
 
+use App\Support\Money\Amount;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -330,7 +331,7 @@ final class LedgerDetailsService
         }
 
         return [
-            ...array_map(fn (float $v): float => round($v, 2), $t),
+            ...array_map(fn (float $v): float => Amount::round($v), $t),
             'account_count' => count($accounts),
             'line_count'    => array_sum(array_column($accounts, 'line_count')),
         ];

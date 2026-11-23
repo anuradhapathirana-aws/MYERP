@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Finance\DTOs;
 
+use App\Support\Money\Amount;
 use Modules\Finance\Http\Requests\BillRequest;
 
 /**
@@ -48,7 +49,7 @@ final class BillData
                 'charge_type_id'    => self::idOrNull($line['charge_type_id'] ?? null),
                 'ledger_account_id' => (int) $line['ledger_account_id'],
                 // Kept as a 2-dp string; money never travels as a float.
-                'amount'            => number_format((float) $line['amount'], 2, '.', ''),
+                'amount'            => Amount::fixed((float) $line['amount']),
                 'tax_code_id'       => self::idOrNull($line['tax_code_id'] ?? null),
                 'grn_id'            => self::idOrNull($line['grn_id'] ?? null),
                 'description'       => is_string($description) && $description !== '' ? $description : null,

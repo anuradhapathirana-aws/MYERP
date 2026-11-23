@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\DTOs;
 
+use App\Support\Money\Amount;
 use Modules\Inventory\Http\Requests\StoreSalesOrderRequest;
 use Modules\Inventory\Http\Requests\UpdateSalesOrderRequest;
 
@@ -43,7 +44,7 @@ final class SalesOrderData
             transactionDate: $request->validated('transaction_date'),
             orderSource:     $request->validated('order_source'),
             deliveryAddress: $request->validated('delivery_address'),
-            transportCharge: (float) ($request->validated('transport_charge') ?? 0),
+            transportCharge: Amount::round($request->validated('transport_charge')),
             remarks:         $request->validated('remarks'),
             items:           (array) ($request->validated('items') ?? []),
             status:          $request->validated('status'),

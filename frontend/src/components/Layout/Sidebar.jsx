@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getMe } from '../../api/system'
 import { clearSession, readProfile, saveProfile } from '../../utils/session'
@@ -296,6 +296,36 @@ function flattenLeaves(items) {
   return (items ?? []).flatMap((child) => (child.isSubgroup ? flattenLeaves(child.children) : [child]))
 }
 
+// ── Module open/close state ──────────────────────────────────────────────────
+// Each module section can be opened or closed so a user with every module on
+// doesn't have to scroll a very long menu. The choice is a per-browser
+// convenience kept in localStorage (guarded — storage may be unavailable).
+const OPEN_MODULES_KEY = 'sidebar_open_modules'
+
+function readOpenModules() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(OPEN_MODULES_KEY) ?? '{}')
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function writeOpenModules(value) {
+  try {
+    localStorage.setItem(OPEN_MODULES_KEY, JSON.stringify(value))
+  } catch {
+    // storage blocked — state just won't persist
+  }
+}
+
+/** True when the module has a leaf whose route is the current page (or a sub-page of it). */
+function moduleContainsPath(item, pathname) {
+  return flattenLeaves(item.children).some(
+    (leaf) => leaf.to && (pathname === leaf.to || pathname.startsWith(`${leaf.to}/`)),
+  )
+}
+
 // Left padding grows with nesting depth. Kept as literal class names (not built from
 // a template string) so Tailwind's JIT scanner can find and generate them.
 const NAV_INDENT_PL = ['pl-5', 'pl-9', 'pl-[52px]', 'pl-[68px]']
@@ -370,8 +400,9 @@ function renderNavItems({ items, parentKey, depth, isSuperAdmin, userPermissions
 }
 
 export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClose }) {
-  const navigate    = useNavigate()
-  const queryClient = useQueryClient()
+  const navigate     = useNavigate()
+  const { pathname } = useLocation()
+  const queryClient  = useQueryClient()
 
   // Refreshed from the server on every app load, so the menu always follows
   // the installation's module switches (no stale menu until the next login).
@@ -392,8 +423,31 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
   const [lockedModule, setLockedModule]       = useState(null)
   const [openSubgroups, setOpenSubgroups]     = useState({})
 
+  const [openModules, setOpenModules]         = useState(readOpenModules)
+
   const toggleSubgroup = (key) =>
     setOpenSubgroups((prev) => ({ ...prev, [key]: !prev[key] }))
+
+  const toggleModule = (label) =>
+    setOpenModules((prev) => {
+      const next = { ...prev, [label]: !prev[label] }
+      writeOpenModules(next)
+      return next
+    })
+
+  // The module holding the current page always opens, so the active link is
+  // never hidden inside a closed section after navigating (e.g. from Dashboard).
+  // Adjusted during render when the route changes (no effect → no extra render pass).
+  const [seenPathname, setSeenPathname] = useState(null)
+  if (seenPathname !== pathname) {
+    setSeenPathname(pathname)
+    const active = NAV_ITEMS.find((item) => item.children && moduleContainsPath(item, pathname))
+    if (active && !openModules[active.label]) {
+      const next = { ...openModules, [active.label]: true }
+      writeOpenModules(next)
+      setOpenModules(next)
+    }
+  }
 
   const userName    = localStorage.getItem('user_name')  || ''
   const userEmail   = localStorage.getItem('user_email') || ''
@@ -563,35 +617,58 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
               )
             }
 
-            // ── Unlocked module — section header + always-visible children ──
+            // ── Unlocked module — clickable section header; children shown when open ──
+            const isModuleOpen   = !!openModules[label]
+            const holdsActive    = moduleContainsPath(item, pathname)
             return (
               <div key={label} className="pt-2 first:pt-0">
                 {collapsed ? (
                   <button
                     type="button"
-                    title={label}
-                    onClick={() => children?.[0] && navigate(children[0].to)}
-                    className="flex w-full justify-center rounded-lg px-3 py-2 text-slate-500 hover:bg-slate-800 hover:text-slate-300 transition-colors duration-150"
+                    title={`${label} (${isModuleOpen ? 'click to close' : 'click to open'})`}
+                    onClick={() => toggleModule(label)}
+                    aria-expanded={isModuleOpen}
+                    className={[
+                      'relative flex w-full justify-center rounded-lg px-3 py-2 transition-colors duration-150 hover:bg-slate-800 hover:text-slate-300',
+                      holdsActive ? 'text-indigo-400' : 'text-slate-500',
+                      isModuleOpen ? 'bg-slate-800/60' : '',
+                    ].join(' ')}
                   >
                     <Icon size={18} className="shrink-0" />
+                    <ChevronDown
+                      size={10}
+                      className={['absolute bottom-0.5 right-1 transition-transform duration-200', isModuleOpen ? 'rotate-180' : ''].join(' ')}
+                    />
                   </button>
                 ) : (
-                  <div className="flex items-center gap-2 px-3 pb-1">
-                    <Icon size={14} className="shrink-0 text-slate-500" />
-                    <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  <button
+                    type="button"
+                    onClick={() => toggleModule(label)}
+                    aria-expanded={isModuleOpen}
+                    className={[
+                      'flex w-full items-center gap-2 rounded-md px-3 py-1.5 transition-colors duration-150 hover:bg-slate-800',
+                      holdsActive ? 'text-indigo-400' : 'text-slate-500 hover:text-slate-300',
+                    ].join(' ')}
+                  >
+                    <Icon size={14} className="shrink-0" />
+                    <span className="flex-1 text-left text-[11px] font-semibold uppercase tracking-wider">
                       {label}
                     </span>
-                  </div>
+                    <ChevronDown
+                      size={14}
+                      className={['shrink-0 transition-transform duration-200', isModuleOpen ? 'rotate-180' : ''].join(' ')}
+                    />
+                  </button>
                 )}
 
-                {/* Children — always visible when expanded (subgroups may nest, e.g. Reports → Sales Report → pages) */}
-                {!collapsed && renderNavItems({
+                {/* Children — shown while the module is open (subgroups may nest, e.g. Reports → Sales Report → pages) */}
+                {!collapsed && isModuleOpen && renderNavItems({
                   items: children, parentKey: label, depth: 0,
                   isSuperAdmin, userPermissions, openSubgroups, toggleSubgroup,
                 })}
 
-                {/* Collapsed: show each leaf icon (flatten all nesting levels) */}
-                {collapsed && flattenLeaves(children)
+                {/* Collapsed sidebar: show each leaf icon of an open module (flatten all nesting levels) */}
+                {collapsed && isModuleOpen && flattenLeaves(children)
                   .filter((leaf) => isNavItemVisible(leaf, isSuperAdmin, userPermissions))
                   .map(({ label: cl, to: ct, icon: CI, disabled }) => (
                   disabled ? (

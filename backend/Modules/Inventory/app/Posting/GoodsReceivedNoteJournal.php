@@ -7,6 +7,7 @@ namespace Modules\Inventory\Posting;
 use App\Support\Journal\JournalLineRequest;
 use App\Support\Journal\JournalRequest;
 use App\Support\Journal\PostingRole;
+use App\Support\Money\Amount;
 use Modules\Inventory\Models\GoodsReceivedNote;
 
 /**
@@ -46,8 +47,8 @@ final class GoodsReceivedNoteJournal
         // cannot be claimed -- is what the purchase cost. Lines saved before
         // tax codes were backfilled with the old gross x % figure, so one rule
         // covers every GRN.
-        $tax = round((float) $grn->items->sum(fn ($item) => (float) $item->recoverable_tax), 2);
-        $net = round((float) $grn->total_amount - $tax, 2);
+        $tax = Amount::round((float) $grn->items->sum(fn ($item) => (float) $item->recoverable_tax));
+        $net = Amount::round((float) $grn->total_amount - $tax);
 
         $lines = [
             JournalLineRequest::debit(
@@ -71,7 +72,7 @@ final class GoodsReceivedNoteJournal
 
         $lines[] = JournalLineRequest::credit(
             PostingRole::ACCOUNTS_PAYABLE,
-            round((float) $grn->total_amount, 2),
+            Amount::round((float) $grn->total_amount),
             description: $grn->reference_no ?: null,
             partyType:   PostingRole::PARTY_SUPPLIER,
             partyId:     (int) $grn->supplier_id,

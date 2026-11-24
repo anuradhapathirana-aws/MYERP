@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { fmtMoney } from '../../utils/currency'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Ban, CheckCircle, Plus } from 'lucide-react'
@@ -97,7 +98,7 @@ export default function BillPaymentsPage() {
   const handleConfirm = async (p) => {
     const ok = await confirmAction({
       title: `Confirm ${p.payment_no}?`,
-      message: `This pays <strong>${Number(p.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong> to <strong>${p.supplier_name ?? 'the supplier'}</strong> from <strong>${p.pay_from_account_name}</strong> and posts it to the ledger.`,
+      message: `This pays <strong>${fmtMoney(p.total_amount)}</strong> to <strong>${p.supplier_name ?? 'the supplier'}</strong> from <strong>${p.pay_from_account_name}</strong> and posts it to the ledger.`,
       confirmText: 'Yes, Pay',
     })
     if (ok) confirmMutation.mutate(p.id)

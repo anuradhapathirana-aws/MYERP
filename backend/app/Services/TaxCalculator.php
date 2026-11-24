@@ -7,6 +7,7 @@ namespace App\Services;
 use App\DTOs\TaxBreakdown;
 use App\DTOs\TaxBreakdownLine;
 use App\Models\TaxCode;
+use App\Support\Money\Amount;
 use DateTimeInterface;
 
 /**
@@ -78,8 +79,8 @@ class TaxCalculator
         }
 
         $base = $inclusive
-            ? round($amount / self::inclusiveFactor($components), 2)
-            : round($amount, 2);
+            ? Amount::round($amount / self::inclusiveFactor($components))
+            : Amount::round($amount);
 
         $lines = self::linesOn($components, $base);
 
@@ -87,12 +88,12 @@ class TaxCalculator
         // a cent between base + taxes and that total; it goes on the last tax,
         // so the line still agrees with the supplier's invoice.
         if ($inclusive) {
-            $drift = round(round($amount, 2) - $base - array_sum(array_map(fn ($l) => $l->amount, $lines)), 2);
+            $drift = Amount::round(Amount::round($amount) - $base - array_sum(array_map(fn ($l) => $l->amount, $lines)));
 
             if ($drift !== 0.0) {
                 $last          = array_key_last($lines);
                 $l             = $lines[$last];
-                $lines[$last]  = new TaxBreakdownLine($l->taxCodeRef, $l->rate, $l->base, round($l->amount + $drift, 2), $l->isRecoverable);
+                $lines[$last]  = new TaxBreakdownLine($l->taxCodeRef, $l->rate, $l->base, Amount::round($l->amount + $drift), $l->isRecoverable);
             }
         }
 
@@ -109,8 +110,8 @@ class TaxCalculator
         $earlier = 0.0;
 
         foreach ($components as $c) {
-            $on     = $c['compound'] ? round($base + $earlier, 2) : $base;
-            $amount = round($on * $c['rate'] / 100, 2);
+            $on     = $c['compound'] ? Amount::round($base + $earlier) : $base;
+            $amount = Amount::round($on * $c['rate'] / 100);
 
             $lines[]  = new TaxBreakdownLine($c['ref'], (float) $c['rate'], $on, $amount, $c['recoverable']);
             $earlier += $amount;

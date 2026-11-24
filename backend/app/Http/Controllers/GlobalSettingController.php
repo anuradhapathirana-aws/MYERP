@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Services\AmountPrecision;
 use App\Services\ModuleService;
 use App\Services\SettingsService;
 use App\Services\SupportContactService;
@@ -49,6 +50,13 @@ class GlobalSettingController extends Controller
         if ($key === SupportContactService::SETTING_KEY) {
             return response()->json([
                 'message' => 'Update the support contact through System Settings > Support Contact.',
+            ], 422);
+        }
+
+        // Amount decimals lock once documents exist; this raw endpoint would bypass that.
+        if ($key === AmountPrecision::SETTING_KEY) {
+            return response()->json([
+                'message' => 'Update amount decimals through System Settings > Number Format.',
             ], 422);
         }
 

@@ -1,4 +1,5 @@
 import { Fragment, useState } from 'react'
+import { fmtMoney } from '../../utils/currency'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -16,8 +17,7 @@ import { FILTER_INPUT_CLS, FILTER_SELECT_CLS, LABEL_CLS } from '../../utils/fiel
 
 const CRUMBS = [{ label: 'Finance' }, { label: 'Journal Vouchers' }]
 
-const money = (n) =>
-  Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const money = (n) => fmtMoney(n)
 
 const STATUS_STYLE = {
   draft:    'bg-amber-50 text-amber-700 border-amber-200',

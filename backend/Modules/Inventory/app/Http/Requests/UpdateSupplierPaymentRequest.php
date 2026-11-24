@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Http\Requests;
 
+use App\Support\Money\Amount;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -25,7 +26,7 @@ class UpdateSupplierPaymentRequest extends FormRequest
             'payment_remark'    => ['nullable', 'string'],
 
             'is_advance'        => ['required', 'boolean'],
-            'advance_amount'    => ['required_if:is_advance,true', 'nullable', 'numeric', 'min:0.01'],
+            'advance_amount'    => ['required_if:is_advance,true', 'nullable', 'numeric', 'min:' . Amount::unit()],
 
             'allocations'                        => ['required_if:is_advance,false', 'array'],
             'allocations.*.reference_type'       => ['required_with:allocations', 'string', 'in:grn'],
@@ -42,12 +43,12 @@ class UpdateSupplierPaymentRequest extends FormRequest
             // are deducted through the supplier_return credit note their Supplier Return raised.
             'setoffs.*.setoff_type'       => ['required_with:setoffs', 'string', 'in:supplier_return,over_payment,advance'],
             'setoffs.*.credit_note_id'    => ['nullable', 'integer', 'exists:inv_supplier_credit_notes,id'],
-            'setoffs.*.amount'            => ['required_with:setoffs', 'numeric', 'min:0.01'],
+            'setoffs.*.amount'            => ['required_with:setoffs', 'numeric', 'min:' . Amount::unit()],
             'setoffs.*.remark'            => ['nullable', 'string'],
 
             'settlements'                          => ['nullable', 'array'],
             'settlements.*.payment_mode_id'        => ['required_with:settlements', 'integer', 'exists:inv_payment_modes,id'],
-            'settlements.*.amount'                 => ['required_with:settlements', 'numeric', 'min:0.01'],
+            'settlements.*.amount'                 => ['required_with:settlements', 'numeric', 'min:' . Amount::unit()],
             'settlements.*.bank_id'                => ['nullable', 'integer', 'exists:core_banks,id'],
             // The cash or bank ACCOUNT the money moves through. Nullable here
             // rather than required: an Inventory-only client has no chart of

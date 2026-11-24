@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Http\Controllers;
 
+use App\Support\Money\Amount;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -354,7 +355,7 @@ class ReportController extends Controller
 
         return response()->json([
             'data'    => $paginator->items(),
-            'summary' => ['total_value' => round((float) $totalValue, 2)],
+            'summary' => ['total_value' => Amount::round((float) $totalValue)],
             'meta'    => [
                 'current_page' => $paginator->currentPage(),
                 'last_page'    => $paginator->lastPage(),

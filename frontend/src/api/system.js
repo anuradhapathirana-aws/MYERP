@@ -16,6 +16,14 @@ export const setModuleEnabled = (key, enabled) =>
 export const getSupportContact = () =>
   api.get('/api/system/support-contact').then((r) => r.data?.data ?? {})
 
+/** Amount decimals: { decimals, min, max, locked, lock_reason } (every signed-in user). */
+export const getAmountPrecision = () =>
+  api.get('/api/system/amount-precision').then((r) => r.data?.data)
+
+/** System Settings > Number Format (super admin). Refused once documents exist. */
+export const updateAmountPrecision = (decimals) =>
+  api.put('/api/system/amount-precision', { decimals }).then((r) => r.data?.data)
+
 /** System Settings > Support Contact (super admin). */
 export const updateSupportContact = (payload) =>
   api.put('/api/system/support-contact', payload).then((r) => r.data?.data)

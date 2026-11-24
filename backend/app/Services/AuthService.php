@@ -11,7 +11,10 @@ use Illuminate\Support\Facades\Hash;
 
 class AuthService
 {
-    public function __construct(private readonly ModuleService $modules) {}
+    public function __construct(
+        private readonly ModuleService $modules,
+        private readonly AmountPrecision $precision,
+    ) {}
 
     /**
      * @return array<string, mixed> token plus the profile()
@@ -48,6 +51,8 @@ class AuthService
             'is_super_admin' => $user->isSuperAdmin(),
             'roles'          => $user->getRoleNames()->values()->all(),
             'permissions'    => $user->getAllPermissions()->pluck('name')->values()->all(),
+            // Every screen formats and rounds money with this (System Settings > Number Format).
+            'amount_decimals' => $this->precision->decimals(),
         ];
     }
 }

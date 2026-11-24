@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Modules\Finance\Support\Ledger;
 
+use App\Support\Money\Amount;
+
 /**
  * Exact ledger arithmetic.
  *
@@ -28,11 +30,17 @@ final class LedgerMoney
         return (int) round((float) ($amount ?? 0) * self::UNITS);
     }
 
-    /** Units as money at 2 decimals, rounded half away from zero in integer arithmetic. */
+    /**
+     * Units as money at the system's Amount decimals (2 today), rounded half
+     * away from zero in integer arithmetic.
+     */
     public static function money(int $units): float
     {
-        $cents = intdiv(abs($units) + intdiv(self::UNITS, 200), intdiv(self::UNITS, 100));
+        $scale = 10 ** Amount::decimals();          // 100 at 2 decimals
+        $step  = intdiv(self::UNITS, $scale);       // units per smallest amount
 
-        return ($units < 0 ? -$cents : $cents) / 100;
+        $steps = intdiv(abs($units) + intdiv($step, 2), $step);
+
+        return ($units < 0 ? -$steps : $steps) / $scale;
     }
 }

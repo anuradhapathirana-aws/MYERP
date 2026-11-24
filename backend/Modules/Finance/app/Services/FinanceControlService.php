@@ -38,6 +38,7 @@ class FinanceControlService
 {
     public const SETTING_LOCK_DATE     = 'finance.lock_date';
     public const SETTING_MAKER_CHECKER = 'finance.maker_checker';
+    public const SETTING_GO_LIVE_DATE  = 'finance.go_live_date';
 
     public function __construct(
         private readonly SettingsService $settings,
@@ -169,6 +170,47 @@ class FinanceControlService
                 $new !== null && $old !== null && $new->lessThan($old) ? 'period_reopened' : 'lock_date_changed',
                 ['lock_date' => $old?->toDateString()],
                 ['lock_date' => $new?->toDateString()],
+            );
+        }
+
+        return $new;
+    }
+
+    /**
+     * The first day the ledger is complete: the cut-over date the opening
+     * balances are posted on. Null = not set yet.
+     *
+     * Documents confirmed before Finance was switched on never reached the
+     * ledger, so a statement for an earlier period would show stock (from
+     * Inventory) against no sales and no purchases. The P&L refuses periods
+     * that start before this date rather than print a false profit.
+     */
+    public function goLiveDate(): ?CarbonImmutable
+    {
+        $value = $this->settings->get(self::SETTING_GO_LIVE_DATE);
+
+        return is_string($value) && $value !== '' ? CarbonImmutable::parse($value)->startOfDay() : null;
+    }
+
+    /**
+     * Set or clear the go-live date. May be in the future: it is usually
+     * agreed before the cut-over happens. Audited, because moving it changes
+     * which periods every financial statement will report.
+     */
+    public function setGoLiveDate(?string $date): ?CarbonImmutable
+    {
+        $new = $date === null || $date === '' ? null : CarbonImmutable::parse($date)->startOfDay();
+        $old = $this->goLiveDate();
+
+        $this->settings->set(self::SETTING_GO_LIVE_DATE, $new?->toDateString());
+
+        if ($old?->toDateString() !== $new?->toDateString()) {
+            $this->audit->record(
+                'finance_setting',
+                0,
+                'go_live_date_changed',
+                ['go_live_date' => $old?->toDateString()],
+                ['go_live_date' => $new?->toDateString()],
             );
         }
 

@@ -35,7 +35,7 @@ import FilterSearchSelect from '../../components/ui/FilterSearchSelect'
 import Money from '../../components/ui/Money'
 import ReturnedChequesAlert from '../../components/inventory/ReturnedChequesAlert'
 import { confirmAction, showError, showSuccess, showWarning } from '../../utils/alerts'
-import { CURRENCY, fmtMoney, fmtMoneyWithSymbol } from '../../utils/currency'
+import { CURRENCY, amountStep, fmtMoney, fmtMoneyWithSymbol, roundAmount, roundAmountInput } from '../../utils/currency'
 
 const CUSTOMER_TYPES = ['Trade', 'Retail', 'Wholesale', 'Corporate']
 
@@ -310,15 +310,20 @@ function rollCapacityBase(row) {
 
 // No tax on an SO: its prices are the costing's AFTER-tax figure (VAT inside), and
 // the invoice decides Tax / Non-Tax billing — a tax column here would add VAT twice.
+//
+// Rounds exactly as SalesOrderService does on save: the selling price to the Amount
+// decimals setting first, then the line — so the screen total is the stored total.
 function calcItem(row, discountEnabled) {
   const qty     = rowQty(row)
-  const price   = parseFloat(row.unit_price) || 0
+  const price   = roundAmount(parseFloat(row.unit_price) || 0)
   const discPct = discountEnabled ? (parseFloat(row.discount) || 0) : 0
   const gross   = qty * price
-  const discAmt = gross * (discPct / 100)
-  const amount  = gross - discAmt
-  return { qty, gross, discAmt, amount }
+  const amount  = roundAmount(gross - gross * (discPct / 100))
+  return { qty, gross, discAmt: gross - amount, amount }
 }
+
+/** A selling price as the input should hold it: rounded to the setting ('' when unknown). */
+const priceText = (price) => (price == null ? '' : roundAmountInput(price))
 
 // Below-cost guard basis: the dearest attached roll's break-even price (cost_floor =
 // its costing's landed cost + SSCL + VAT, no margin; the GRN cost when never costed),
@@ -579,7 +584,7 @@ export default function SalesOrderFormPage() {
 
     if (!from || !to || !from.base_rate || !to.base_rate || !(price > 0)) return row
 
-    return { ...row, unit_price: String(Number((price * (from.base_rate / to.base_rate)).toFixed(4))) }
+    return { ...row, unit_price: priceText(price * (from.base_rate / to.base_rate)) }
   }
 
   /** Attaching or removing rolls re-fills the quantity with their full capacity. */
@@ -727,6 +732,9 @@ export default function SalesOrderFormPage() {
     clearFieldError(field)
   }
 
+  /** onBlur for a money field: rounds it to the Amount decimals setting, as the server will. */
+  const roundField = (field) => (e) => setForm((f) => ({ ...f, [field]: roundAmountInput(e.target.value) }))
+
   const handleCustomerChange = (customerId) => {
     clearFieldError('customer_id')
     const customer = customers.find((c) => String(c.id) === String(customerId))
@@ -783,7 +791,7 @@ export default function SalesOrderFormPage() {
         price_unit_id: scan.product.base_unit_type_id != null ? String(scan.product.base_unit_type_id) : '',
         base_unit_type_id:     scan.product.base_unit_type_id ?? null,
         base_unit_category_id: scan.product.base_unit_category_id ?? null,
-        unit_price:   scan.selling_price != null ? String(scan.selling_price) : '',
+        unit_price:   priceText(scan.selling_price),
         no_selling_price: scan.selling_price == null,
         attribute_id: scan.piece.attribute_id != null ? String(scan.piece.attribute_id) : '',
         color_name:   scan.piece.color ?? '',
@@ -873,7 +881,7 @@ export default function SalesOrderFormPage() {
         variant_id:   variant ? String(variant.id) : '',
         attribute_id: variant?.attribute_id != null ? String(variant.attribute_id) : '',
         color_name:   variant?.variant_label ?? '',
-        unit_price:   price != null ? String(Number(price.toFixed(4))) : row.unit_price,
+        unit_price:   price != null ? priceText(price) : row.unit_price,
       }
     }))
   }
@@ -934,7 +942,7 @@ export default function SalesOrderFormPage() {
 
           return {
             ...row,
-            unit_price:       !row.unit_price && listPrice != null ? String(Number(listPrice.toFixed(4))) : row.unit_price,
+            unit_price:       !row.unit_price && listPrice != null ? priceText(listPrice) : row.unit_price,
             cost_hint:        cost_floor ?? cost_price ?? null,
             no_selling_price: unit_price == null,
           }
@@ -1046,7 +1054,7 @@ export default function SalesOrderFormPage() {
           // Each group sells at its rolls' own shipment price (still editable);
           // rolls without a resolved price keep the line's existing price.
           // A line recalled from a proforma keeps the quoted price
-          unit_price:   !base.proforma_item_id && rollPrice != null ? String(Number(rollPrice.toFixed(4))) : base.unit_price,
+          unit_price:   !base.proforma_item_id && rollPrice != null ? priceText(rollPrice) : base.unit_price,
           attribute_id: groupPieces[0].attribute_id != null ? String(groupPieces[0].attribute_id) : '',
           color_name:   groupPieces[0].color ?? '',
           expanded:     false,
@@ -1131,7 +1139,7 @@ export default function SalesOrderFormPage() {
         variant_id:       line.variant_id != null ? String(line.variant_id) : '',
         color_name:       line.variant?.name ?? row.color_name,
         quantity:         String(line.remaining_quantity),
-        unit_price:       String(line.so_unit_price),
+        unit_price:       priceText(line.so_unit_price),
         discount:         Number(line.discount) > 0 ? String(line.discount) : '',
         proforma_item_id: line.proforma_item_id,
       } : row))
@@ -1261,8 +1269,10 @@ export default function SalesOrderFormPage() {
     },
     { qty: 0, gross: 0, disc: 0, total: 0 },
   )
-  const transportCharge = parseFloat(form.transport_charge) || 0
-  const netAmount       = totals.total + transportCharge
+  totals.total = roundAmount(totals.total)
+  totals.disc  = roundAmount(totals.disc)
+  const transportCharge = roundAmount(parseFloat(form.transport_charge) || 0)
+  const netAmount       = roundAmount(totals.total + transportCharge)
 
   /* ── Save ─────────────────────────────────────────────────── */
   // Where to go after a successful save: back to the list (or to the proforma this
@@ -1392,7 +1402,7 @@ export default function SalesOrderFormPage() {
         attribute_id: r.attribute_id ? parseInt(r.attribute_id) : null,
         variant_id:   r.variant_id ? parseInt(r.variant_id) : null,
         quantity:     rowQty(r),
-        unit_price:   parseFloat(r.unit_price) || 0,
+        unit_price:   roundAmount(parseFloat(r.unit_price) || 0),
         discount:     discountEnabled ? (parseFloat(r.discount) || 0) : 0,
         piece_codes:  r.pieces.map((p) => p.piece_code),
         proforma_item_id: r.proforma_item_id || null,
@@ -1743,8 +1753,9 @@ export default function SalesOrderFormPage() {
                           <div className="flex items-center gap-0.5">
                             <input
                               ref={setCellRef(row._key, 'price')}
-                              type="number" min="0" step="0.01" placeholder="0.00" value={row.unit_price}
+                              type="number" min="0" step={amountStep()} placeholder="0.00" value={row.unit_price}
                               onChange={(e) => setRowField(idx, 'unit_price', e.target.value)}
+                              onBlur={(e) => setRowField(idx, 'unit_price', roundAmountInput(e.target.value))}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
                                   e.preventDefault()
@@ -1831,8 +1842,9 @@ export default function SalesOrderFormPage() {
             </td>
             <td className="px-1.5 py-1.5">
               <input
-                type="number" min="0" step="0.01" placeholder="0.00" value={form.transport_charge}
+                type="number" min="0" step={amountStep()} placeholder="0.00" value={form.transport_charge}
                 onChange={setField('transport_charge')}
+                onBlur={roundField('transport_charge')}
                 className={`${TABLE_INPUT} text-right`}
               />
               {err('transport_charge') && <p className={ERR_CLS}>{err('transport_charge')}</p>}
@@ -1958,8 +1970,9 @@ export default function SalesOrderFormPage() {
                 </label>
                 <div className="flex items-center gap-0.5">
                   <input
-                    type="number" min="0" step="0.01" value={row.unit_price}
+                    type="number" min="0" step={amountStep()} value={row.unit_price}
                     onChange={(e) => setRowField(idx, 'unit_price', e.target.value)}
+                    onBlur={(e) => setRowField(idx, 'unit_price', roundAmountInput(e.target.value))}
                     className={isBelowCost(row, conversionFor(row)?.factor ?? 1, discountEnabled) ? TABLE_INPUT_WARN : TABLE_INPUT}
                   />
                   <div className="w-14 shrink-0" title="Unit the price is quoted per — independent of the selling UOM">
@@ -2221,8 +2234,9 @@ export default function SalesOrderFormPage() {
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Transport Charge :</span>
                   <input
-                    type="number" min="0" step="0.01" placeholder="0.00" value={form.transport_charge}
+                    type="number" min="0" step={amountStep()} placeholder="0.00" value={form.transport_charge}
                     onChange={setField('transport_charge')}
+                    onBlur={roundField('transport_charge')}
                     className={`${TABLE_INPUT} w-28 text-right`}
                   />
                 </div>

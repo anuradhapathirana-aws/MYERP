@@ -35,6 +35,13 @@ export const getAllAccountCategories = (filters = {}) =>
 export const getAccountTypes = () =>
   api.get(`${BASE}/account-types`).then((r) => r.data?.data ?? [])
 
+/**
+ * P&L sections from the backend enum, each with the one account type it suits
+ * (income / expense; equity only for Provision for Reserves).
+ */
+export const getPlSections = () =>
+  api.get(`${BASE}/pl-sections`).then((r) => r.data?.data ?? [])
+
 /** Non-binding preview of the code a new category under this type would get. */
 export const getNextAccountCategoryCode = (accountType) =>
   api.get(`${BASE}/next-code`, { params: { account_type: accountType } })

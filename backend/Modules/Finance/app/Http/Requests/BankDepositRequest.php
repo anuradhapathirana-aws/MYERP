@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\Finance\Http\Requests;
 
 use App\Services\CompanyAccessService;
+use App\Support\Money\Amount;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
@@ -98,7 +99,7 @@ class BankDepositRequest extends FormRequest
             $errors = [
                 ...$service->cashErrors(
                     $this->filled('cash_account_id') ? (int) $this->input('cash_account_id') : null,
-                    number_format((float) $this->input('cash_amount', 0), 2, '.', ''),
+                    Amount::fixed((float) $this->input('cash_amount', 0)),
                     (int) $this->input('company_id'),
                     (string) $this->input('deposit_date'),
                 ),

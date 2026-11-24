@@ -5,14 +5,20 @@ declare(strict_types=1);
 namespace Tests\Unit;
 
 use App\Services\TaxCalculator;
-use PHPUnit\Framework\TestCase;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
 /**
  * The arithmetic of a tax code, with rates already resolved. Mirrored by the
  * frontend's utils/taxCalc.js — a case added here belongs there too.
+ *
+ * Boots the app because amounts round to the system's Amount decimals
+ * setting (read from global_settings, default 2).
  */
 class TaxCalculatorTest extends TestCase
 {
+    use RefreshDatabase;
+
     private const VAT      = ['ref' => 'VAT', 'rate' => 18.0, 'compound' => false, 'recoverable' => true];
     private const SSCL     = ['ref' => 'SSCL_PUR', 'rate' => 2.5, 'compound' => false, 'recoverable' => false];
     private const VAT_ON_TOP = ['ref' => 'VAT', 'rate' => 18.0, 'compound' => true, 'recoverable' => true];

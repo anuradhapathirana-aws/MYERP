@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Finance\DTOs;
 
+use App\Support\Money\Amount;
 use Modules\Finance\Http\Requests\BankReconciliationRequest;
 
 /**
@@ -33,7 +34,7 @@ final class BankReconciliationData
         $v = $request->validated();
 
         // Money stays a 2-dp string; it never travels as a float.
-        $money = static fn ($n): string => number_format((float) ($n ?? 0), 2, '.', '');
+        $money = static fn ($n): string => Amount::fixed((float) ($n ?? 0));
 
         return new self(
             request_id:        $v['request_id'] ?? null,

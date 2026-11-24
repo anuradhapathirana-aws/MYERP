@@ -10,6 +10,7 @@ use App\Models\PaymentMode;
 use App\Support\Journal\JournalLineRequest;
 use App\Support\Journal\JournalRequest;
 use App\Support\Journal\PostingRole;
+use App\Support\Money\Amount;
 use Illuminate\Validation\ValidationException;
 use Modules\Inventory\Enums\CustomerSetoffType;
 use Modules\Inventory\Models\CustomerCreditNote;
@@ -51,7 +52,7 @@ final class CustomerReceiptJournal
         $modeTypes = PaymentMode::typesById($receipt->settlements->pluck('payment_mode_id')->map(fn ($id): int => (int) $id)->all());
 
         foreach ($receipt->settlements as $settlement) {
-            $amount = round((float) $settlement->amount, 2);
+            $amount = Amount::round((float) $settlement->amount);
 
             if ($amount <= 0) {
                 continue;
@@ -102,7 +103,7 @@ final class CustomerReceiptJournal
         // discount never reaches the ledger because the invoice is already
         // recorded net of it. This one clears part of the receivable without
         // cash, so it needs its own line or the invoice would not settle.
-        $discount = round((float) $receipt->discount_amount, 2);
+        $discount = Amount::round((float) $receipt->discount_amount);
 
         if ($discount > 0) {
             $lines[] = JournalLineRequest::debit(
@@ -141,7 +142,7 @@ final class CustomerReceiptJournal
         // liability until the customer uses it. confirm() has already minted
         // the credit note, so the note is the single source of truth for the
         // amount rather than a second calculation that could disagree.
-        $minted = round((float) CustomerCreditNote::where('source_receipt_id', $receipt->id)->sum('amount'), 2);
+        $minted = Amount::round((float) CustomerCreditNote::where('source_receipt_id', $receipt->id)->sum('amount'));
 
         if ($minted > 0) {
             $lines[] = JournalLineRequest::credit(
@@ -185,7 +186,7 @@ final class CustomerReceiptJournal
         $posted = self::returnNotesAlreadyPosted($receipt);
 
         foreach ($receipt->setoffs as $setoff) {
-            $amount = round((float) $setoff->amount, 2);
+            $amount = Amount::round((float) $setoff->amount);
 
             if ($amount <= 0) {
                 continue;
@@ -196,7 +197,7 @@ final class CustomerReceiptJournal
                 ? PostingRole::SALES_REVENUE
                 : PostingRole::CUSTOMER_ADVANCE;
 
-            $totals[$role] = round(($totals[$role] ?? 0) + $amount, 2);
+            $totals[$role] = Amount::round(($totals[$role] ?? 0) + $amount);
         }
 
         return $totals;

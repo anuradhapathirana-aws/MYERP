@@ -6,6 +6,7 @@ namespace Modules\Finance\Services;
 
 use App\Contracts\FundBalanceGuard;
 use App\Services\ReceivedChequeRegistry;
+use App\Support\Money\Amount;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -204,6 +205,6 @@ class FundBalanceService implements FundBalanceGuard
 
     private static function money(int $cents): string
     {
-        return number_format($cents / 100, 2);
+        return Amount::display($cents / 100);
     }
 }

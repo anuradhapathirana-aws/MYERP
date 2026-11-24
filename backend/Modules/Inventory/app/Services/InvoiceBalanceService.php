@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Services;
 
+use App\Support\Money\Amount;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Enums\CustomerReceiptStatus;
@@ -148,11 +149,11 @@ class InvoiceBalanceService
             $paidIn   = $received[$invoiceId] ?? 0.0;
             $credited = $returned[$invoiceId] ?? 0.0;
 
-            if ((float) $grandTotal - $paidIn - $credited > 0.01) {
+            if ((float) $grandTotal - $paidIn - $credited > Amount::unit()) {
                 continue;
             }
 
-            $byReturnsOnly = $paidIn < 0.01 && $credited > 0.0;
+            $byReturnsOnly = $paidIn < Amount::unit() && $credited > 0.0;
 
             Invoice::whereKey($invoiceId)
                 ->where('status', InvoiceStatus::Issued->value)

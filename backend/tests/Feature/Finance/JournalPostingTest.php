@@ -468,6 +468,75 @@ class JournalPostingTest extends TestCase
         ));
     }
 
+    public function test_a_one_cent_residue_is_written_off_not_posted_out_of_balance(): void
+    {
+        $cash = $this->fundSource('Cash Account', companyId: 1);
+
+        // Exactly one cent, built from sums that are not exact in binary
+        // (10.10 + 20.20 = 30.299999…). It used to fall through both checks
+        // and post the journal a cent out.
+        $this->posting->post(new JournalRequest(
+            sourceType:  'customer_receipt',
+            sourceId:    2,
+            journalDate: new DateTimeImmutable('2026-04-22'),
+            lines:       [
+                JournalLineRequest::debit($cash->id, 10.10),
+                JournalLineRequest::debit($cash->id, 20.20),
+                JournalLineRequest::credit(AccountRole::AccountsReceivable->value, 30.29),
+            ],
+        ));
+
+        $entry = JournalEntry::with('lines')->first();
+
+        $this->assertCount(4, $entry->lines, 'A rounding line was added for the cent.');
+        $this->assertTrue($entry->isBalanced());
+        $this->assertSame($entry->total_debit, $entry->total_credit);
+
+        $rounding = $entry->lines->firstWhere(
+            'ledger_account_id',
+            $this->mappedAccountId(AccountRole::RoundingDifference),
+        );
+
+        $this->assertNotNull($rounding);
+        $this->assertSame('0.0100', $rounding->credit);
+    }
+
+    public function test_a_balanced_journal_gets_no_rounding_line(): void
+    {
+        $cash = $this->fundSource('Cash Account', companyId: 1);
+
+        // 0.10 + 0.20 is 0.30000000000000004 in binary: noise, not a gap.
+        $this->posting->post(new JournalRequest(
+            sourceType:  'customer_receipt',
+            sourceId:    3,
+            journalDate: new DateTimeImmutable('2026-04-22'),
+            lines:       [
+                JournalLineRequest::debit($cash->id, 0.10),
+                JournalLineRequest::debit($cash->id, 0.20),
+                JournalLineRequest::credit(AccountRole::AccountsReceivable->value, 0.30),
+            ],
+        ));
+
+        $this->assertCount(3, JournalEntry::with('lines')->first()->lines);
+    }
+
+    public function test_a_hand_entered_voucher_one_cent_out_is_rejected(): void
+    {
+        $this->expectException(ValidationException::class);
+        $this->expectExceptionMessage('does not balance');
+
+        $this->posting->post(new JournalRequest(
+            sourceType:  JournalRequest::SOURCE_MANUAL,
+            sourceId:    null,
+            journalDate: new DateTimeImmutable('2026-04-30'),
+            journalType: JournalRequest::TYPE_GENERAL,
+            lines:       [
+                JournalLineRequest::debit(AccountRole::Purchases->value, 100.00),
+                JournalLineRequest::credit(AccountRole::AccountsPayable->value, 99.99),
+            ],
+        ));
+    }
+
     // ── Company derivation ───────────────────────────────────────────────────
 
     public function test_a_document_spanning_two_companies_is_rejected(): void

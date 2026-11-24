@@ -7,6 +7,7 @@ namespace Modules\Finance\Http\Controllers;
 use App\Models\Company;
 use App\Models\User;
 use App\Services\CompanyAccessService;
+use App\Support\Money\Amount;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -179,7 +180,7 @@ class BankReconciliationController extends Controller
                 'bank_account_id' => (int) $v['bank_account_id'],
                 'entry_date'      => $v['entry_date'],
                 'type'            => $v['type'],
-                'amount'          => number_format((float) $v['amount'], 2, '.', ''),
+                'amount'          => Amount::fixed((float) $v['amount']),
                 'description'     => $v['description'],
                 'reference'       => $v['reference'] ?? null,
                 'request_id'      => $v['request_id'] ?? null,

@@ -10,6 +10,7 @@ use App\Models\Tax;
 use App\Models\TaxCode;
 use App\Services\TaxCalculator;
 use App\Services\TaxService;
+use App\Support\Money\Amount;
 use DateTimeInterface;
 use Modules\Finance\DTOs\BillLinePrice;
 use Modules\Finance\Enums\ChargeTreatment;
@@ -40,7 +41,7 @@ class BillLinePricer
         bool $inclusive,
         DateTimeInterface $on,
     ): BillLinePrice {
-        $typed = round((float) $amount, 2);
+        $typed = Amount::round((float) $amount);
 
         if ($treatment === ChargeTreatment::RecoverableTax) {
             $claimable = $this->taxes->isActive(Tax::VAT, $on);

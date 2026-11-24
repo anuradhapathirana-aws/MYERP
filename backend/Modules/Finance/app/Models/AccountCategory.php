@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\Finance\Enums\AccountType;
+use Modules\Finance\Enums\PlSection;
 
 /**
  * Level 1 of the chart of accounts.
@@ -26,14 +27,25 @@ class AccountCategory extends Model
     protected $fillable = [
         'account_type',
         'category_name',
+        'pl_section',
         'description',
         'is_active',
     ];
 
     protected $casts = [
         'account_type' => AccountType::class,
+        'pl_section'   => PlSection::class,
         'is_active'    => 'boolean',
     ];
+
+    /**
+     * The section this category reports under on the P&L: its own, or the
+     * fallback for its type. Null for balance-sheet categories.
+     */
+    public function effectivePlSection(): ?PlSection
+    {
+        return $this->pl_section ?? PlSection::fallbackFor($this->account_type);
+    }
 
     public function controlAccounts(): HasMany
     {

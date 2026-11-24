@@ -1,18 +1,20 @@
 // Number formatting shared by every ledger screen (Trial Balance popup,
 // Ledger Details, T-account). One place, so Dr/Cr always reads the same.
+// Decimals follow the system's Amount decimals setting (utils/currency).
 
-export const money = (n) =>
-  Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+import { amountTolerance, fmtMoney } from '../../../utils/currency'
+
+export const money = (n) => fmtMoney(n)
 
 /** Blank instead of 0.00, so a column of figures reads at a glance. */
 export const moneyOrBlank = (n) => (Number(n) > 0 ? money(n) : '')
 
-const isZero = (v) => Math.abs(v) < 0.005
+const isZero = (v) => Math.abs(v) < amountTolerance()
 
 /** Signed net (debit positive) shown the accountant's way: 1,250.00 Dr. */
 export const balance = (n) => {
   const v = Number(n || 0)
-  if (isZero(v)) return '0.00'
+  if (isZero(v)) return money(0)
   return `${money(Math.abs(v))} ${v > 0 ? 'Dr' : 'Cr'}`
 }
 

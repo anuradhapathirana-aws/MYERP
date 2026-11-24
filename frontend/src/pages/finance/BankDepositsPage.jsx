@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { fmtMoney } from '../../utils/currency'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Ban, CheckCircle, Plus } from 'lucide-react'
@@ -87,7 +88,7 @@ export default function BankDepositsPage() {
   const handleConfirm = async (d) => {
     const ok = await confirmAction({
       title: `Confirm ${d.deposit_no}?`,
-      message: `This deposits <strong>${Number(d.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong> into <strong>${d.bank_account_name}</strong> and posts it to the ledger.`,
+      message: `This deposits <strong>${fmtMoney(d.total_amount)}</strong> into <strong>${d.bank_account_name}</strong> and posts it to the ledger.`,
       confirmText: 'Yes, Deposit',
     })
     if (ok) confirmMutation.mutate(d.id)

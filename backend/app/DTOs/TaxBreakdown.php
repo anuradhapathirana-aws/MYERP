@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\DTOs;
 
+use App\Support\Money\Amount;
+
 /**
  * The result of applying a tax code to an amount: the amount before tax and
  * each tax on it. base + taxTotal() is always exactly total(), to the cent.
@@ -18,17 +20,17 @@ final class TaxBreakdown
 
     public static function none(float $amount): self
     {
-        return new self(round($amount, 2), []);
+        return new self(Amount::round($amount), []);
     }
 
     public function taxTotal(): float
     {
-        return round(array_sum(array_map(fn (TaxBreakdownLine $l) => $l->amount, $this->lines)), 2);
+        return Amount::round(array_sum(array_map(fn (TaxBreakdownLine $l) => $l->amount, $this->lines)));
     }
 
     public function total(): float
     {
-        return round($this->base + $this->taxTotal(), 2);
+        return Amount::round($this->base + $this->taxTotal());
     }
 
     /** Claimable as input tax — posted to Input Tax Recoverable. */
@@ -43,7 +45,7 @@ final class TaxBreakdown
     /** Not claimable — part of what the goods cost. */
     public function nonRecoverable(): float
     {
-        return round($this->taxTotal() - $this->recoverable(), 2);
+        return Amount::round($this->taxTotal() - $this->recoverable());
     }
 
     /** Total tax as a % of the base, for display and old % reports. */

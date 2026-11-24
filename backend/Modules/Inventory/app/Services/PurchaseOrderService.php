@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Services;
 
+use App\Support\Money\Amount;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -246,7 +247,7 @@ class PurchaseOrderService
                 $discount  = (float) ($row['discount'] ?? 0);
                 $tax       = (float) ($row['tax'] ?? 0);
                 $gross     = $qty * $price;
-                $lineTotal = $gross - ($gross * $discount / 100) + ($gross * $tax / 100);
+                $lineTotal = Amount::round($gross - ($gross * $discount / 100) + ($gross * $tax / 100));
 
                 return [
                     'po_id'             => $po->id,
@@ -281,8 +282,8 @@ class PurchaseOrderService
         $grandTotal = $po->items()->sum(DB::raw('line_total'));
 
         $po->update([
-            'subtotal'    => $subtotal,
-            'grand_total' => $grandTotal,
+            'subtotal'    => Amount::round($subtotal),
+            'grand_total' => Amount::round($grandTotal),
         ]);
     }
 }

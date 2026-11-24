@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Finance\DTOs;
 
+use App\Support\Money\Amount;
 use Modules\Finance\Http\Requests\BillPaymentRequest;
 
 /**
@@ -38,7 +39,7 @@ final class BillPaymentData
             $allocations[] = [
                 'bill_id' => (int) $row['bill_id'],
                 // Kept as a 2-dp string; money never travels as a float.
-                'amount'  => number_format((float) $row['amount'], 2, '.', ''),
+                'amount'  => Amount::fixed((float) $row['amount']),
             ];
         }
 

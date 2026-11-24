@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\ChequeStatusRegistry;
 use App\Services\CompanyAccessService;
 use App\Support\Journal\PostingRole;
+use App\Support\Money\Amount;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -175,7 +176,7 @@ class UnclearedChequesReportService
                 'party_name'      => $detail['party_name'] ?? null,
                 'drawee_bank'     => $detail['drawee_bank'] ?? null,
                 'description'     => $r->description ?: $r->narration,
-                'amount'          => number_format($issued ? (float) $r->credit : (float) $r->debit, 2, '.', ''),
+                'amount'          => Amount::fixed($issued ? (float) $r->credit : (float) $r->debit),
                 // Since it went through the books: issued, or deposited.
                 'days_outstanding' => (int) $journalDate->diffInDays($asAt),
                 'is_stale'        => ($chequeDate ?? $journalDate)->lt($staleFrom),
@@ -278,9 +279,9 @@ class UnclearedChequesReportService
 
         return [
             'issued_count'   => $issued->count(),
-            'issued_total'   => number_format($cents($issued) / 100, 2, '.', ''),
+            'issued_total'   => Amount::fixed($cents($issued) / 100),
             'received_count' => $received->count(),
-            'received_total' => number_format($cents($received) / 100, 2, '.', ''),
+            'received_total' => Amount::fixed($cents($received) / 100),
             'stale_count'    => $rows->where('is_stale', true)->count(),
         ];
     }

@@ -37,7 +37,7 @@ class FinanceSettingsController extends Controller
         // Set-up that decides where every future journal lands, or switches
         // off a fraud control: changed by the IT company (super admin) only.
         $this->middleware('super_admin')
-            ->only(['update', 'updatePostingMode', 'updatePartyLedgerMode', 'updateMakerChecker', 'updateLedgerView']);
+            ->only(['update', 'updatePostingMode', 'updatePartyLedgerMode', 'updateMakerChecker', 'updateLedgerView', 'updateGoLiveDate']);
 
         // Month-end close is the client accountant's routine job, so the lock
         // date stays a permission a client admin can grant.
@@ -57,6 +57,9 @@ class FinanceSettingsController extends Controller
                 // Period lock and maker-checker (FinanceControlService).
                 'lock_date'        => $this->controls->lockDate()?->toDateString(),
                 'maker_checker'    => $this->controls->makerCheckerEnabled(),
+
+                // First day the ledger is complete; statements start here.
+                'go_live_date'     => $this->controls->goLiveDate()?->toDateString(),
 
                 // How an account's ledger opens from the Trial Balance: list or T-account.
                 'ledger_view'      => $this->ledger->defaultView(),
@@ -122,6 +125,18 @@ class FinanceSettingsController extends Controller
         $date = $this->controls->setLockDate($validated['lock_date'] ?? null);
 
         return response()->json(['data' => ['lock_date' => $date?->toDateString()]]);
+    }
+
+    /** Set the Finance go-live (cut-over) date, or clear it with null. Super admin. */
+    public function updateGoLiveDate(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'go_live_date' => ['nullable', 'date_format:Y-m-d'],
+        ]);
+
+        $date = $this->controls->setGoLiveDate($validated['go_live_date'] ?? null);
+
+        return response()->json(['data' => ['go_live_date' => $date?->toDateString()]]);
     }
 
     public function updateMakerChecker(Request $request): JsonResponse

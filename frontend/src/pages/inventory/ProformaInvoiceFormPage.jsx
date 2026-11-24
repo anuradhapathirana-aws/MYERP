@@ -27,6 +27,7 @@ import KeyboardShortcuts from '../../components/ui/KeyboardShortcuts'
 import ProductSearchCell from '../../components/inventory/ProductSearchCell'
 import { confirmAction, showError, showSuccess, showWarning } from '../../utils/alerts'
 import { NOT_VAT_REGISTERED_WARNING } from '../../utils/tin'
+import { amountStep, roundAmount, roundAmountInput } from '../../utils/currency'
 
 const INPUT_CLS =
   'block w-full rounded border border-slate-300 bg-slate-50 px-2 py-1 text-xs text-slate-800 placeholder-slate-400 outline-none transition-all focus:border-indigo-400 focus:bg-white focus:ring-1 focus:ring-indigo-500/20'
@@ -45,7 +46,8 @@ const CELL_SELECT = `${CELL_INPUT} cursor-pointer`
 /** Offer validity used when the user hasn't picked a date (mirrors the backend default). */
 const DEFAULT_VALID_DAYS = 14
 
-const round2 = (n) => String(Number((Number(n) || 0).toFixed(2)))
+/** A unit price as the input should hold it: rounded to the Amount decimals setting. */
+const priceText = (n) => roundAmountInput(Number(n) || 0)
 
 /**
  * Every line holds BOTH price sets, exactly like the invoice:
@@ -55,8 +57,8 @@ const round2 = (n) => String(Number((Number(n) || 0).toFixed(2)))
  * customer total does not change when the type changes.
  */
 const priceForType = (line, type) => (type === 'tax'
-  ? { unit_price: line.tax_unit_price != null ? round2(line.tax_unit_price) : line.unit_price, tax: line.tax_vat_pct != null ? String(line.tax_vat_pct) : line.tax }
-  : { unit_price: line.so_unit_price != null ? round2(line.so_unit_price) : line.unit_price, tax: '' })
+  ? { unit_price: line.tax_unit_price != null ? priceText(line.tax_unit_price) : line.unit_price, tax: line.tax_vat_pct != null ? String(line.tax_vat_pct) : line.tax }
+  : { unit_price: line.so_unit_price != null ? priceText(line.so_unit_price) : line.unit_price, tax: '' })
 
 const STOCK_BADGE = {
   in_stock:  { cls: 'bg-green-100 text-green-700', label: 'In stock' },
@@ -95,11 +97,13 @@ function emptyLine() {
   }
 }
 
+// Rounds exactly as ProformaInvoiceService does on save: the unit price to the
+// Amount decimals setting first, then the line.
 function calcLine(line, isTax) {
-  const gross = (parseFloat(line.quantity) || 0) * (parseFloat(line.unit_price) || 0)
+  const gross = (parseFloat(line.quantity) || 0) * roundAmount(parseFloat(line.unit_price) || 0)
   const disc  = gross * (parseFloat(line.discount) || 0) / 100
   const vat   = isTax ? gross * (parseFloat(line.tax) || 0) / 100 : 0
-  return gross - disc + vat
+  return roundAmount(gross - disc + vat)
 }
 
 export default function ProformaInvoiceFormPage() {
@@ -432,9 +436,9 @@ export default function ProformaInvoiceFormPage() {
 
   /* ── Totals ── */
   const totals = useMemo(() => {
-    const lineTotal = lines.reduce((s, l) => s + calcLine(l, isTax), 0)
-    const transport = parseFloat(form.transport_charge) || 0
-    return { lineTotal, transport, grand: lineTotal + transport }
+    const lineTotal = roundAmount(lines.reduce((s, l) => s + calcLine(l, isTax), 0))
+    const transport = roundAmount(parseFloat(form.transport_charge) || 0)
+    return { lineTotal, transport, grand: roundAmount(lineTotal + transport) }
   }, [lines, isTax, form.transport_charge])
 
   /* ── Save ── */
@@ -462,7 +466,7 @@ export default function ProformaInvoiceFormPage() {
     valid_until:      form.valid_until || null,
     payment_terms:    form.payment_terms.trim() || null,
     invoice_type:     invoiceType,
-    transport_charge: parseFloat(form.transport_charge) || 0,
+    transport_charge: roundAmount(parseFloat(form.transport_charge) || 0),
     delivery_address: form.delivery_address.trim() || null,
     remarks:          form.remarks.trim() || null,
     company_id:       form.company_id ? Number(form.company_id) : null,
@@ -472,7 +476,7 @@ export default function ProformaInvoiceFormPage() {
       variant_id:   l.variant_id ? Number(l.variant_id) : null,
       unit_id:      l.unit_id ? Number(l.unit_id) : null,
       quantity:     parseFloat(l.quantity),
-      unit_price:   parseFloat(l.unit_price) || 0,
+      unit_price:   roundAmount(parseFloat(l.unit_price) || 0),
       discount:     parseFloat(l.discount) || 0,
       tax:          isTax ? (parseFloat(l.tax) || 0) : 0,
     })),
@@ -619,7 +623,7 @@ export default function ProformaInvoiceFormPage() {
               </div>
               <div>
                 <label className={LABEL_CLS}>Transport Charge</label>
-                <input type="number" min="0" step="0.01" className={INPUT_CLS} value={form.transport_charge} onChange={(e) => setForm((f) => ({ ...f, transport_charge: e.target.value }))} />
+                <input type="number" min="0" step={amountStep()} className={INPUT_CLS} value={form.transport_charge} onChange={(e) => setForm((f) => ({ ...f, transport_charge: e.target.value }))} onBlur={(e) => setForm((f) => ({ ...f, transport_charge: roundAmountInput(e.target.value) }))} />
               </div>
               <div>
                 <label className={LABEL_CLS}>Remarks</label>
@@ -700,8 +704,10 @@ export default function ProformaInvoiceFormPage() {
                           onChange={(e) => setLineField(l._key, 'quantity', e.target.value)} onKeyDown={onCellEnter(l._key, 'qty')} />
                       </td>
                       <td className="px-2 py-1">
-                        <input ref={setCellRef(l._key, 'price')} type="number" min="0" step="0.01" className={`${CELL_INPUT} text-right`} value={l.unit_price}
-                          onChange={(e) => changePrice(l._key, e.target.value)} onKeyDown={onCellEnter(l._key, 'price')}
+                        <input ref={setCellRef(l._key, 'price')} type="number" min="0" step={amountStep()} className={`${CELL_INPUT} text-right`} value={l.unit_price}
+                          onChange={(e) => changePrice(l._key, e.target.value)}
+                          onBlur={(e) => { if (e.target.value !== roundAmountInput(e.target.value)) changePrice(l._key, roundAmountInput(e.target.value)) }}
+                          onKeyDown={onCellEnter(l._key, 'price')}
                           title={isTax ? 'Before-tax price — VAT is added on this line' : 'Price with VAT already inside — no VAT is added'} />
                       </td>
                       <td className="px-2 py-1">

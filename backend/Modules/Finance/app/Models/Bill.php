@@ -8,6 +8,7 @@ use App\Models\Company;
 use App\Models\Location;
 use App\Models\SupplierMaster;
 use App\Models\User;
+use App\Support\Money\Amount;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -122,7 +123,7 @@ class Bill extends Model
 
     public static function fromCents(int $cents): string
     {
-        return number_format($cents / 100, 2, '.', '');
+        return Amount::fixed($cents / 100);
     }
 
     public function isOverdue(): bool

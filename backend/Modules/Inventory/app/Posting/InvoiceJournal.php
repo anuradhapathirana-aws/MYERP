@@ -7,6 +7,7 @@ namespace Modules\Inventory\Posting;
 use App\Support\Journal\JournalLineRequest;
 use App\Support\Journal\JournalRequest;
 use App\Support\Journal\PostingRole;
+use App\Support\Money\Amount;
 use Modules\Inventory\Models\Invoice;
 
 /**
@@ -43,7 +44,7 @@ final class InvoiceJournal
 {
     public static function build(Invoice $invoice): JournalRequest
     {
-        $invoice->loadMissing(['items', 'customer']);
+        $invoice->loadMissing(['items', 'customer', 'deliveryOrder:id,location_id']);
 
         $tax  = 0.0;
         $sscl = 0.0;
@@ -61,19 +62,19 @@ final class InvoiceJournal
             $sscl += $split['sscl'];
         }
 
-        $tax  = round($tax, 2);
-        $sscl = round($sscl, 2);
+        $tax  = Amount::round($tax);
+        $sscl = Amount::round($sscl);
 
         // Revenue is what is left of the bill once the levies are taken out:
         // the goods net of tax and trade discount, plus transport (which
         // carries no tax of its own in this schema). Derived rather than summed
         // so the journal always balances to the grand total.
-        $revenue = round((float) $invoice->grand_total - $tax - $sscl, 2);
+        $revenue = Amount::round((float) $invoice->grand_total - $tax - $sscl);
 
         $lines = [
             JournalLineRequest::debit(
                 PostingRole::ACCOUNTS_RECEIVABLE,
-                round((float) $invoice->grand_total, 2),
+                Amount::round((float) $invoice->grand_total),
                 description: $invoice->invoice_no,
                 partyType:   PostingRole::PARTY_CUSTOMER,
                 partyId:     (int) $invoice->customer_id,
@@ -111,7 +112,23 @@ final class InvoiceJournal
             lines:        $lines,
             journalType:  JournalRequest::TYPE_AUTO,
             companyId:    $invoice->company_id === null ? null : (int) $invoice->company_id,
+            locationId:   self::locationOf($invoice),
             narration:    $invoice->invoice_no . ' - invoice issued',
         );
+    }
+
+    /**
+     * The location the goods were sold from: the DO's. An invoice has no
+     * location of its own, and a direct-SO (advance) invoice has no DO and no
+     * location at all, so it reports under the company only.
+     *
+     * Without it a location-filtered P&L shows that location's purchases and
+     * stock (a GRN carries its location) but none of its sales.
+     */
+    public static function locationOf(Invoice $invoice): ?int
+    {
+        $locationId = $invoice->deliveryOrder?->location_id;
+
+        return $locationId === null ? null : (int) $locationId;
     }
 }

@@ -8,6 +8,7 @@ use App\Contracts\LandedChargeSource;
 use App\DTOs\LandedCharge;
 use App\Models\Tax;
 use App\Services\TaxService;
+use App\Support\Money\Amount;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -633,10 +634,12 @@ class CostingService
 
         // Full-quantity totals: Σ base_quantity × per-base-unit amount. (Equal to
         // Σ quantity × per-receiving-unit amount — same money, either denomination.)
-        $sum = fn (string $key): float => (float) $items->sum(fn (array $i) => $i['base_quantity'] * $i[$key]);
+        // The header totals are money AMOUNTS, so each rounds to the Amount
+        // decimals; the per-unit costs and prices above keep their 8 decimals.
+        $sum = fn (string $key): float => Amount::round($items->sum(fn (array $i) => $i['base_quantity'] * $i[$key]));
 
         // Purchase value straight off the GRN lines — exact, no restatement round-trip
-        $purchaseValue = (float) $items->sum(fn (array $i) => $i['quantity'] * $i['unit_price']);
+        $purchaseValue = Amount::round($items->sum(fn (array $i) => $i['quantity'] * $i['unit_price']));
 
         $summary = [
             'total_items'               => $totalQty,
@@ -644,11 +647,11 @@ class CostingService
             'material_cost'             => $purchaseValue,
             'raw_material_cost'         => $purchaseValue,
             'total_additional_expenses' => $sum('expense_total_base'),
-            'total_landed_cost'         => $purchaseValue + $sum('expense_total_base'),
+            'total_landed_cost'         => Amount::round($purchaseValue + $sum('expense_total_base')),
             'value_addition_pct'        => 0.0,
             'value_addition_amount'     => 0.0,
             // Landed + margin (pre-SSCL, pre-VAT)
-            'fob_cif_cost'              => $purchaseValue + $sum('expense_total_base') + $sum('margin_amount_base'),
+            'fob_cif_cost'              => Amount::round($purchaseValue + $sum('expense_total_base') + $sum('margin_amount_base')),
             'sscl_amount'               => $sum('sscl_amount_base'),
             // "Before Tax Value" — what non-VAT invoices will bill
             'gross_fob_cif_value'       => $sum('before_tax_price_base'),

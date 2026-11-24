@@ -19,7 +19,7 @@ import FilterSearchSelect from '../../components/ui/FilterSearchSelect'
 import Money from '../../components/ui/Money'
 import { confirmAction, confirmTriState, showError, showSuccess, showWarning } from '../../utils/alerts'
 import { NOT_VAT_REGISTERED_WARNING } from '../../utils/tin'
-import { fmtMoney } from '../../utils/currency'
+import { amountStep, amountTolerance, fmtMoney, roundAmount, roundAmountInput } from '../../utils/currency'
 
 const INPUT_CLS =
   'block w-full rounded border border-slate-300 bg-slate-50 px-2 py-1 text-xs text-slate-800 placeholder-slate-400 outline-none transition-all focus:border-indigo-400 focus:bg-white focus:ring-1 focus:ring-indigo-500/20'
@@ -39,14 +39,19 @@ const TABLE_INPUT_WARN =
 const TABLE_INPUT_RO =
   'block w-full rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500 outline-none cursor-not-allowed'
 
+// Rounds exactly as InvoiceService does on save: the unit price to the Amount
+// decimals setting first, then the line — so the screen total is the stored total.
 function calcLine(row) {
   const qty     = parseFloat(row.quantity)   || 0
-  const price   = parseFloat(row.unit_price) || 0
+  const price   = roundAmount(parseFloat(row.unit_price) || 0)
   const discPct = parseFloat(row.discount)   || 0
   const taxPct  = parseFloat(row.tax)        || 0
   const gross   = qty * price
-  return gross - (gross * discPct / 100) + (gross * taxPct / 100)
+  return roundAmount(gross - (gross * discPct / 100) + (gross * taxPct / 100))
 }
+
+/** A unit price as the input should hold it: rounded to the setting. */
+const priceText = (price) => roundAmountInput(price)
 
 // Below-cost guard: what the customer pays per unit, AFTER discount and VAT,
 // against the line's break-even price (cost_floor = landed cost + SSCL + VAT,
@@ -62,7 +67,7 @@ function paidPerUnit(row, invoiceType) {
 function isBelowCost(row, invoiceType) {
   const floor = Number(row.cost_floor) || 0
   const paid  = paidPerUnit(row, invoiceType)
-  return floor > 0 && paid > 0 && paid < floor - 0.005
+  return floor > 0 && paid > 0 && paid < floor - amountTolerance()
 }
 
 export default function InvoiceFormPage() {
@@ -158,8 +163,8 @@ export default function InvoiceFormPage() {
 
   /* The two price sets a line can bill, straight from the billing source. */
   const priceFor = (it, type) => type === 'tax'
-    ? { unit_price: String(it.tax_unit_price ?? it.unit_price), tax: it.tax_vat_pct ? String(it.tax_vat_pct) : '' }
-    : { unit_price: String(it.unit_price), tax: '' }
+    ? { unit_price: priceText(it.tax_unit_price ?? it.unit_price), tax: it.tax_vat_pct ? String(it.tax_vat_pct) : '' }
+    : { unit_price: priceText(it.unit_price), tax: '' }
 
   useEffect(() => {
     if (!source || isEdit) return
@@ -243,18 +248,18 @@ export default function InvoiceFormPage() {
     setInvoiceType(type)
     setLines((prev) => prev.map((row) => {
       if (type === 'non_tax') {
-        return { ...row, unit_price: row.so_unit_price != null ? String(row.so_unit_price) : row.unit_price, tax: '' }
+        return { ...row, unit_price: row.so_unit_price != null ? priceText(row.so_unit_price) : row.unit_price, tax: '' }
       }
       return row.tax_unit_price != null
-        ? { ...row, unit_price: String(row.tax_unit_price), tax: row.tax_vat_pct ? String(row.tax_vat_pct) : '' }
+        ? { ...row, unit_price: priceText(row.tax_unit_price), tax: row.tax_vat_pct ? String(row.tax_vat_pct) : '' }
         : row
     }))
   }
 
   const totals = useMemo(() => {
-    const lineTotal = lines.reduce((s, row) => s + calcLine(row), 0)
-    const transport = parseFloat(form.transport_charge) || 0
-    return { lineTotal, transport, grand: lineTotal + transport }
+    const lineTotal = roundAmount(lines.reduce((s, row) => s + calcLine(row), 0))
+    const transport = roundAmount(parseFloat(form.transport_charge) || 0)
+    return { lineTotal, transport, grand: roundAmount(lineTotal + transport) }
   }, [lines, form.transport_charge])
 
   const saveMutation = useMutation({
@@ -284,13 +289,13 @@ export default function InvoiceFormPage() {
     invoice_date:     form.invoice_date,
     due_date:         form.due_date || null,
     invoice_type:     invoiceType,
-    transport_charge: parseFloat(form.transport_charge) || 0,
+    transport_charge: roundAmount(parseFloat(form.transport_charge) || 0),
     delivery_address: form.delivery_address.trim() || null,
     remarks:          form.remarks.trim() || null,
     company_id:       form.company_id ? Number(form.company_id) : null,
     items: lines.map((row) => ({
       so_item_id: row.so_item_id,
-      unit_price: parseFloat(row.unit_price) || 0,
+      unit_price: roundAmount(parseFloat(row.unit_price) || 0),
       discount:   parseFloat(row.discount)   || 0,
       // A Non-Tax invoice never adds VAT — the backend enforces this too
       tax:        invoiceType === 'non_tax' ? 0 : (parseFloat(row.tax) || 0),
@@ -565,7 +570,7 @@ export default function InvoiceFormPage() {
                     <span className="ml-1 normal-case font-medium text-slate-400">(SO: {fmtMoney(source.sales_order.transport_charge)})</span>
                   )}
                 </label>
-                <input type="number" min="0" step="0.01" className={INPUT_CLS} value={form.transport_charge} onChange={(e) => setForm((f) => ({ ...f, transport_charge: e.target.value }))} />
+                <input type="number" min="0" step={amountStep()} className={INPUT_CLS} value={form.transport_charge} onChange={(e) => setForm((f) => ({ ...f, transport_charge: e.target.value }))} onBlur={(e) => setForm((f) => ({ ...f, transport_charge: roundAmountInput(e.target.value) }))} />
               </div>
               <div>
                 <label className={LABEL_CLS}>Remarks</label>
@@ -630,7 +635,7 @@ export default function InvoiceFormPage() {
                       <input readOnly value={Number(row.quantity).toLocaleString(undefined, { maximumFractionDigits: 4 })} className={`${TABLE_INPUT_RO} text-right tabular-nums`} title="Quantity comes from the source document" />
                     </td>
                     <td className="px-2 py-1">
-                      <input type="number" min="0" step="0.01" value={row.unit_price} onChange={(e) => setLineField(idx, 'unit_price', e.target.value)} className={isBelowCost(row, invoiceType) ? TABLE_INPUT_WARN : TABLE_INPUT} />
+                      <input type="number" min="0" step={amountStep()} value={row.unit_price} onChange={(e) => setLineField(idx, 'unit_price', e.target.value)} onBlur={(e) => setLineField(idx, 'unit_price', roundAmountInput(e.target.value))} className={isBelowCost(row, invoiceType) ? TABLE_INPUT_WARN : TABLE_INPUT} />
                       {isBelowCost(row, invoiceType) && (
                         <p
                           className="mt-0.5 text-[9px] font-semibold leading-tight text-amber-600"

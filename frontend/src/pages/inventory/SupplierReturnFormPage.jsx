@@ -21,6 +21,7 @@ import KeyboardShortcuts from '../../components/ui/KeyboardShortcuts'
 import { usePermissions } from '../../hooks/usePermissions'
 import { confirmAction, showError, showSuccess } from '../../utils/alerts'
 import { printPdfBlob } from '../../utils/pdf'
+import { roundAmount } from '../../utils/currency'
 import { INPUT_CLS, INPUT_DISABLED_CLS, LABEL_CLS, inputCls, selectCls } from '../../utils/fieldStyles'
 
 const EMPTY_ARRAY = []
@@ -58,8 +59,6 @@ function fmtQty(n) {
   return Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 4 })
 }
 
-const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100
-
 function lineQty(line) {
   return line.is_scanned
     ? line.pieces.filter((p) => p.checked).reduce((sum, p) => sum + (parseFloat(p.quantity) || 0), 0)
@@ -68,7 +67,7 @@ function lineQty(line) {
 
 /** What the GRN charged for this much of the line — the same pro-rata the backend debits. */
 function lineValue(line) {
-  return line.received_qty > 0 ? round2((line.line_total * lineQty(line)) / line.received_qty) : 0
+  return line.received_qty > 0 ? roundAmount((line.line_total * lineQty(line)) / line.received_qty) : 0
 }
 
 /** Build editable rows from the returnable lines, re-applying a saved draft's choices. */
@@ -236,10 +235,10 @@ export default function SupplierReturnFormPage() {
   const lineOver      = (l) => lineQty(l) - l.returnable_qty > QTY_TOLERANCE
   const pieceOver     = (p) => (parseFloat(p.quantity) || 0) - p.available_qty > QTY_TOLERANCE
 
-  const totalValue  = round2(selectedLines.reduce((sum, l) => sum + lineValue(l), 0))
+  const totalValue  = roundAmount(selectedLines.reduce((sum, l) => sum + lineValue(l), 0))
   const outstanding = returnable?.grn?.outstanding ?? 0
   const toGrn       = Math.min(totalValue, outstanding)
-  const toCredit    = round2(totalValue - toGrn)
+  const toCredit    = roundAmount(totalValue - toGrn)
 
   // ── Save / confirm ───────────────────────────────────────────────────────
   const saveMutation = useMutation({

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Support\Journal;
 
+use App\Support\Money\Amount;
 use DateTimeInterface;
 use InvalidArgumentException;
 
@@ -70,12 +71,12 @@ final class JournalRequest
 
     public function totalDebit(): float
     {
-        return round(array_sum(array_map(fn (JournalLineRequest $l): float => $l->debit, $this->lines)), 2);
+        return Amount::round(array_sum(array_map(fn (JournalLineRequest $l): float => $l->debit, $this->lines)));
     }
 
     public function totalCredit(): float
     {
-        return round(array_sum(array_map(fn (JournalLineRequest $l): float => $l->credit, $this->lines)), 2);
+        return Amount::round(array_sum(array_map(fn (JournalLineRequest $l): float => $l->credit, $this->lines)));
     }
 
     /**
@@ -86,11 +87,14 @@ final class JournalRequest
      */
     public function imbalance(): float
     {
-        return round($this->totalDebit() - $this->totalCredit(), 2);
+        return Amount::round($this->totalDebit() - $this->totalCredit());
     }
 
-    public function isBalanced(float $tolerance = 0.01): bool
+    /** @param float|null $tolerance defaults to exact at the Amount decimals setting (no one-cent licence) */
+    public function isBalanced(?float $tolerance = null): bool
     {
-        return abs($this->imbalance()) <= $tolerance;
+        return $tolerance === null
+            ? abs($this->imbalance()) < Amount::tolerance()
+            : abs($this->imbalance()) <= $tolerance;
     }
 }

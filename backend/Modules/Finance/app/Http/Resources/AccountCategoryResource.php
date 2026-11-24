@@ -20,6 +20,9 @@ class AccountCategoryResource extends JsonResource
             'account_type_label'     => $this->account_type->label(),
             'normal_balance'         => $this->account_type->normalBalance(),
             'category_name'          => $this->category_name,
+            // Own section (null = not classified) and where it actually reports.
+            'pl_section'             => $this->pl_section?->value,
+            'pl_section_label'       => $this->effectivePlSection()?->label(),
             'description'            => $this->description,
             'is_active'              => $this->is_active,
             'control_accounts_count' => $this->whenCounted('controlAccounts'),

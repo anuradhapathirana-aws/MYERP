@@ -56,6 +56,7 @@ class AccountCategoryService
             $category = new AccountCategory([
                 'account_type'  => $data->account_type,
                 'category_name' => $data->category_name,
+                'pl_section'    => $data->pl_section,
                 'description'   => $data->description,
                 'is_active'     => $data->is_active,
             ]);
@@ -83,8 +84,11 @@ class AccountCategoryService
             ]);
         }
 
+        // The P&L section is a reporting choice, not part of the code, so it
+        // may change at any time; every P&L re-reads it.
         $category->update([
             'category_name' => $data->category_name,
+            'pl_section'    => $data->pl_section,
             'description'   => $data->description,
             'is_active'     => $data->is_active,
         ]);

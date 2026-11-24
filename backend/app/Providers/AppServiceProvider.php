@@ -5,19 +5,24 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Contracts\ChequeReturnHandler;
+use App\Contracts\DocumentLocationSource;
 use App\Contracts\FundBalanceGuard;
 use App\Contracts\JournalPoster;
 use App\Contracts\LandedChargeSource;
 use App\Contracts\LandedCostTargets;
+use App\Contracts\StockValuationSource;
 use App\Contracts\TaxCodeUsage;
 use App\Models\User;
+use App\Services\AmountPrecision;
 use App\Services\CompanyAccessService;
 use App\Services\SettingsService;
 use App\Support\Banking\ChequeReturnRouter;
+use App\Support\Journal\NullDocumentLocationSource;
 use App\Support\Journal\NullFundBalanceGuard;
 use App\Support\Journal\NullJournalPoster;
 use App\Support\Landed\NullLandedChargeSource;
 use App\Support\Landed\NullLandedCostTargets;
+use App\Support\Stock\NullStockValuationSource;
 use App\Support\Tax\SupplierDefaultTaxCodeUsage;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -31,6 +36,10 @@ class AppServiceProvider extends ServiceProvider
         // Scoped, not singleton: it memoises each user's companies, and that
         // memo must not outlive the request (or leak between queue jobs).
         $this->app->scoped(CompanyAccessService::class);
+
+        // Scoped for the same reason: it memoises the Amount decimals setting,
+        // which a long-running queue worker must re-read per job.
+        $this->app->scoped(AmountPrecision::class);
 
         // Default: no general ledger. FinanceServiceProvider binds its own
         // posting service when the module is installed, so a document can
@@ -58,6 +67,15 @@ class AppServiceProvider extends ServiceProvider
         // other module works on its own. bindIf for the reason given above.
         $this->app->bindIf(LandedChargeSource::class, NullLandedChargeSource::class);
         $this->app->bindIf(LandedCostTargets::class, NullLandedCostTargets::class);
+
+        // The P&L's opening and closing stock come from Inventory's stock
+        // ledger; without Inventory the null answers "not available" and the
+        // user enters them. bindIf for the reason given above.
+        $this->app->bindIf(StockValuationSource::class, NullStockValuationSource::class);
+
+        // Finance's journal-location backfill asks the module that owns each
+        // document; without it nothing is filled. bindIf as above.
+        $this->app->bindIf(DocumentLocationSource::class, NullDocumentLocationSource::class);
 
         // Bank Reconciliation asks the document that wrote a cheque to take it
         // back. The router finds that document among the ChequeReturnSource

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Support\Money\Amount;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -84,7 +85,7 @@ class ReceivedChequeRegistry
                 'cheque_no'         => $row->cheque_no,
                 'cheque_date'       => $row->cheque_date === null ? null : substr((string) $row->cheque_date, 0, 10),
                 'drawee_bank'       => $row->drawee_bank,
-                'amount'            => number_format((float) $row->amount, 2, '.', ''),
+                'amount'            => Amount::fixed((float) $row->amount),
                 'receipt_no'        => $row->receipt_no,
                 'receipt_date'      => substr((string) $row->receipt_date, 0, 10),
                 'customer_name'     => $row->customer_name,

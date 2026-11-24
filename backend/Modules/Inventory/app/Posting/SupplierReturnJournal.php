@@ -7,6 +7,7 @@ namespace Modules\Inventory\Posting;
 use App\Support\Journal\JournalLineRequest;
 use App\Support\Journal\JournalRequest;
 use App\Support\Journal\PostingRole;
+use App\Support\Money\Amount;
 use Modules\Inventory\Models\SupplierReturn;
 
 /**
@@ -44,11 +45,11 @@ final class SupplierReturnJournal
             }
         }
 
-        $total   = round((float) $return->total_amount, 2);
-        $tax     = round($tax, 2);
-        $net     = round($total - $tax, 2);
-        $applied = round((float) $return->applied_to_grn, 2);
-        $excess  = round($total - $applied, 2);
+        $total   = Amount::round((float) $return->total_amount);
+        $tax     = Amount::round($tax);
+        $net     = Amount::round($total - $tax);
+        $applied = Amount::round((float) $return->applied_to_grn);
+        $excess  = Amount::round($total - $applied);
 
         $lines = [];
 

@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState } from 'react'
+import { fmtMoney } from '../../utils/currency'
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Check, Scale } from 'lucide-react'
 import { getTrialBalance } from '../../api/journalEntries'
@@ -24,8 +25,7 @@ const DETAIL_KEYS = [
 
 const VIEW_KEY = 'tb.view'
 
-const money = (n) =>
-  Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const money = (n) => fmtMoney(n)
 
 /** Blank instead of 0.00, so a column of figures reads at a glance. */
 const cell = (n) => (Number(n) > 0 ? money(n) : '')

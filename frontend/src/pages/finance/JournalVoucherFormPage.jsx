@@ -10,6 +10,7 @@ import { getAllLocations } from '../../api/locations'
 import FilterSearchSelect from '../../components/ui/FilterSearchSelect'
 import Breadcrumb from '../../components/Breadcrumb'
 import { showError, showSuccess } from '../../utils/alerts'
+import { amountStep, amountTolerance, fmtMoney, roundAmount, roundAmountInput } from '../../utils/currency'
 import { usePermissions } from '../../hooks/usePermissions'
 import {
   INPUT_CLS, INPUT_ERR_CLS, LABEL_CLS, SELECT_CLS, TEXTAREA_CLS,
@@ -127,25 +128,24 @@ export default function JournalVoucherFormPage() {
     let credit = 0
     let filled = 0
 
+    // Each line rounds to the Amount decimals setting first, as the server stores it.
     for (const l of lines) {
-      const d = Number(l.debit)  || 0
-      const c = Number(l.credit) || 0
+      const d = roundAmount(l.debit)
+      const c = roundAmount(l.credit)
       if (d > 0 || c > 0) filled += 1
       debit  += d
       credit += c
     }
 
-    const round2 = (n) => Math.round(n * 100) / 100
-
     return {
-      debit:      round2(debit),
-      credit:     round2(credit),
-      difference: round2(debit - credit),
+      debit:      roundAmount(debit),
+      credit:     roundAmount(credit),
+      difference: roundAmount(debit - credit),
       filled,
     }
   }, [lines])
 
-  const isBalanced = Math.abs(totals.difference) < 0.005 && totals.debit > 0
+  const isBalanced = Math.abs(totals.difference) < amountTolerance() && totals.debit > 0
   const canPost    = isBalanced && totals.filled >= 2
 
   /* ── Line editing ───────────────────────────────────────────────────── */
@@ -212,8 +212,8 @@ export default function JournalVoucherFormPage() {
         .filter((l) => Number(l.debit) > 0 || Number(l.credit) > 0)
         .map((l) => ({
           ledger_account_id: Number(l.ledger_account_id),
-          debit:             Number(l.debit)  || 0,
-          credit:            Number(l.credit) || 0,
+          debit:             roundAmount(l.debit),
+          credit:            roundAmount(l.credit),
           description:       l.description || null,
         })),
     }
@@ -239,7 +239,7 @@ export default function JournalVoucherFormPage() {
     )
   }
 
-  const money = (n) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const money = fmtMoney
 
   return (
     <div className="p-3">
@@ -380,10 +380,11 @@ export default function JournalVoucherFormPage() {
                       <td className="px-2 py-1">
                         <input
                           type="number"
-                          step="0.01"
+                          step={amountStep()}
                           min="0"
                           value={line.debit}
                           onChange={(e) => setAmount(i, 'debit', e.target.value)}
+                          onBlur={(e) => setLine(i, { debit: roundAmountInput(e.target.value) })}
                           className={`${INPUT_CLS} text-right`}
                         />
                       </td>
@@ -391,10 +392,11 @@ export default function JournalVoucherFormPage() {
                       <td className="px-2 py-1">
                         <input
                           type="number"
-                          step="0.01"
+                          step={amountStep()}
                           min="0"
                           value={line.credit}
                           onChange={(e) => setAmount(i, 'credit', e.target.value)}
+                          onBlur={(e) => setLine(i, { credit: roundAmountInput(e.target.value) })}
                           className={`${INPUT_CLS} text-right`}
                         />
                       </td>

@@ -86,6 +86,7 @@ const BankDepositFormPage       = lazy(() => import('./pages/finance/BankDeposit
 const BankReconciliationsPage   = lazy(() => import('./pages/finance/BankReconciliationsPage'))
 const BankReconciliationFormPage = lazy(() => import('./pages/finance/BankReconciliationFormPage'))
 const UnclearedChequesReport    = lazy(() => import('./pages/finance/UnclearedChequesReport'))
+const ProfitLossPage            = lazy(() => import('./pages/finance/ProfitLossPage'))
 const SalesOrdersPage           = lazy(() => import('./pages/inventory/SalesOrdersPage'))
 const SalesOrderFormPage        = lazy(() => import('./pages/inventory/SalesOrderFormPage'))
 const SalesOrderViewPage        = lazy(() => import('./pages/inventory/SalesOrderViewPage'))
@@ -313,6 +314,7 @@ export default function App() {
         <Route path="/finance/bank-reconciliations/:id"        element={<Lazy component={BankReconciliationFormPage} />} />
         <Route path="/finance/bank-reconciliations/:id/edit"   element={<Lazy component={BankReconciliationFormPage} />} />
         <Route path="/finance/reports/uncleared-cheques"       element={<Lazy component={UnclearedChequesReport} />} />
+        <Route path="/finance/reports/profit-loss"             element={<Lazy component={ProfitLossPage} />} />
 
         {/* ── Inventory Reports ── */}
         <Route path="/inventory/reports/stock-levels"      element={<Lazy component={StockLevelsReport} />} />

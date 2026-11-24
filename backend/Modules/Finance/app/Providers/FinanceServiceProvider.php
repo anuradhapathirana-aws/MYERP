@@ -9,18 +9,26 @@ use App\Contracts\LandedChargeSource;
 use App\Models\SupplierMaster;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Modules\Finance\Console\Commands\BackfillJournalLocations;
 use Illuminate\Support\Facades\RateLimiter;
 use Modules\Finance\Observers\SupplierLedgerObserver;
 use Modules\Finance\Services\FundBalanceService;
 use Modules\Finance\Services\JournalPostingService;
 use Modules\Finance\Support\BillLandedChargeSource;
 use Modules\Finance\Support\BillPaymentChequeReturns;
+use Modules\Finance\Support\FinanceAmountPrecision;
+use App\Contracts\AmountPrecisionUsage;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
 class FinanceServiceProvider extends ModuleServiceProvider
 {
     protected string $name      = 'Finance';
     protected string $nameLower = 'finance';
+
+    /** @var string[] */
+    protected array $commands = [
+        BackfillJournalLocations::class,
+    ];
 
     /** @var string[] */
     protected array $providers = [
@@ -50,6 +58,10 @@ class FinanceServiceProvider extends ModuleServiceProvider
 
         // Bank Reconciliation returns a bill payment's cheque here.
         $this->app->tag([BillPaymentChequeReturns::class], ChequeReturnSource::TAG);
+
+        // Finance documents lock the Amount decimals setting; its money
+        // columns feed the precision audit.
+        $this->app->tag([FinanceAmountPrecision::class], AmountPrecisionUsage::TAG);
     }
 
     public function boot(): void

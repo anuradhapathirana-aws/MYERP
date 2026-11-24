@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Finance\DTOs;
 
+use App\Support\Money\Amount;
 use Modules\Finance\Http\Requests\BankDepositRequest;
 
 /**
@@ -32,7 +33,7 @@ final class BankDepositData
         $v = $request->validated();
 
         // Kept as a 2-dp string; money never travels as a float.
-        $cash = number_format((float) ($v['cash_amount'] ?? 0), 2, '.', '');
+        $cash = Amount::fixed((float) ($v['cash_amount'] ?? 0));
 
         return new self(
             request_id:      $v['request_id'] ?? null,

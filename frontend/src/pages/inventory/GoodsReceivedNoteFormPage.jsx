@@ -31,7 +31,7 @@ import Breadcrumb from '../../components/Breadcrumb'
 import KeyboardShortcuts from '../../components/ui/KeyboardShortcuts'
 import HelpTip from '../../components/ui/HelpTip'
 import Money from '../../components/ui/Money'
-import { CURRENCY, fmtMoney, fmtMoneyWithSymbol } from '../../utils/currency'
+import { CURRENCY, fmtMoney, fmtMoneyWithSymbol, roundAmount, unitPriceInput, unitPriceText } from '../../utils/currency'
 import BatchAssignModal from '../../components/inventory/BatchAssignModal'
 import RollAssignModal from '../../components/inventory/RollAssignModal'
 import VariantSelect from '../../components/inventory/VariantSelect'
@@ -256,8 +256,9 @@ function FormDropdown({ groups, value, onChange, onNext, onBlur, placeholder = '
 }
 
 /* ── Helpers ──────────────────────────────────────────────────── */
-const toPrice = (v) =>
-  v != null && v !== '' && !isNaN(parseFloat(v)) ? parseFloat(v).toFixed(2) : ''
+// A unit cost exactly as stored (up to 4 decimals) — never cut to the Amount decimals,
+// or opening and saving a GRN would silently change its costs.
+const toPrice = unitPriceText
 
 // "Color" or "Colour" — attribute-type spelling varies by who entered the master data.
 function isColorAttributeTypeName(name) {
@@ -282,7 +283,9 @@ function calcItem(row, discountEnabled = true, taxCtx = NO_TAX) {
   const afterDisc = gross - discAmt
 
   if (!taxCtx.components.length) {
-    return { gross, discAmt, taxAmt: 0, recoverable: 0, nonRecoverable: 0, base: afterDisc, taxLines: [], amount: afterDisc }
+    // The unit price is a cost and keeps its precision; the line total rounds to the setting.
+    const amount = roundAmount(afterDisc)
+    return { gross, discAmt, taxAmt: 0, recoverable: 0, nonRecoverable: 0, base: afterDisc, taxLines: [], amount }
   }
 
   const t = calculateTax(taxCtx.components, afterDisc, taxCtx.inclusive)
@@ -1227,6 +1230,8 @@ export default function GoodsReceivedNoteFormPage() {
     },
     { gross: 0, disc: 0, tax: 0, claimable: 0, taxToCost: 0, total: 0 },
   )
+  // Sums of rounded lines, rounded once more as the server stores total_amount.
+  for (const k of Object.keys(totals)) totals[k] = roundAmount(totals[k])
 
   /* ── Per-product qty summary — rolls up every color/row of the same
      product into one line, converted to the product's base (stocking) unit
@@ -2231,11 +2236,15 @@ export default function GoodsReceivedNoteFormPage() {
                                 <div className="flex items-center gap-0.5">
                                   <input
                                     ref={setCellRef(row._key, 'price')}
-                                    type="number" min="0" step="0.01"
+                                    type="number" min="0" step="any"
                                     className={(getItemErr(row._key, 'price') ? TABLE_ERR : TABLE_INPUT) + ' w-28'}
                                     value={row.unit_price}
                                     onChange={(e) => setRowField(idx, 'unit_price', e.target.value)}
-                                    onBlur={() => touchItemField(row._key, 'price')}
+                                    onBlur={(e) => {
+                                      const rounded = unitPriceInput(e.target.value)
+                                      if (rounded !== e.target.value) setRowField(idx, 'unit_price', rounded)
+                                      touchItemField(row._key, 'price')
+                                    }}
                                     onKeyDown={(e) => {
                                       if (e.key === 'Enter') {
                                         e.preventDefault()

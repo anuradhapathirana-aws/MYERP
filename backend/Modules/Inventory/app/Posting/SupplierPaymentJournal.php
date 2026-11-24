@@ -9,6 +9,7 @@ use App\Models\PaymentMode;
 use App\Support\Journal\JournalLineRequest;
 use App\Support\Journal\JournalRequest;
 use App\Support\Journal\PostingRole;
+use App\Support\Money\Amount;
 use Illuminate\Validation\ValidationException;
 use Modules\Inventory\Enums\SetoffType;
 use Modules\Inventory\Models\SupplierCreditNote;
@@ -82,7 +83,7 @@ final class SupplierPaymentJournal
         // already minted the credit note by the time this runs, so the note is
         // the single source of truth for the amount rather than a second
         // calculation that could disagree with it.
-        $minted = round((float) SupplierCreditNote::where('source_payment_id', $payment->id)->sum('amount'), 2);
+        $minted = Amount::round((float) SupplierCreditNote::where('source_payment_id', $payment->id)->sum('amount'));
 
         if ($minted > 0) {
             $lines[] = JournalLineRequest::debit(
@@ -99,7 +100,7 @@ final class SupplierPaymentJournal
         $modeTypes = PaymentMode::typesById($payment->settlements->pluck('payment_mode_id')->map(fn ($id): int => (int) $id)->all());
 
         foreach ($payment->settlements as $settlement) {
-            $amount = round((float) $settlement->amount, 2);
+            $amount = Amount::round((float) $settlement->amount);
 
             if ($amount <= 0) {
                 continue;
@@ -149,7 +150,7 @@ final class SupplierPaymentJournal
         // A settlement discount, not a trade discount. The codebase treats it
         // as reducing the payable exactly like cash, so it has to appear as its
         // own line or the payable would not clear.
-        $discount = round((float) $payment->discount_amount, 2);
+        $discount = Amount::round((float) $payment->discount_amount);
 
         if ($discount > 0) {
             $lines[] = JournalLineRequest::credit(
@@ -196,7 +197,7 @@ final class SupplierPaymentJournal
         $totals = [];
 
         foreach ($payment->setoffs as $setoff) {
-            $amount = round((float) $setoff->amount, 2);
+            $amount = Amount::round((float) $setoff->amount);
 
             if ($amount <= 0) {
                 continue;
@@ -206,7 +207,7 @@ final class SupplierPaymentJournal
                 ? PostingRole::PURCHASES
                 : PostingRole::SUPPLIER_ADVANCE;
 
-            $totals[$role] = round(($totals[$role] ?? 0) + $amount, 2);
+            $totals[$role] = Amount::round(($totals[$role] ?? 0) + $amount);
         }
 
         return $totals;

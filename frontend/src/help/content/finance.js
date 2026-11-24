@@ -268,7 +268,7 @@ export const topics = [
     who: 'View Financial Reports',
     steps: [
       'Set **From** and **To** (it opens on this month) and a **Location** if needed.',
-      'Switch **Compare Period** **On** (or press **Alt+C**) for a second column; switch it **Off** to hide it. Your choice is remembered on your computer. It defaults to the period just before: November compares with October, a quarter with the quarter before. Change **Compare From / To** to compare with any other period, such as the same month last year.',
+      'Switch **Compare Period** **On** (or press **Alt+C**) for a second column; switch it **Off** to hide it. It is **On** every time the page opens; switching it Off lasts until you leave the page. It defaults to the period just before: November compares with October, a quarter with the quarter before. Change **Compare From / To** to compare with any other period, such as the same month last year.',
       'Read it top to bottom: **Revenue**, then **Cost of Sales** (Opening Stock + Purchases + direct costs − Closing Stock), **Gross Profit**, **Other Income**, **Overhead Costs** by group, **Net Profit before Taxation**, **Taxation**, **Provision for Reserves** and **Net Profit for the Period**. Figures in brackets are negative; a loss shows in red.',
       'The four tiles at the top show Revenue, Gross Profit, Net Profit before Tax and Net Profit for the Period, each with its **% of revenue**. With Compare on, the **Change** chip shows the move against the comparative period: **green** is good for the business (more income or profit, less cost), **red** is bad. The same chips appear in the **Change** column of the statement.',
       'Not sure what a line means? Hover the **?** beside it for a short explanation.',

@@ -57,17 +57,11 @@ const NOTE = {
   margin:      'This result as a percentage of Revenue.',
 }
 
-const COMPARE_KEY = 'pl.compare'
-
 const isoDate    = (d) => d.toLocaleDateString('en-CA')
 const monthStart = () => { const d = new Date(); d.setDate(1); return isoDate(d) }
 
 const defaultFilters = () => ({ date_from: monthStart(), date_to: isoDate(new Date()), location_id: '' })
 const EMPTY_STOCK    = { opening: '', closing: '', compare_opening: '', compare_closing: '' }
-
-const readCompare = () => {
-  try { return localStorage.getItem(COMPARE_KEY) !== '0' } catch { return true }
-}
 
 /** Accounting style: negatives in brackets, blank when there is no figure. */
 const amt = (n) => {
@@ -125,7 +119,8 @@ export default function ProfitLossPage() {
   const allowed = can('view_finance_reports')
 
   const [filters, setFilters]       = useState(defaultFilters)
-  const [compare, setCompare]       = useState(readCompare)
+  // Compare starts On every time the page opens; switching it off lasts for this visit only.
+  const [compare, setCompare]       = useState(true)
   const [compareDates, setCmpDates] = useState({ from: '', to: '' })
   const [stock, setStock]           = useState(EMPTY_STOCK)
   const [selected, setSelected]     = useState(null)
@@ -136,10 +131,7 @@ export default function ProfitLossPage() {
   const changeCompareDates = (patch) => { setCmpDates((c) => ({ ...c, ...patch })); setStock((s) => ({ ...s, compare_opening: '', compare_closing: '' })) }
 
   const toggleCompare = useCallback(() => {
-    setCompare((c) => {
-      try { localStorage.setItem(COMPARE_KEY, c ? '0' : '1') } catch { /* storage unavailable */ }
-      return !c
-    })
+    setCompare((c) => !c)
   }, [])
 
   const reset = useCallback(() => {

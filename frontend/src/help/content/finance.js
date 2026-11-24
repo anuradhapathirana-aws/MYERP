@@ -60,6 +60,7 @@ export const topics = [
     }],
     steps: [
       '**Account Categories:** choose the account type and type the name. The 3-digit code is given automatically.',
+      'For an Income or Expense category, set its **P&L Section** (Revenue, Cost of Sales, Other Income, Administration, Selling & Distribution, Finance & Other, Other Expenses or Taxation): it decides where the category’s accounts appear on the Profit & Loss. An Equity category can be **Provision for Reserves**. A category left blank shows under Other Income or Other Expenses, marked in amber in the list.',
       '**Control Accounts:** choose the category and type the name. The 5-digit code is given automatically.',
       '**Ledger Accounts:** choose the control account and type the name. The 8-digit code is given automatically. Only ledger accounts receive postings.',
       'For a cash or bank account, set **Selection of Cash**: **Cash Book** (tick whether it takes **Cash**, **Cheque** or both), **Petty Cash Book**, or **Bank** (with bank, branch and account number). These are the accounts offered as **Pay From**, **Deposit To** and **Deposit Into**.',
@@ -75,7 +76,7 @@ export const topics = [
       'A category or control account with accounts under it cannot be deleted.',
       'A cash book must accept cash, cheques, or both. A cash book that takes cheques is where received cheques wait (“Cheques in Hand”).',
     ],
-    related: ['fin-account-mapping', 'fin-bank-deposit'],
+    related: ['fin-account-mapping', 'fin-bank-deposit', 'fin-profit-loss'],
   },
 
   {
@@ -132,7 +133,8 @@ export const topics = [
     who: 'Period Lock – Manage (to lock a month). Maker-checker is switched on/off by your IT support (super admin).',
     steps: [
       'After closing a month (for example after filing the VAT return), set **Locked up to** to its last day and save.',
-      'To switch **maker-checker** on or off, ask your IT support. Only a super admin can change it, because switching it off removes a fraud control.'
+      'To switch **maker-checker** on or off, ask your IT support. Only a super admin can change it, because switching it off removes a fraud control.',
+      'The **Finance go-live date** is the first day the ledger is complete (the cut-over date, when opening balances are posted). Your IT support (super admin) sets it once. Financial statements such as the Profit & Loss start from it, because documents from before Finance went live never reached the ledger.',
     ],
     example: {
       scenario: 'October 2026 is closed and reported. Set **Locked up to** = 31-10-2026.',
@@ -253,6 +255,48 @@ export const topics = [
     ],
     tips: ['To check one supplier or customer, type their name in **Accounts** and pick their ledger.'],
     related: ['fin-trial-balance', 'fin-journal-voucher'],
+  },
+
+  {
+    id: 'fin-profit-loss',
+    section: 'finance',
+    title: 'Profit & Loss',
+    keywords: ['profit and loss', 'P&L', 'PnL', 'income statement', 'trading account', 'gross profit', 'net profit', 'cost of goods sold', 'COGS', 'opening stock', 'closing stock', 'overheads', 'taxation', 'income tax', 'provision for reserves', 'comparative', 'financial statement'],
+    summary: 'Revenue, cost of sales, gross profit, overheads, tax and net profit for a period, with an optional comparative column.',
+    where: 'Finance › Financial Statements › Profit & Loss',
+    route: '/finance/reports/profit-loss',
+    who: 'View Financial Reports',
+    steps: [
+      'Set **From** and **To** (it opens on this month) and a **Location** if needed.',
+      'Switch **Compare Period** **On** (or press **Alt+C**) for a second column; switch it **Off** to hide it. Your choice is remembered on your computer. It defaults to the period just before: November compares with October, a quarter with the quarter before. Change **Compare From / To** to compare with any other period, such as the same month last year.',
+      'Read it top to bottom: **Revenue**, then **Cost of Sales** (Opening Stock + Purchases + direct costs − Closing Stock), **Gross Profit**, **Other Income**, **Overhead Costs** by group, **Net Profit before Taxation**, **Taxation**, **Provision for Reserves** and **Net Profit for the Period**. Figures in brackets are negative; a loss shows in red.',
+      'The four tiles at the top show Revenue, Gross Profit, Net Profit before Tax and Net Profit for the Period, each with its **% of revenue**. With Compare on, the **Change** chip shows the move against the comparative period: **green** is good for the business (more income or profit, less cost), **red** is bad. The same chips appear in the **Change** column of the statement.',
+      'Not sure what a line means? Hover the **?** beside it for a short explanation.',
+      'Click any **account** to see the entries behind it (list or T-account).',
+      'To use a stock count instead of the automatic stock value, click the **pencil** next to Opening or Closing Stock, type the value and press **Enter**. It is marked **Entered**; the arrow puts the automatic value back. Typed values are not saved and are cleared when you change the period.',
+      'Use **Print** or **PDF** (**Alt+P**) for an A4 copy of exactly what is on screen, typed stock values included.',
+    ],
+    howItWorks: [
+      'Everything except stock comes from posted journals, the same as the Trial Balance. Draft journals are not included; the report tells you how many there are.',
+      'Each account appears under the **P&L Section** of its account category (set on **Account Categories**). A category with no section shows under Other Income or Other Expenses, and the report names it so you can set it.',
+      '**Purchases** are the accounts mapped to Purchases and Purchase Returns in Account Mapping. Other Cost of Sales accounts (direct labour, freight in) are added to cost of sales as direct costs.',
+      '**Stock** is not in the ledger: a GRN posts to Purchases. Opening stock is the stock at the end of the day before **From**, closing stock at the end of **To**, both from Inventory: quantity on hand by document date × weighted average GRN cost up to that date. Landed costs are not included. Without the Inventory module, type both values from your stock count.',
+      '**Taxation** is income tax on profit, not VAT. VAT and SSCL collected on sales are owed to the government and never reach the P&L. Post income tax by Journal Voucher: Dr *Income Tax Expense* / Cr *Income Tax Payable*, using an account in a category whose P&L Section is **Taxation**.',
+      '**Provision for Reserves** is profit set aside, posted by Journal Voucher: Dr *Retained Earnings* / Cr *General Reserve*. The reserve account must be in an Equity category whose P&L Section is **Provision for Reserves**. The starter “Capital & Reserves” category also holds Share Capital, so create a separate **Reserves** category for this.',
+      '**Location filter:** shows only journal lines tagged with that location. Invoices take the location of their Delivery Order, customer returns their own, GRNs and supplier returns the GRN’s. A direct-SO invoice (no DO) and most Journal Vouchers have no location, so they appear only with the Location filter cleared; the report tells you how many lines that leaves out.',
+      '**Deliveries not invoiced:** a confirmed Delivery Order takes the goods out of stock, so its cost is in Cost of Sales straight away, but the sale only reaches the ledger when it is invoiced. If a DO dated in the period has no invoice dated on or before **To**, the report warns you with the DO numbers and their cost, because gross profit is understated until they are invoiced.',
+      'Periods before the **Finance go-live date** (Account Mapping › Period Lock & Controls) are refused: documents from before Finance went live never reached the ledger, so the report would show stock against no sales and print a false profit.',
+    ],
+    rules: [
+      'From and To are required, and From cannot be before the Finance go-live date.',
+      'A typed stock value cannot be negative.',
+    ],
+    tips: [
+      'A gross loss on a short period is often a delivery made but not invoiced yet. Invoice the DO with a date inside the period and the loss goes away.',
+      'If Gross Profit looks too high or too low, check the stock lines first: old stock that was never loaded into Inventory makes closing stock too low.',
+      'Set the P&L Section on every income and expense category so nothing lands under Other Income or Other Expenses by accident.',
+    ],
+    related: ['fin-trial-balance', 'fin-coa', 'fin-controls', 'fin-journal-voucher'],
   },
 
   {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Contracts\ChequeReturnHandler;
+use App\Contracts\DocumentLocationSource;
 use App\Contracts\FundBalanceGuard;
 use App\Contracts\JournalPoster;
 use App\Contracts\LandedChargeSource;
@@ -16,6 +17,7 @@ use App\Services\AmountPrecision;
 use App\Services\CompanyAccessService;
 use App\Services\SettingsService;
 use App\Support\Banking\ChequeReturnRouter;
+use App\Support\Journal\NullDocumentLocationSource;
 use App\Support\Journal\NullFundBalanceGuard;
 use App\Support\Journal\NullJournalPoster;
 use App\Support\Landed\NullLandedChargeSource;
@@ -70,6 +72,10 @@ class AppServiceProvider extends ServiceProvider
         // ledger; without Inventory the null answers "not available" and the
         // user enters them. bindIf for the reason given above.
         $this->app->bindIf(StockValuationSource::class, NullStockValuationSource::class);
+
+        // Finance's journal-location backfill asks the module that owns each
+        // document; without it nothing is filled. bindIf as above.
+        $this->app->bindIf(DocumentLocationSource::class, NullDocumentLocationSource::class);
 
         // Bank Reconciliation asks the document that wrote a cheque to take it
         // back. The router finds that document among the ChequeReturnSource

@@ -3,6 +3,7 @@
 namespace Modules\Inventory\Providers;
 
 use App\Contracts\ChequeReturnSource;
+use App\Contracts\DocumentLocationSource;
 use App\Contracts\LandedChargeUsage;
 use App\Contracts\LandedCostTargets;
 use App\Contracts\StockValuationSource;
@@ -10,6 +11,7 @@ use App\Contracts\TaxCodeUsage;
 use Modules\Inventory\Support\CostingLandedChargeUsage;
 use Modules\Inventory\Support\GrnTaxCodeUsage;
 use Modules\Inventory\Support\InventoryLandedCostTargets;
+use Modules\Inventory\Support\InventoryDocumentLocations;
 use Modules\Inventory\Support\InventoryStockValuation;
 use Modules\Inventory\Console\Commands\RecalculateStockBalances;
 use Modules\Inventory\Console\Commands\VerifyVariantBackfill;
@@ -52,6 +54,10 @@ class InventoryServiceProvider extends ModuleServiceProvider
         // The P&L's opening and closing stock: stock on hand by document date
         // at weighted average GRN cost.
         $this->app->bind(StockValuationSource::class, InventoryStockValuation::class);
+
+        // Finance's journal-location backfill: an invoice belongs to its DO's
+        // location, a customer return to its own.
+        $this->app->bind(DocumentLocationSource::class, InventoryDocumentLocations::class);
 
         // Bank Reconciliation returns a receipt's or a payment's cheque here:
         // the invoices / GRNs it settled reopen.

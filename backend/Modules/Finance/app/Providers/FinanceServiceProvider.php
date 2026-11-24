@@ -9,6 +9,7 @@ use App\Contracts\LandedChargeSource;
 use App\Models\SupplierMaster;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Modules\Finance\Console\Commands\BackfillJournalLocations;
 use Illuminate\Support\Facades\RateLimiter;
 use Modules\Finance\Observers\SupplierLedgerObserver;
 use Modules\Finance\Services\FundBalanceService;
@@ -23,6 +24,11 @@ class FinanceServiceProvider extends ModuleServiceProvider
 {
     protected string $name      = 'Finance';
     protected string $nameLower = 'finance';
+
+    /** @var string[] */
+    protected array $commands = [
+        BackfillJournalLocations::class,
+    ];
 
     /** @var string[] */
     protected array $providers = [

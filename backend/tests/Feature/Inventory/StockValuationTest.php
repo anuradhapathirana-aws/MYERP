@@ -81,18 +81,33 @@ class StockValuationTest extends TestCase
         $this->row(StockReferenceType::CODE_GRN, $grnId, $productId, $qty, 0, $cost, $confirmedAt ?? "{$grnDate} 10:00:00", $loc);
     }
 
-    private function delivery(int $productId, float $qty, float $sellingPrice, string $docDate, ?string $confirmedAt = null, ?int $loc = null): void
+    private function delivery(int $productId, float $qty, float $sellingPrice, string $docDate, ?string $confirmedAt = null, ?int $loc = null, string $status = 'confirmed'): int
     {
         static $n = 0;
         $n++;
 
         $doId = DB::table('inv_delivery_orders')->insertGetId([
             'do_no' => "DO-{$n}", 'so_id' => 1, 'customer_id' => 1,
-            'document_date' => $docDate, 'delivery_date' => $docDate, 'status' => 'confirmed',
+            'document_date' => $docDate, 'delivery_date' => $docDate, 'status' => $status,
             'created_at' => now(), 'updated_at' => now(),
         ]);
 
         $this->row(StockReferenceType::CODE_SALES_DELIVERY, $doId, $productId, 0, $qty, $sellingPrice, $confirmedAt ?? "{$docDate} 10:00:00", $loc);
+
+        return $doId;
+    }
+
+    private function invoice(int $doId, string $date, string $status = 'issued', bool $deleted = false): void
+    {
+        static $n = 0;
+        $n++;
+
+        DB::table('inv_invoices')->insert([
+            'invoice_no' => "INV-{$n}", 'so_id' => 1, 'do_id' => $doId, 'customer_id' => 1,
+            'invoice_date' => $date, 'status' => $status,
+            'deleted_at' => $deleted ? now() : null,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
     }
 
     private function customerReturn(int $productId, float $qty, float $sellingPrice, string $returnDate): void
@@ -219,6 +234,110 @@ class StockValuationTest extends TestCase
         // Company access: a user limited to company 2 never sees company 1's stock.
         $this->assertSame(['2026-07-31' => 1500.0], $v->valuesAsAt(['2026-07-31'], allowedCompanyIds: [2]));
         $this->assertSame(['2026-07-31' => 0.0], $v->valuesAsAt(['2026-07-31'], companyId: 1, allowedCompanyIds: [2]));
+    }
+
+    // ── Deliveries not invoiced ──────────────────────────────────────────────
+
+    public function test_a_delivery_with_no_invoice_by_the_period_end_is_listed_at_cost(): void
+    {
+        $this->grn(1, 10, 100, '2026-11-01');
+        $this->grn(2, 10, 40, '2026-11-01');
+
+        // The live case: two deliveries on 23-11, one invoiced the same day,
+        // the other invoiced on 24-11.
+        $invoiced = $this->delivery(1, 2, 250, '2026-11-23');
+        $later    = $this->delivery(1, 3, 250, '2026-11-23');
+        DB::table('inv_stock_transactions')->insert([
+            'transaction_date' => '2026-11-23 10:00:00', 'reference_type' => StockReferenceType::CODE_SALES_DELIVERY,
+            'reference_id' => $later, 'product_id' => 2, 'location_id' => $this->loc1, 'store_id' => 1,
+            'qty_in' => 0, 'qty_out' => 1.5, 'unit_price' => 90, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->invoice($invoiced, '2026-11-23');
+        $this->invoice($later, '2026-11-24');
+
+        // For 23-11 alone the later invoice is outside: 3 x 100 + 1.5 x 40.
+        $this->assertSame(
+            [['document_no' => $this->doNo($later), 'date' => '2026-11-23', 'cost' => 360.0]],
+            $this->valuation()->uninvoicedDeliveries('2026-11-23', '2026-11-23'),
+        );
+
+        // By 24-11 both are invoiced.
+        $this->assertSame([], $this->valuation()->uninvoicedDeliveries('2026-11-23', '2026-11-24'));
+    }
+
+    public function test_only_deliveries_dated_in_the_period_and_confirmed_count(): void
+    {
+        $this->grn(1, 20, 100, '2026-11-01');
+
+        $this->delivery(1, 1, 250, '2026-10-31');                       // before the period
+        $this->delivery(1, 1, 250, '2026-12-01');                       // after it
+        $this->delivery(1, 1, 250, '2026-11-10', status: 'cancelled');  // cancelled
+        $inside = $this->delivery(1, 2, 250, '2026-11-10');
+
+        $this->assertSame(
+            [['document_no' => $this->doNo($inside), 'date' => '2026-11-10', 'cost' => 200.0]],
+            $this->valuation()->uninvoicedDeliveries('2026-11-01', '2026-11-30'),
+        );
+
+        // Dated by the document: confirmed on 12-11, it still belongs to 10-11.
+        $late = $this->delivery(1, 1, 250, '2026-11-10', confirmedAt: '2026-11-12 09:00:00');
+        $this->assertSame([$this->doNo($inside), $this->doNo($late)], $this->numbers('2026-11-01', '2026-11-10'));
+        $this->assertSame([], $this->numbers('2026-11-11', '2026-11-30'));
+    }
+
+    public function test_a_cancelled_or_deleted_invoice_does_not_count_as_invoiced(): void
+    {
+        $this->grn(1, 10, 100, '2026-11-01');
+        $a = $this->delivery(1, 1, 250, '2026-11-10');
+        $b = $this->delivery(1, 1, 250, '2026-11-11');
+        $this->invoice($a, '2026-11-10', status: 'cancelled');
+        $this->invoice($b, '2026-11-11', deleted: true);
+
+        $this->assertSame([$this->doNo($a), $this->doNo($b)], $this->numbers('2026-11-01', '2026-11-30'));
+
+        // A returned (or paid) invoice is still an invoice.
+        $this->invoice($a, '2026-11-12', status: 'returned');
+        $this->assertSame([$this->doNo($b)], $this->numbers('2026-11-01', '2026-11-30'));
+    }
+
+    public function test_uninvoiced_deliveries_follow_the_location_and_company_scope(): void
+    {
+        $this->grn(1, 10, 100, '2026-11-01', loc: $this->loc1);
+        $this->grn(1, 10, 100, '2026-11-01', loc: $this->otherCompanyLoc);
+        $here  = $this->delivery(1, 1, 250, '2026-11-10', loc: $this->loc1);
+        $there = $this->delivery(1, 1, 250, '2026-11-10', loc: $this->otherCompanyLoc);
+
+        $v = $this->valuation();
+        $this->assertCount(2, $v->uninvoicedDeliveries('2026-11-01', '2026-11-30'));
+        $this->assertSame([$this->doNo($here)], array_column($v->uninvoicedDeliveries('2026-11-01', '2026-11-30', locationId: $this->loc1), 'document_no'));
+        $this->assertSame([$this->doNo($there)], array_column($v->uninvoicedDeliveries('2026-11-01', '2026-11-30', companyId: 2), 'document_no'));
+        $this->assertSame([$this->doNo($there)], array_column($v->uninvoicedDeliveries('2026-11-01', '2026-11-30', allowedCompanyIds: [2]), 'document_no'));
+    }
+
+    public function test_uninvoiced_deliveries_take_two_queries_and_none_when_switched_off(): void
+    {
+        $this->grn(1, 10, 100, '2026-11-01');
+        $this->delivery(1, 1, 250, '2026-11-10');
+        $this->delivery(1, 1, 250, '2026-11-20');
+
+        DB::enableQueryLog();
+        $this->valuation()->uninvoicedDeliveries('2026-11-01', '2026-11-30');
+        $this->assertCount(2, array_filter(DB::getQueryLog(), fn ($q) => str_contains($q['query'], 'inv_stock_transactions')));
+
+        app(SettingsService::class)->set('module.inventory', false);
+        $this->assertSame([], $this->valuation()->uninvoicedDeliveries('2026-11-01', '2026-11-30'));
+        $this->assertSame([], (new NullStockValuationSource())->uninvoicedDeliveries('2026-11-01', '2026-11-30'));
+    }
+
+    private function doNo(int $doId): string
+    {
+        return (string) DB::table('inv_delivery_orders')->where('id', $doId)->value('do_no');
+    }
+
+    /** @return list<string> */
+    private function numbers(string $from, string $to): array
+    {
+        return array_column($this->valuation()->uninvoicedDeliveries($from, $to), 'document_no');
     }
 
     public function test_switched_off_inventory_answers_not_available(): void

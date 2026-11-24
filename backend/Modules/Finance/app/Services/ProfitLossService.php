@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Modules\Finance\Services;
 
 use App\Contracts\StockValuationSource;
+use App\Support\Money\Amount;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -46,8 +48,10 @@ use Modules\Finance\Support\Ledger\LedgerMoney;
  *
  * ── Cost ────────────────────────────────────────────────────────────────────
  * One grouped query over the journal lines covers both periods (a conditional
- * SUM per period), one valuation call covers all four stock dates, and one
- * COUNT finds unposted drafts. Nothing loops over journal lines in PHP.
+ * SUM per period), one valuation call covers all four stock dates, one COUNT
+ * finds unposted drafts, and (with Inventory on) one grouped query plus one
+ * cost pass finds deliveries not yet invoiced. Nothing loops over journal
+ * lines in PHP.
  *
  * ── Rounding ────────────────────────────────────────────────────────────────
  * Every figure is summed in exact units (LedgerMoney) and rounded once, so a
@@ -285,15 +289,7 @@ final class ProfitLossService
         $cf = $comparative['from'] ?? null;
         $ct = isset($comparative['to']) ? CarbonImmutable::parse($comparative['to'])->addDay()->toDateString() : null;
 
-        $query = JournalLineQuery::counted($filters)
-            ->join('fin_ledger_accounts as la', 'la.id', '=', 'jl.ledger_account_id')
-            ->join('fin_control_accounts as ctrl', 'ctrl.id', '=', 'la.control_account_id')
-            ->join('fin_account_categories as cat', 'cat.id', '=', 'ctrl.account_category_id')
-            ->where(fn ($q) => $q
-                ->whereIn('cat.account_type', [AccountType::Income->value, AccountType::Expense->value])
-                ->orWhere(fn ($e) => $e
-                    ->where('cat.account_type', AccountType::Equity->value)
-                    ->where('cat.pl_section', PlSection::Reserves->value)))
+        $query = $this->plLines(JournalLineQuery::counted($filters))
             // One date window covering both periods; the SUMs split it.
             ->where('je.journal_date', '>=', $cf !== null && $cf < $f ? $cf : $f)
             ->where('je.journal_date', '<', $ct !== null && $ct > $t ? $ct : $t)
@@ -320,6 +316,24 @@ final class ProfitLossService
         }
 
         return $query->get();
+    }
+
+    /**
+     * Narrows counted lines to the accounts a P&L reports: income, expense,
+     * and equity in the Provision for Reserves section. Joins the account,
+     * control and category as la / ctrl / cat.
+     */
+    private function plLines(Builder $query): Builder
+    {
+        return $query
+            ->join('fin_ledger_accounts as la', 'la.id', '=', 'jl.ledger_account_id')
+            ->join('fin_control_accounts as ctrl', 'ctrl.id', '=', 'la.control_account_id')
+            ->join('fin_account_categories as cat', 'cat.id', '=', 'ctrl.account_category_id')
+            ->where(fn ($q) => $q
+                ->whereIn('cat.account_type', [AccountType::Income->value, AccountType::Expense->value])
+                ->orWhere(fn ($e) => $e
+                    ->where('cat.account_type', AccountType::Equity->value)
+                    ->where('cat.pl_section', PlSection::Reserves->value)));
     }
 
     /**
@@ -488,7 +502,7 @@ final class ProfitLossService
      * @param  array<string, mixed> $filters
      * @param  list<string>         $unclassified
      * @param  array<string, mixed> $stock
-     * @return list<array{code: string, message: string}>
+     * @return list<array{code: string, message: string, documents?: list<array<string, mixed>>}>
      */
     private function warnings(
         array $filters,
@@ -524,6 +538,22 @@ final class ProfitLossService
             ];
         }
 
+        $untagged = empty($filters['location_id']) ? 0 : $this->untaggedLineCount($filters, $from, $to);
+
+        if ($untagged > 0) {
+            $warnings[] = [
+                'code'    => 'lines_without_location',
+                'message' => "{$untagged} income / expense journal line(s) in this period have no location and are "
+                    . 'not included for this location. Clear the Location filter to see the whole company.',
+            ];
+        }
+
+        $uninvoiced = $this->uninvoicedWarning($filters, $from, $to);
+
+        if ($uninvoiced !== null) {
+            $warnings[] = $uninvoiced;
+        }
+
         $drafts = $this->draftCount($filters, $from, $to);
 
         if ($drafts > 0) {
@@ -534,6 +564,72 @@ final class ProfitLossService
         }
 
         return $warnings;
+    }
+
+    /**
+     * Goods delivered in the period but not invoiced by its end: their cost is
+     * in Cost of Sales (the stock went down) while their sale is not in the
+     * ledger, so gross profit is understated until they are invoiced.
+     *
+     * @param  array<string, mixed> $filters
+     * @return array{code: string, message: string, documents: list<array{document_no: string, date: string, cost: float}>}|null
+     */
+    private function uninvoicedWarning(array $filters, CarbonImmutable $from, CarbonImmutable $to): ?array
+    {
+        if (! $this->stock->isAvailable()) {
+            return null;
+        }
+
+        $deliveries = $this->stock->uninvoicedDeliveries(
+            $from->toDateString(),
+            $to->toDateString(),
+            $filters['company_id'] ?? null,
+            $filters['location_id'] ?? null,
+            $filters['allowed_company_ids'] ?? null,
+        );
+
+        if ($deliveries === []) {
+            return null;
+        }
+
+        $count = count($deliveries);
+        $cost  = LedgerMoney::money(array_sum(array_map(fn (array $d): int => LedgerMoney::units($d['cost']), $deliveries)));
+
+        $numbers = array_column(array_slice($deliveries, 0, 5), 'document_no');
+        $list    = implode(', ', $numbers) . ($count > 5 ? ' and ' . ($count - 5) . ' more' : '');
+
+        $one     = $count === 1;
+        $message = sprintf(
+            '%d %s in this period %s not invoiced by %s (%s), cost %s. %s cost is in Cost of Sales but %s revenue '
+                . 'is not, so gross profit is understated. Invoice %s with a date within this period.',
+            $count,
+            $one ? 'delivery' : 'deliveries',
+            $one ? 'is' : 'are',
+            $to->format('d-m-Y'),
+            $list,
+            number_format($cost, Amount::decimals()),
+            $one ? 'Its' : 'Their',
+            $one ? 'its' : 'their',
+            $one ? 'it' : 'them',
+        );
+
+        return ['code' => 'uninvoiced_deliveries', 'message' => $message, 'documents' => $deliveries];
+    }
+
+    /**
+     * Counted P&L lines in the period with no location: a location filter
+     * leaves them out. Same account scope as accounts(), same company access,
+     * with the location filter itself lifted.
+     *
+     * @param array<string, mixed> $filters
+     */
+    private function untaggedLineCount(array $filters, CarbonImmutable $from, CarbonImmutable $to): int
+    {
+        return $this->plLines(JournalLineQuery::counted(['location_id' => null] + $filters))
+            ->whereNull('jl.location_id')
+            ->where('je.journal_date', '>=', $from->toDateString())
+            ->where('je.journal_date', '<', $to->addDay()->toDateString())
+            ->count();
     }
 
     /** Draft journals dated in the period that touch the company / location asked for. */

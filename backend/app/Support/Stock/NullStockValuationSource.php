@@ -27,6 +27,16 @@ final class NullStockValuationSource implements StockValuationSource
         return [];
     }
 
+    public function uninvoicedDeliveries(
+        string $from,
+        string $to,
+        ?int $companyId = null,
+        ?int $locationId = null,
+        ?array $allowedCompanyIds = null,
+    ): array {
+        return [];
+    }
+
     public function basis(): string
     {
         return 'Inventory module not active: enter stock values from your stock count.';

@@ -10,6 +10,8 @@
   .pl { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 4px; }
   .pl th { padding: 3px 4px; font-size: 6.5pt; text-transform: uppercase; letter-spacing: 0.4px; background: #f1f5f9; color: #475569; border-bottom: 0.8pt solid #1f2937; text-align: right; }
   .pl th.lft { text-align: left; }
+  .pl th.ctr { text-align: center; border-bottom: 0.4pt solid #cbd5e1; }
+  .pl .hd-sub { text-transform: none; letter-spacing: 0; font-weight: normal; color: #64748b; }
   .pl td { padding: 2.2px 4px; vertical-align: top; }
   .pl td.n { text-align: right; white-space: nowrap; }
   .pl td.cmp { color: #475569; }
@@ -73,9 +75,13 @@
       @if($cmp)<col style="width:15%"><col style="width:15%">@endif
     </colgroup>
     <tr>
-      <th class="lft">Particulars</th>
-      <th colspan="2">{{ $date($report['period']['from']) }} – {{ $date($report['period']['to']) }}</th>
-      @if($cmp)<th colspan="2">{{ $date($report['comparative']['from']) }} – {{ $date($report['comparative']['to']) }}</th>@endif
+      <th class="lft" rowspan="2" style="vertical-align:bottom">Particulars</th>
+      <th colspan="2" class="ctr">Current Period<br><span class="hd-sub">{{ $date($report['period']['from']) }} – {{ $date($report['period']['to']) }}</span></th>
+      @if($cmp)<th colspan="2" class="ctr">Comparative Period<br><span class="hd-sub">{{ $date($report['comparative']['from']) }} – {{ $date($report['comparative']['to']) }}</span></th>@endif
+    </tr>
+    <tr>
+      <th>Details</th><th>Amount</th>
+      @if($cmp)<th>Details</th><th>Amount</th>@endif
     </tr>
 
     {{-- One detail line (inner column) --}}
@@ -146,10 +152,11 @@
   </table>
 
   <div class="notes">
-    <div>Opening stock as at {{ $date($cos['opening_stock']['as_at']) }}, closing stock as at {{ $date($cos['closing_stock']['as_at']) }}.
+    <div>Opening stock = value at the end of {{ $date($cos['opening_stock']['as_at']) }} (the day before the period starts); closing stock = value at the end of {{ $date($cos['closing_stock']['as_at']) }}.
       @if($cos['opening_stock']['overridden'] || $cos['closing_stock']['overridden']) Figures marked "(entered)" were typed in by the user. @endif</div>
     <div>Stock basis: {{ $report['stock_source']['basis'] }}</div>
-    <div>All other figures are posted journals (draft journals excluded). Figures in brackets are negative.</div>
+    <div>Details lists each item (account or stock value); Amount is the section total or result. Figures in brackets are negative or deducted.</div>
+    <div>All other figures are posted journals (draft journals excluded).</div>
   </div>
 </body>
 </html>

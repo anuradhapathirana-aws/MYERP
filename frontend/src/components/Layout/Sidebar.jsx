@@ -224,6 +224,14 @@ const NAV_ITEMS = [
         ],
       },
       {
+        label: 'Financial Statements',
+        icon: BarChart2,
+        isSubgroup: true,
+        children: [
+          { label: 'Profit & Loss', to: '/finance/reports/profit-loss', icon: TrendingUp, permissionGuard: 'view_finance_reports' },
+        ],
+      },
+      {
         label: 'Payables',
         icon: Receipt,
         isSubgroup: true,

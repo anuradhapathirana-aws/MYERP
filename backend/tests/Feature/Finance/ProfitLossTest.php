@@ -46,6 +46,12 @@ class ProfitLossTest extends TestCase
     /** @var array<string, float> stock value by date, served by the fake */
     private array $stockValues = [];
 
+    /** @var list<array{document_no: string, date: string, cost: float}> served by the fake */
+    public array $uninvoiced = [];
+
+    /** @var list<array<string, mixed>> the arguments the fake was asked with */
+    public array $uninvoicedAsked = [];
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -90,6 +96,13 @@ class ProfitLossTest extends TestCase
                     }
 
                     return $out;
+                }
+
+                public function uninvoicedDeliveries(string $from, string $to, ?int $companyId = null, ?int $locationId = null, ?array $allowedCompanyIds = null): array
+                {
+                    $this->test->uninvoicedAsked[] = compact('from', 'to', 'companyId', 'locationId');
+
+                    return $this->test->uninvoiced;
                 }
 
                 public function basis(): string
@@ -465,6 +478,71 @@ class ProfitLossTest extends TestCase
         app(FinanceControlService::class)->setGoLiveDate('2026-01-01');
         $r = $this->report(['date_from' => '2026-11-01', 'date_to' => '2026-11-30']);
         $this->assertNull(collect($r->json('data.warnings'))->firstWhere('code', 'go_live_not_set'));
+    }
+
+    public function test_deliveries_not_invoiced_by_the_period_end_are_warned(): void
+    {
+        $this->uninvoiced = [
+            ['document_no' => 'DO-2026-0051', 'date' => '2026-11-23', 'cost' => 37294.32],
+            ['document_no' => 'DO-2026-0053', 'date' => '2026-11-24', 'cost' => 100.01],
+        ];
+
+        $r = $this->report(['date_from' => '2026-11-23', 'date_to' => '2026-11-24']);
+
+        $w = collect($r->json('data.warnings'))->firstWhere('code', 'uninvoiced_deliveries');
+        $this->assertNotNull($w);
+        $this->assertStringStartsWith('2 deliveries in this period are not invoiced by 24-11-2026 (DO-2026-0051, DO-2026-0053)', $w['message']);
+        $this->assertStringContainsString('cost 37,394.33', $w['message']);
+        $this->assertCount(2, $w['documents']);
+
+        // Asked for the current period only, in the scope of the report.
+        $this->assertSame([['from' => '2026-11-23', 'to' => '2026-11-24', 'companyId' => null, 'locationId' => null]], $this->uninvoicedAsked);
+    }
+
+    public function test_a_location_filter_warns_about_lines_with_no_location(): void
+    {
+        $this->jv('2026-11-05', $this->account('Sales Revenue'), -100000);
+        $this->jv('2026-11-06', $this->account('Purchases'), 60000);
+        $this->jv('2026-12-01', $this->account('Sales Revenue'), -500);   // outside the period
+
+        // Whole company: nothing is left out, so no warning.
+        $r = $this->report(['date_from' => '2026-11-01', 'date_to' => '2026-11-30']);
+        $this->assertNull(collect($r->json('data.warnings'))->firstWhere('code', 'lines_without_location'));
+
+        // One location: the two P&L lines (not the equity side) have none.
+        $r = $this->report(['date_from' => '2026-11-01', 'date_to' => '2026-11-30', 'location_id' => 7]);
+        $this->assertSame(0.0, $this->money($r, 'revenue.total.amount'));
+        $w = collect($r->json('data.warnings'))->firstWhere('code', 'lines_without_location');
+        $this->assertStringStartsWith('2 income / expense journal line(s)', $w['message']);
+
+        // Tagged lines are not counted.
+        DB::table('fin_journal_lines')->update(['location_id' => 7]);
+        $r = $this->report(['date_from' => '2026-11-01', 'date_to' => '2026-11-30', 'location_id' => 7]);
+        $this->assertNull(collect($r->json('data.warnings'))->firstWhere('code', 'lines_without_location'));
+        $this->assertSame(100000.0, $this->money($r, 'revenue.total.amount'));
+    }
+
+    public function test_many_uninvoiced_deliveries_are_listed_briefly(): void
+    {
+        foreach (range(1, 7) as $i) {
+            $this->uninvoiced[] = ['document_no' => "DO-{$i}", 'date' => '2026-11-10', 'cost' => 10.0];
+        }
+
+        $w = collect($this->report(['date_from' => '2026-11-01', 'date_to' => '2026-11-30'])->json('data.warnings'))
+            ->firstWhere('code', 'uninvoiced_deliveries');
+
+        $this->assertStringContainsString('(DO-1, DO-2, DO-3, DO-4, DO-5 and 2 more)', $w['message']);
+        $this->assertStringStartsWith('7 deliveries', $w['message']);
+    }
+
+    public function test_no_uninvoiced_warning_when_everything_is_invoiced_or_inventory_is_off(): void
+    {
+        $r = $this->report(['date_from' => '2026-11-01', 'date_to' => '2026-11-30']);
+        $this->assertNull(collect($r->json('data.warnings'))->firstWhere('code', 'uninvoiced_deliveries'));
+
+        $this->fakeStock(available: false);
+        $r = $this->report(['date_from' => '2026-11-01', 'date_to' => '2026-11-30']);
+        $this->assertNull(collect($r->json('data.warnings'))->firstWhere('code', 'uninvoiced_deliveries'));
     }
 
     // ── Drafts, validation, access ───────────────────────────────────────────

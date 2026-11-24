@@ -86,6 +86,84 @@ final class InventoryStockValuation implements StockValuationSource
         return array_map(fn (float $v): float => Amount::round($v), $values);
     }
 
+    /**
+     * A confirmed DO dated in the period with no live invoice dated on or
+     * before the period end. An invoice dated after the period end does not
+     * count: its revenue lands in a later period while the cost is in this one.
+     *
+     * One grouped query for the delivered quantities (per DO and product, in
+     * the scope asked for) and one cost pass for the delivery dates found.
+     */
+    public function uninvoicedDeliveries(
+        string $from,
+        string $to,
+        ?int $companyId = null,
+        ?int $locationId = null,
+        ?array $allowedCompanyIds = null,
+    ): array {
+        if (! $this->isAvailable()) {
+            return [];
+        }
+
+        // invoice_date is a DATE, but SQLite keeps it as 'Y-m-d H:i:s':
+        // compare against the next day so the last day always counts.
+        $nextDay = date('Y-m-d', strtotime($to . ' +1 day'));
+
+        $movements = $this->movements($companyId, $locationId, $allowedCompanyIds)
+            ->addSelect(['t.reference_id', 'd.do_no', 'd.status as do_status'])
+            ->where('t.reference_type', StockReferenceType::CODE_SALES_DELIVERY)
+            ->whereNull('d.deleted_at')
+            ->whereNotExists(fn ($q) => $q
+                ->selectRaw('1')
+                ->from('inv_invoices as i')
+                ->whereColumn('i.do_id', 't.reference_id')
+                ->whereNull('i.deleted_at')
+                ->where('i.status', '!=', 'cancelled')
+                ->where('i.invoice_date', '<', $nextDay));
+
+        $rows = DB::query()->fromSub($movements, 'm')
+            ->where('m.do_status', 'confirmed')
+            ->where('m.doc_date', '>=', $from)
+            ->where('m.doc_date', '<=', $to)
+            ->groupBy('m.reference_id', 'm.do_no', 'm.doc_date', 'm.product_id')
+            ->select('m.reference_id', 'm.do_no', 'm.doc_date', 'm.product_id')
+            ->selectRaw('SUM(m.qty_out - m.qty_in) AS qty')
+            ->get();
+
+        if ($rows->isEmpty()) {
+            return [];
+        }
+
+        $dates = $rows->pluck('doc_date')->map(fn ($d): string => (string) $d)->unique()->values()->all();
+        $index = array_flip($dates);
+        $costs = $this->costs($dates);
+
+        $byDo = [];
+
+        foreach ($rows as $r) {
+            $key  = (int) $r->reference_id;
+            $cost = $costs[(int) $r->product_id][$index[(string) $r->doc_date]] ?? null;
+
+            $byDo[$key] ??= ['id' => $key, 'document_no' => (string) $r->do_no, 'date' => (string) $r->doc_date, 'cost' => 0.0, 'qty' => 0.0];
+            $byDo[$key]['qty'] += abs((float) $r->qty);
+
+            if ($cost !== null) {
+                $byDo[$key]['cost'] += (float) $r->qty * $cost;
+            }
+        }
+
+        // A delivery whose stock rows net to nothing took no goods out.
+        $list = array_values(array_filter($byDo, fn (array $d): bool => $d['qty'] > 1e-9));
+
+        usort($list, fn (array $a, array $b): int => [$a['date'], $a['id']] <=> [$b['date'], $b['id']]);
+
+        return array_map(fn (array $d): array => [
+            'document_no' => $d['document_no'],
+            'date'        => $d['date'],
+            'cost'        => Amount::round($d['cost']),
+        ], $list);
+    }
+
     public function basis(): string
     {
         return 'Inventory stock on hand by document date, at weighted average GRN cost (landed cost excluded).';

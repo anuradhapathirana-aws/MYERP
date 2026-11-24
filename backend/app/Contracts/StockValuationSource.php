@@ -41,6 +41,30 @@ interface StockValuationSource
         ?array $allowedCompanyIds = null,
     ): array;
 
+    /**
+     * Deliveries dated inside the period whose goods left stock but which had
+     * no invoice dated on or before the period end.
+     *
+     * Their cost is already inside the stock movement (opening − closing), but
+     * their sale is not in the ledger yet, so the Profit & Loss warns about
+     * them. Cost is valued like the stock figures: quantity × average cost on
+     * the delivery date. Empty when not available.
+     *
+     * @param  string         $from              'Y-m-d', first day of the period
+     * @param  string         $to                'Y-m-d', last day of the period
+     * @param  int|null       $companyId         only this company's locations
+     * @param  int|null       $locationId        only this location
+     * @param  list<int>|null $allowedCompanyIds company access; null = unrestricted
+     * @return list<array{document_no: string, date: string, cost: float}>
+     */
+    public function uninvoicedDeliveries(
+        string $from,
+        string $to,
+        ?int $companyId = null,
+        ?int $locationId = null,
+        ?array $allowedCompanyIds = null,
+    ): array;
+
     /** One line for the report saying how the figure was worked out. */
     public function basis(): string;
 }

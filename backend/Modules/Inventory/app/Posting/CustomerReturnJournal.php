@@ -118,6 +118,9 @@ final class CustomerReturnJournal
             lines:        $lines,
             journalType:  JournalRequest::TYPE_AUTO,
             companyId:    $return->invoice?->company_id === null ? null : (int) $return->invoice->company_id,
+            // The location the goods came back to, so a location P&L nets the
+            // return against that location's sales.
+            locationId:   $return->location_id === null ? null : (int) $return->location_id,
             narration:    $return->return_no . ' - goods returned'
                 . ($return->invoice?->invoice_no ? ' against ' . $return->invoice->invoice_no : ''),
         );

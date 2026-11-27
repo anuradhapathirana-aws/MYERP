@@ -3,54 +3,47 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
-<title>Sales Return — {{ $return->return_no }}</title>
+<title>Credit Note — {{ $return->return_no }}</title>
 <style>
   /*
-   * A4 portrait, black-on-white with light grey accents only — same DomPDF-safe rules
-   * and type scale as the customer receipt. The bottom margin reserves room for the
-   * fixed signature strip so return lines can never run underneath it.
+   * A4 portrait, laid out as the client's TAX CREDITNOTE form: a ruled frame around
+   * the page, centred letterhead, customer block left, document references right, a
+   * QTY / ITEM NAME / C.PRICE / AMOUNT grid, and Approved By / Checked By lines.
+   * The frame and signature strip are fixed, so they repeat on every page; the bottom
+   * margin keeps item rows from running underneath the signatures.
    */
-  @page { margin: 12mm 12mm 56mm 12mm; }
+  @page { margin: 12mm 14mm 42mm 14mm; }
 
   * { box-sizing: border-box; }
-  body { margin: 0; padding: 0; font-family: 'DejaVu Sans', Arial, sans-serif; font-size: 10pt; color: #111827; }
+  body { margin: 0; padding: 0; font-family: 'DejaVu Sans', Arial, sans-serif; font-size: 10pt; color: #000; }
   table, div, span, p { margin: 0; padding: 0; }
 
-  .head { width: 100%; border-collapse: collapse; border-bottom: 1.2pt solid #1f2937; padding-bottom: 6px; }
-  .co-name { font-size: 15.5pt; font-weight: bold; }
-  .co-sub  { font-size: 9.5pt; color: #6b7280; }
+  .frame { position: fixed; top: -6mm; bottom: -36mm; left: -6mm; right: -6mm; border: 1.4pt solid #000; }
 
-  .title { text-align: center; font-size: 15pt; font-weight: bold; letter-spacing: 3.5px; text-transform: uppercase; margin: 10px 0 9px; }
+  .head { text-align: center; padding-top: 2mm; }
+  .doc-title { font-size: 12pt; font-weight: bold; letter-spacing: 0.5px; margin-bottom: 4mm; }
+  .co-name { font-size: 14pt; font-weight: bold; margin-bottom: 1mm; }
+  .co-line { font-size: 10pt; line-height: 1.5; }
 
-  .meta { width: 100%; border-collapse: collapse; margin-bottom: 9px; }
-  .meta td { border: 0.8pt solid #1f2937; padding: 5px 9px; }
-  .lbl { color: #6b7280; font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.5px; }
-  .val { font-weight: bold; }
+  .parties { width: 100%; border-collapse: collapse; margin-top: 10mm; }
+  .parties td { vertical-align: top; font-size: 10pt; line-height: 1.55; }
+  .refs { margin-top: 4mm; }
 
-  .items { width: 100%; border-collapse: collapse; margin-bottom: 9px; }
-  .items th { border: 0.8pt solid #1f2937; padding: 4px 6px; font-size: 8.5pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.3px; text-align: left; }
-  .items td { border: 0.8pt solid #1f2937; padding: 4px 6px; font-size: 9.5pt; }
-  .items .rolls td { font-size: 8.5pt; color: #4b5563; border-top: none; }
+  .items { width: 100%; border-collapse: collapse; margin-top: 12mm; }
+  .items th { border: 0.9pt solid #000; padding: 3px 6px; font-size: 10pt; font-weight: normal; }
+  .items td { border-left: 0.9pt solid #000; border-right: 0.9pt solid #000; border-bottom: 0.9pt solid #000; padding: 3px 6px; font-size: 10pt; vertical-align: top; }
+  .items .rolls { font-size: 7.5pt; color: #374151; margin-top: 1px; }
+  .items .total td.v { font-weight: bold; }
+  .items td.tail { height: 22mm; border-top: none; }
+  .items td.open { border-bottom: none; }
   .r { text-align: right; }
+  .c { text-align: center; }
   .nw { white-space: nowrap; }
 
-  .totals { width: 100%; border-collapse: collapse; margin-bottom: 9px; }
-  .totals td { padding: 3px 9px; }
-  .totals td.k { text-align: right; color: #6b7280; font-size: 9.5pt; }
-  .totals td.v { text-align: right; width: 145px; font-weight: bold; border-bottom: 0.6pt solid #d1d5db; }
-  .totals tr.grand td { font-size: 12pt; font-weight: bold; border-top: 1.2pt solid #1f2937; border-bottom: none; padding-top: 4px; }
-
-  .words { border: 0.8pt solid #1f2937; padding: 6px 9px; margin-bottom: 9px; font-size: 9.5pt; }
-
-  .page-footer { position: fixed; bottom: -50mm; left: 0; right: 0; width: 100%; }
-  .declaration { font-size: 9.5pt; color: #374151; line-height: 1.4; }
-  .sig-space { height: 18mm; }
-
+  .page-footer { position: fixed; bottom: -28mm; left: 0; right: 0; width: 100%; }
   .sig { width: 100%; border-collapse: collapse; }
-  .sig td { width: 50%; padding: 0 18px; text-align: center; vertical-align: bottom; }
-  .sig-line { border-top: 0.8pt solid #1f2937; padding-top: 3px; font-size: 9pt; color: #6b7280; }
-
-  .note { margin-top: 12px; text-align: center; font-size: 8.5pt; color: #9ca3af; }
+  .sig td { width: 50%; padding: 0 14mm; text-align: center; vertical-align: bottom; }
+  .sig-line { border-top: 0.9pt solid #000; padding-top: 4px; font-size: 10pt; }
 </style>
 </head>
 <body>
@@ -59,7 +52,10 @@
     $money    = fn ($n) => \Modules\Inventory\Support\Money::number((float) $n);
     $qty      = fn ($n) => \Modules\Inventory\Support\Quantity::format((float) $n);
     $currency = \Modules\Inventory\Support\Money::symbol();
-    $words    = \Modules\Inventory\Support\NumberToWords::convert((float) $return->total_amount, \Modules\Inventory\Support\Money::code());
+    $date     = fn ($d) => $d ? \Illuminate\Support\Carbon::parse($d)->format('d/m/Y') : '';
+
+    $customer = $return->customer;
+    $invoice  = $return->invoice;
 
     $companyAddress = collect([
         $company?->street_address,
@@ -67,61 +63,79 @@
         $company?->country,
     ])->filter()->implode(', ');
 
-    $companyContact = collect([
-        $company?->company_mobile ? 'Tel: '.$company->company_mobile : null,
-        $company?->company_email,
-        $company?->company_email_2,
-    ])->filter()->implode(' | ');
-
-    $creditNote = $return->creditNote;
+    // One address part per line, as the form prints the customer block.
+    $customerLines = collect([
+        $customer?->billing_address_line1,
+        $customer?->billing_address_line2,
+        $customer?->billing_address_line3,
+        collect([$customer?->billing_city, $customer?->billing_state_province, $customer?->billing_zip_postal])->filter()->implode(', '),
+        $customer?->billing_country,
+    ])->filter()->values();
 
     /*
-     * The VAT split, worked out the way the invoice PDF does: value of goods and
-     * discount per line from the returned qty × the invoice's unit price, VAT as
-     * whatever is left of the stored total. That keeps every printed row a real
-     * figure that adds up to total_amount, rounding included.
-     *
-     * A Non-Tax invoice's prices already carry the VAT inside (its lines have
-     * tax 0), so its return note shows no VAT split, just as its invoice doesn't.
+     * A Non-Tax invoice's prices already carry the VAT inside (its lines have tax 0),
+     * so its note is a plain CREDIT NOTE with no VAT row, just as its invoice has none.
      */
-    $isTaxReturn   = $return->items->contains(fn ($it) => (float) $it->tax > 0);
-    $valueOfGoods  = round($return->items->sum(fn ($it) => (float) $it->quantity * (float) $it->unit_price), 2);
-    $discount      = round($return->items->sum(fn ($it) => (float) $it->quantity * (float) $it->unit_price * ((float) $it->discount / 100)), 2);
-    $vat           = round((float) $return->total_amount - $valueOfGoods + $discount, 2);
+    $isTaxReturn = $return->items->contains(fn ($it) => (float) $it->tax > 0);
 
-    // "@ 18%" is only truthful when every line carries the same rate.
+    /*
+     * The form has no discount row, so C.PRICE and AMOUNT are printed after the
+     * invoice's line discount. For a Tax return, Sub Total is the net value of
+     * goods and VAT is whatever is left of the stored total, so the three printed
+     * figures always add up to total_amount, rounding included. A Non-Tax line's
+     * amount is its stored line_total.
+     */
+    $lines = $return->items->map(function ($it) use ($isTaxReturn) {
+        $net    = (float) $it->unit_price * (1 - (float) $it->discount / 100);
+        $amount = $isTaxReturn ? round((float) $it->quantity * $net, 2) : (float) $it->line_total;
+
+        return ['item' => $it, 'price' => $net, 'amount' => $amount];
+    });
+
+    $subTotal = round($lines->sum('amount'), 2);
+    $total    = (float) $return->total_amount;
+    $vat      = round($total - $subTotal, 2);
+
+    // "VAT 18%" is only truthful when every line carries the same rate.
     $rates   = $return->items->map(fn ($it) => round((float) $it->tax, 2))->unique()->values();
     $vatRate = $rates->count() === 1
-        ? '@ ' . rtrim(rtrim(number_format((float) $rates->first(), 2, '.', ''), '0'), '.') . '%'
-        : '@ mixed rates';
+        ? rtrim(rtrim(number_format((float) $rates->first(), 2, '.', ''), '0'), '.') . '%'
+        : '(mixed rates)';
+
+    // The form is a ruled grid: short notes still show a few empty ruled rows.
+    $blankRows = max(0, 4 - $lines->count());
   @endphp
 
+  <div class="frame"></div>
+
   {{-- ══ LETTERHEAD ══ --}}
-  <table class="head">
+  <div class="head">
+    <div class="doc-title">{{ $isTaxReturn ? 'TAX CREDITNOTE' : 'CREDIT NOTE' }}</div>
+    <div class="co-name">{{ $company?->company_name ?? config('app.name') }}</div>
+    @if($companyAddress)<div class="co-line">{{ $companyAddress }}</div>@endif
+    @if($company?->company_mobile)<div class="co-line">TEL :- {{ $company->company_mobile }}</div>@endif
+    @if($company?->tax_reg_no)<div class="co-line">VAT REGISTRATION NO:- {{ $company->tax_reg_no }}</div>@endif
+  </div>
+
+  {{-- ══ CUSTOMER (left) · DOCUMENT REFERENCES (right) ══ --}}
+  <table class="parties">
     <tr>
-      <td style="padding-bottom:6px;">
-        <div class="co-name">{{ $company?->company_name ?? config('app.name') }}</div>
-        @if($companyAddress)<div class="co-sub">{{ $companyAddress }}</div>@endif
-        @if($companyContact)<div class="co-sub">{{ $companyContact }}</div>@endif
+      <td style="width:50%;">
+        <div>{{ $customer?->customer_name ?? '—' }}</div>
+        @foreach($customerLines as $line)
+          <div>{{ $line }}</div>
+        @endforeach
+        @if($customer?->customer_tin)<div>VAT REGISTRATION NO:- {{ $customer->customer_tin }}</div>@endif
       </td>
-    </tr>
-  </table>
-
-  <div class="title">Sales Return Note</div>
-
-  {{-- ══ META ══ --}}
-  <table class="meta">
-    <tr>
-      <td style="width:25%;"><span class="lbl">Return No</span><br><span class="val">{{ $return->return_no }}</span></td>
-      <td style="width:25%;"><span class="lbl">Return Date</span><br><span class="val">{{ $return->return_date?->format('Y-m-d') }}</span></td>
-      <td style="width:25%;"><span class="lbl">Invoice No</span><br><span class="val">{{ $return->invoice?->invoice_no ?? '—' }}</span></td>
-      <td style="width:25%;"><span class="lbl">Delivery Order</span><br><span class="val">{{ $return->deliveryOrder?->do_no ?? '—' }}</span></td>
+      <td style="width:50%;"></td>
     </tr>
     <tr>
-      <td colspan="4">
-        <span class="lbl">Customer</span><br>
-        <span class="val">{{ $return->customer?->customer_name ?? '—' }}</span>
-        @if($return->customer?->customer_code) <span style="color:#6b7280; font-size:9.5pt;">({{ $return->customer->customer_code }})</span>@endif
+      <td></td>
+      <td class="nw">
+        <div class="refs">INVOICE DATE:- {{ $date($return->return_date) }}</div>
+        <div>CREDIT NOTE NO:- {{ $return->return_no }}</div>
+        <div>RESPECTIVE {{ $isTaxReturn ? 'TAX ' : '' }}INVOICE NO:- {{ $invoice?->invoice_no ?? '—' }}</div>
+        <div>RESPECTIVE {{ $isTaxReturn ? 'TAX ' : '' }}INVOICE DATE:- {{ $date($invoice?->invoice_date) }}</div>
       </td>
     </tr>
   </table>
@@ -129,75 +143,58 @@
   {{-- ══ RETURNED ITEMS ══ --}}
   <table class="items">
     <tr>
-      <th style="width:22px;">#</th>
-      <th>Item</th>
-      <th class="r nw" style="width:70px;">Qty</th>
-      <th class="r nw" style="width:72px;">{{ $isTaxReturn ? 'Unit Price' : 'Price' }}</th>
-      <th class="nw" style="width:78px;">Reason</th>
-      <th class="nw" style="width:58px;">Cond.</th>
-      <th class="nw" style="width:80px;">Store</th>
-      <th class="r nw" style="width:88px;">{{ $isTaxReturn ? 'Amount Excl. VAT' : 'Amount' }}</th>
+      <th class="c nw" style="width:80px;">QTY</th>
+      <th style="text-align:left;">ITEM NAME</th>
+      <th class="c nw" style="width:100px;">C.PRICE</th>
+      <th class="c nw" style="width:120px;">AMOUNT({{ strtoupper($currency) }})</th>
     </tr>
-    @foreach($return->items as $i => $item)
+    @foreach($lines as $line)
+      @php $item = $line['item']; @endphp
       <tr>
-        <td>{{ $i + 1 }}</td>
+        <td class="nw">{{ $qty($item->quantity) }} {{ $item->unit?->symbol ?: $item->unit?->name }}</td>
         <td>
-          {{ $item->product?->product_code }} — {{ $item->product?->name }}
-          @if($item->variant?->variant_label ?? $item->attribute?->attribute_name) <span style="color:#6b7280;">({{ $item->variant?->variant_label ?? $item->attribute->attribute_name }})</span>@endif
+          {{ $item->product?->name }}
+          @if($item->variant?->variant_label ?? $item->attribute?->attribute_name) ({{ $item->variant?->variant_label ?? $item->attribute->attribute_name }})@endif
+          @if($item->pieces->isNotEmpty())
+            <div class="rolls">Rolls: {{ $item->pieces->map(fn ($p) => $p->piece_code . ' (' . $qty($p->quantity) . ')')->implode(', ') }}</div>
+          @endif
         </td>
-        <td class="r nw">{{ $qty($item->quantity) }} {{ $item->unit?->symbol ?: $item->unit?->name }}</td>
-        <td class="r nw">{{ $money($item->unit_price) }}</td>
-        <td class="nw">{{ $item->reason->label() }}</td>
-        <td class="nw">{{ $item->condition->label() }}</td>
-        <td class="nw">{{ $item->store?->store_name }}</td>
-        <td class="r nw">{{ $money($isTaxReturn ? (float) $item->quantity * (float) $item->unit_price : $item->line_total) }}</td>
+        <td class="nw">{{ $money($line['price']) }}</td>
+        <td class="r nw">{{ $money($line['amount']) }}</td>
       </tr>
-      @if($item->pieces->isNotEmpty())
-        <tr class="rolls">
-          <td></td>
-          <td colspan="7">
-            Rolls: {{ $item->pieces->map(fn ($p) => $p->piece_code . ' (' . $qty($p->quantity) . ')' . ($p->restoredPiece && $p->restoredPiece->piece_code !== $p->piece_code ? ' → ' . $p->restoredPiece->piece_code : ''))->implode(', ') }}
-          </td>
-        </tr>
-      @endif
     @endforeach
-  </table>
+    @for($i = 0; $i < $blankRows; $i++)
+      <tr><td>&nbsp;</td><td></td><td></td><td></td></tr>
+    @endfor
 
-  {{-- ══ TOTALS ══ --}}
-  <table class="totals">
+    <tr>
+      <td></td><td></td>
+      <td class="nw">SUB TOTAL</td>
+      <td class="r nw">{{ $money($subTotal) }}</td>
+    </tr>
     @if($isTaxReturn)
-      <tr><td class="k">Value of Goods Returned (Excl. VAT)</td><td class="v">{{ $money($valueOfGoods) }}</td></tr>
-      @if($discount > 0)
-        <tr><td class="k">Less: Discount</td><td class="v">({{ $money($discount) }})</td></tr>
-      @endif
-      <tr><td class="k">VAT Amount {{ $vatRate }}</td><td class="v">{{ $money($vat) }}</td></tr>
+      <tr>
+        <td colspan="2" class="open" style="border-right:none;"></td>
+        <td class="nw">VAT {{ $vatRate }}</td>
+        <td class="r nw">{{ $money($vat) }}</td>
+      </tr>
     @endif
-    <tr class="grand"><td class="k" style="color:#111827;">Total Return Value{{ $isTaxReturn ? ' incl. VAT' : '' }} ({{ $currency }})</td><td class="v">{{ $money($return->total_amount) }}</td></tr>
-    {{-- How the return value was settled: against the invoice first, any excess as a credit note --}}
-    <tr><td class="k">Credited to Invoice</td><td class="v">{{ $money($return->applied_to_invoice) }}</td></tr>
-    @if($creditNote)
-      <tr><td class="k">Credit Note {{ $creditNote->credit_note_no }}</td><td class="v">{{ $money($creditNote->amount) }}</td></tr>
-    @endif
+    <tr class="total">
+      <td colspan="2" class="open" style="border-right:none;"></td>
+      <td></td>
+      <td class="r nw v">{{ $money($total) }}</td>
+    </tr>
+    <tr><td colspan="4" class="tail"></td></tr>
   </table>
-
-  <div class="words"><span class="lbl">Amount in words:</span> {{ $words }}</div>
-
-  @if($return->remarks)
-    <div style="font-size:9.5pt; color:#374151; margin-bottom:9px;"><span class="lbl">Remarks:</span> {{ $return->remarks }}</div>
-  @endif
 
   {{-- ══ SIGNATURES ══ --}}
   <div class="page-footer">
-    <div class="declaration">Goods listed above were received back from the customer. The return value will be credited to the customer account against the invoice shown.</div>
-    <div class="sig-space"></div>
     <table class="sig">
       <tr>
-        <td><div class="sig-line">Received By (Signature &amp; Date)</div></td>
-        <td><div class="sig-line">Customer Signature</div></td>
+        <td><div class="sig-line">APPROVED BY</div></td>
+        <td><div class="sig-line">CHECKED BY</div></td>
       </tr>
     </table>
-
-    <div class="note">Computer-generated sales return note. Confirmed {{ $return->confirmed_at?->format('Y-m-d H:i') }}.</div>
   </div>
 
 </body>

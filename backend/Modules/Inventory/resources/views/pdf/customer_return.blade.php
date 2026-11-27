@@ -132,7 +132,7 @@
     <tr>
       <td></td>
       <td class="nw">
-        <div class="refs">INVOICE DATE:- {{ $date($return->return_date) }}</div>
+        <div class="refs">INVOICE DATE:- {{ $date($invoice?->invoice_date) }}</div>
         <div>CREDIT NOTE NO:- {{ $return->return_no }}</div>
         <div>RESPECTIVE {{ $isTaxReturn ? 'TAX ' : '' }}INVOICE NO:- {{ $invoice?->invoice_no ?? '—' }}</div>
         <div>RESPECTIVE {{ $isTaxReturn ? 'TAX ' : '' }}INVOICE DATE:- {{ $date($invoice?->invoice_date) }}</div>

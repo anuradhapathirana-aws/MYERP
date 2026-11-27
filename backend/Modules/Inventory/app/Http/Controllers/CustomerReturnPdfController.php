@@ -28,6 +28,10 @@ class CustomerReturnPdfController extends Controller
 
         $return = $this->service->find($customerReturn->id);
 
+        // find() loads only the customer's id/code/name for the API; the note also
+        // prints the billing address and VAT registration no.
+        $return->load('customer');
+
         // Single-tenant deployment — the letterhead is the deployment's own company record
         $company = Company::query()->orderBy('id')->first();
 

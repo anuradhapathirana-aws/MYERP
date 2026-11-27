@@ -12,6 +12,7 @@ use Modules\Inventory\Models\GoodsReceivedNoteItem;
 use Modules\Inventory\Models\GrnItemPiece;
 use Modules\Inventory\Models\Product;
 use Modules\Inventory\Support\Quantity;
+use Modules\Inventory\Support\Vat;
 
 /**
  * Single source of truth for product price resolution.
@@ -171,17 +172,20 @@ class ProductPricingService
     }
 
     /**
-     * The full price pair a GRN item's confirmed costing filed, per the stocking UOM:
-     * selling_price (AFTER tax — VAT inside) and before_tax_price, plus the VAT %
-     * the costing actually applied between them (line override, else the costing
-     * header, 0 when the costing had VAT off).
+     * The price a GRN item's confirmed costing filed, per the stocking UOM.
      *
-     * Tax invoices bill before_tax_price + vat_pct per line; non-tax invoices bill
-     * selling_price with no VAT added. Null = this GRN item was never costed.
+     *   selling_price     the BEFORE TAX selling price — what the price list and an SO
+     *                     line hold (prices are stored before tax; the invoice adds VAT)
+     *   before_tax_price  the same figure (kept for callers that name it so)
+     *   vat_pct           the VAT % this shipment sells under: the rate an older costing
+     *                     applied (line override, else header), else the default rate.
+     *                     Costings no longer take VAT, so new ones always give the default.
      *
-     * cost_floor is the break-even AFTER-tax price: the landed cost (purchase +
-     * expenses) with the costing's SSCL and VAT on top but no margin. Selling
-     * below it loses money on the roll — the below-cost guard compares to it.
+     * Null = this GRN item was never costed.
+     *
+     * cost_floor is the break-even BEFORE TAX price: the landed cost (purchase +
+     * expenses) with the costing's SSCL on top but no margin and no VAT (SO prices
+     * are Before Tax). Selling below it loses money — the below-cost guard compares to it.
      *
      * @return array{selling_price: float, before_tax_price: float, vat_pct: float, cost_floor: float}|null
      */
@@ -209,15 +213,18 @@ class ProductPricingService
             return null;
         }
 
+        $net     = (float) ((float) $row->before_tax_price_base > 0 ? $row->before_tax_price_base : $row->selling_price_base);
         // The same per-line-override-else-header rule CostingService priced with.
         $vatPct  = $row->apply_vat ? (float) ($row->line_vat_pct ?? $row->header_vat_pct) : 0.0;
         $ssclPct = $row->apply_sscl ? (float) ($row->line_sscl_pct ?? $row->header_sscl_pct) : 0.0;
 
         return [
-            'selling_price'    => (float) $row->selling_price_base,
-            'before_tax_price' => (float) $row->before_tax_price_base,
-            'vat_pct'          => $vatPct,
-            'cost_floor'       => round((float) $row->landed_unit_cost_base * (1 + $ssclPct / 100) * (1 + $vatPct / 100), 8),
+            'selling_price'    => $net,
+            'before_tax_price' => $net,
+            'vat_pct'          => $vatPct > 0 ? $vatPct : Vat::defaultPct(),
+            // Break-even BEFORE TAX: landed cost + SSCL (SO prices are Before Tax now,
+            // so VAT is no longer part of the floor)
+            'cost_floor'       => round((float) $row->landed_unit_cost_base * (1 + $ssclPct / 100), 8),
         ];
     }
 
@@ -288,13 +295,13 @@ class ProductPricingService
      * price first ("old stock at old price, new stock at new price"), the
      * product price list as fallback.
      *
-     * before_tax_price / vat_pct ride along when the price came from a costing —
-     * the price list holds only the one (after-tax) figure, so they stay null there.
+     * Every price is BEFORE TAX. vat_pct is the rate the line sells under — the
+     * costing's own for a costed roll, the default rate for a price-list one.
      *
-     * cost_floor (the costing's break-even price) rides along too; null on the
-     * price-list fallback, where the caller falls back to the GRN cost.
+     * cost_floor (the costing's Before Tax break-even price) rides along too; null
+     * on the price-list fallback, where the caller falls back to the GRN cost.
      *
-     * @return array{price: ?float, source: 'costing'|'price_list'|null, before_tax_price: ?float, vat_pct: ?float, cost_floor: ?float}
+     * @return array{price: ?float, source: 'costing'|'price_list'|null, before_tax_price: ?float, vat_pct: float, cost_floor: ?float}
      */
     public function resolvePieceSellingPrice(GrnItemPiece $piece): array
     {
@@ -316,8 +323,8 @@ class ProductPricingService
         return [
             'price'            => $listPrice,
             'source'           => $listPrice !== null ? 'price_list' : null,
-            'before_tax_price' => null,
-            'vat_pct'          => null,
+            'before_tax_price' => $listPrice,
+            'vat_pct'          => Vat::defaultPct(),
             'cost_floor'       => null,
         ];
     }
@@ -335,8 +342,8 @@ class ProductPricingService
 
     /**
      * Confirmed-costing write-back: the price list mirrors the NEWEST costed
-     * shipment — landed cost into cost_price, costing selling price into
-     * selling_price. Older shipments keep pricing from their own costing
+     * shipment — landed cost into cost_price, the costing's BEFORE TAX selling
+     * price into selling_price (the invoice adds VAT). Older shipments keep pricing from their own costing
      * (resolved per roll via resolvePieceSellingPrice).
      *
      * Both figures arrive per the product's STOCKING UOM. Each price-list row states
@@ -345,7 +352,7 @@ class ProductPricingService
      * sells a 50 Kg roll for the price of a kilo. A row whose unit has no rate to the
      * stocking UOM is left alone: no price beats a confidently wrong one.
      */
-    public function syncFromCosting(int $productId, ?int $baseUnitId, float $landedCostBase, float $sellingPriceBase): void
+    public function syncFromCosting(int $productId, ?int $baseUnitId, float $landedCostBase, float $netSellingPriceBase): void
     {
         $rows = DB::table(self::PIVOT_TABLE)
             ->where('product_id', $productId)
@@ -367,19 +374,19 @@ class ProductPricingService
             // the same factor as the quantity: 660/Kg × 50 Kg/Roll = 33,000/Roll.
             DB::table(self::PIVOT_TABLE)->where('id', $row->id)->update([
                 'cost_price'    => Quantity::roundPrice($landedCostBase * $factor),
-                'selling_price' => Quantity::roundPrice($sellingPriceBase * $factor),
+                'selling_price' => Quantity::roundPrice($netSellingPriceBase * $factor),
                 'updated_at'    => now(),
             ]);
         }
     }
 
     /**
-     * Confirmed-costing write-back for a variant line: the variant's own selling
-     * price on every channel of the product, restated in that channel row's unit
+     * Confirmed-costing write-back for a variant line: the variant's own landed cost
+     * and BEFORE TAX selling price on every channel of the product, restated in that channel row's unit
      * (the same conversion syncFromCosting applies to the product rows). The
      * product's own price list is left alone — other variants still sell at it.
      */
-    public function syncVariantFromCosting(int $productId, int $variantId, ?int $baseUnitId, float $sellingPriceBase): void
+    public function syncVariantFromCosting(int $productId, int $variantId, ?int $baseUnitId, float $landedCostBase, float $netSellingPriceBase): void
     {
         $rows = DB::table(self::PIVOT_TABLE)
             ->where('product_id', $productId)
@@ -396,17 +403,19 @@ class ProductPricingService
                 continue;
             }
 
-            $price    = Quantity::roundPrice($sellingPriceBase * $factor);
+            $price    = Quantity::roundPrice($netSellingPriceBase * $factor);
+            $cost     = Quantity::roundPrice($landedCostBase * $factor);
             $existing = DB::table('inv_product_variant_prices')
                 ->where('variant_id', $variantId)
                 ->where('sales_channel_id', $row->sales_channel_id)
                 ->first(['id']);
 
             $existing !== null
-                ? DB::table('inv_product_variant_prices')->where('id', $existing->id)->update(['selling_price' => $price, 'updated_at' => now()])
+                ? DB::table('inv_product_variant_prices')->where('id', $existing->id)->update(['cost_price' => $cost, 'selling_price' => $price, 'updated_at' => now()])
                 : DB::table('inv_product_variant_prices')->insert([
                     'variant_id'       => $variantId,
                     'sales_channel_id' => $row->sales_channel_id,
+                    'cost_price'       => $cost,
                     'selling_price'    => $price,
                     'created_at'       => now(),
                     'updated_at'       => now(),

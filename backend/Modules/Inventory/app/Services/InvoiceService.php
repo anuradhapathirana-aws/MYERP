@@ -16,7 +16,6 @@ use Modules\Inventory\Enums\SalesOrderStatus;
 use App\Models\Company;
 use App\Models\Tax;
 use App\Services\TaxService;
-use DateTimeInterface;
 use Modules\Inventory\Models\CustomerReturn;
 use Modules\Inventory\Models\DeliveryOrder;
 use Modules\Inventory\Models\Invoice;
@@ -25,6 +24,7 @@ use Modules\Inventory\Models\ProformaInvoiceItem;
 use Modules\Inventory\Models\Product;
 use Modules\Inventory\Models\SalesOrder;
 use Modules\Inventory\Models\SalesOrderItem;
+use Modules\Inventory\Support\Vat;
 
 /**
  * Invoices bill exactly one confirmed delivery order (do_id set, 1:1) — the
@@ -33,19 +33,20 @@ use Modules\Inventory\Models\SalesOrderItem;
  * viewable/editable and still block per-DO billing on their SO.
  *
  * Every invoice is either a TAX or a NON-TAX invoice:
- *   tax     — lines bill the costing's BEFORE-tax price and the VAT the costing
- *             used is added per line (Tax %); uncosted lines back-compute
- *             SO price ÷ (1 + 18%) so the customer total stays the SO's.
- *   non_tax — lines bill the SO price as-is (the costing's AFTER-tax price,
- *             VAT already inside) and no VAT is added (Tax % forced to 0).
+ *   tax     — lines bill the SO line's BEFORE TAX price and add its VAT %
+ *             (on the amount after discount), shown separately.
+ *   non_tax — lines bill Before Tax × (1 + VAT %) — VAT carried inside the
+ *             price, not shown (Tax % forced to 0).
+ *
+ * The SO line is the only price source (it froze Before Tax + VAT % when made).
  */
 class InvoiceService
 {
     public function __construct(
-        private readonly ProductPricingService $pricing,
-        private readonly UnitConversionService $units,
         private readonly ProformaInvoicingTracker $proformas,
         private readonly TaxService $taxes,
+        private readonly ProductPricingService $pricing,
+        private readonly UnitConversionService $units,
     ) {
     }
     /** @param array<string, mixed> $filters */
@@ -298,7 +299,7 @@ class InvoiceService
 
     /**
      * Freeze, per line, the rates its journal splits out of the price: the VAT
-     * inside a Non-Tax price (the costing's VAT %, else the Tax master's VAT) and
+     * inside a Non-Tax price (the SO line's VAT %, else the Tax master's VAT) and
      * the SSCL rate in force on the invoice date (Master Data > Taxes; 0 while
      * SSCL is switched off). Stamped at issue -- even with Finance off -- so a
      * later return reverses exactly what was charged, whatever the rates are by then.
@@ -312,7 +313,10 @@ class InvoiceService
 
         foreach ($items as $item) {
             $item->update([
-                'vat_inclusive_pct' => $nonTax ? $this->taxPricingForSoItem($item->soItem, $on)['tax'] : null,
+                // The VAT inside a Non-Tax price is the SO line's own frozen rate
+                'vat_inclusive_pct' => $nonTax
+                    ? (float) ($item->soItem?->vat_pct ?? $this->taxes->rate(Tax::VAT, $on))
+                    : null,
                 'sscl_pct'          => $sscl,
             ]);
         }
@@ -549,11 +553,11 @@ class InvoiceService
 
         $gross = (float) $item->quantity * $item->unit_price;
 
-        $item->line_total = $this->money(
-            $gross
-                - ($gross * (float) $item->discount / 100)
-                + ($gross * (float) $item->tax / 100)
-        );
+        // VAT is charged on the amount AFTER the discount (it used to be on the gross).
+        $net = $gross - ($gross * (float) $item->discount / 100);
+
+        $item->line_total = $this->money($net + ($net * (float) $item->tax / 100));
+        $item->vat_on_net = true;
 
         $item->save();
     }
@@ -605,7 +609,8 @@ class InvoiceService
     /** @return array<string, mixed> */
     private function itemPreview(?SalesOrderItem $soItem, float $quantity, ?int $doItemId): array
     {
-        $taxPricing = $this->taxPricingForSoItem($soItem);
+        $nonTax = $this->linePricing($soItem, 'non_tax');
+        $tax    = $this->linePricing($soItem, 'tax');
 
         return [
             'so_item_id' => $soItem?->id,
@@ -619,21 +624,21 @@ class InvoiceService
             'attribute'  => $soItem?->attribute ? ['id' => $soItem->attribute->id, 'name' => $soItem->attribute->attribute_name] : null,
             'variant'    => $soItem?->variant ? ['id' => $soItem->variant->id, 'sku' => $soItem->variant->sku, 'name' => $soItem->variant->variant_label] : null,
             'quantity'   => $quantity,
-            // Non-Tax invoice price: the SO price as-is (costing AFTER-tax, VAT inside)
-            'unit_price' => $this->money((float) ($soItem?->unit_price ?? 0)),
+            // Non Tax invoice price: the SO's Before Tax price + VAT, carried inside
+            'unit_price' => $nonTax['unit_price'],
             'discount'   => (float) ($soItem?->discount ?? 0),
-            'tax'        => (float) ($soItem?->tax ?? 0),
-            // Tax invoice price: costing BEFORE-tax + the VAT % to add per line
-            'tax_unit_price' => $taxPricing['unit_price'],
-            'tax_vat_pct'    => $taxPricing['tax'],
-            // Below-cost guard: break-even AFTER-tax price per the line's price unit
+            'tax'        => 0.0,
+            // Tax invoice price: the SO's Before Tax price, VAT % added per line
+            'tax_unit_price' => $tax['unit_price'],
+            'tax_vat_pct'    => $tax['tax'],
+            // Below-cost guard: break-even Before Tax price per the line's price unit
             'cost_floor'     => $this->costFloorForSoItem($soItem),
         ];
     }
 
     /**
-     * The break-even AFTER-tax price of an SO line, per the unit its price is
-     * quoted in: the dearest allocated roll's snapshot (landed cost + SSCL + VAT,
+     * The break-even BEFORE TAX price of an SO line, per the unit its price is
+     * quoted in: the dearest allocated roll's snapshot (landed cost + SSCL,
      * else GRN cost), or for a quantity line the newest costing of the product /
      * colour / variant. Null when unknown or the unit has no conversion rate.
      */
@@ -659,7 +664,7 @@ class InvoiceService
             return null;
         }
 
-        // Per stocking UOM → per the unit the line quotes its price in (as taxPricingForSoItem).
+        // Per stocking UOM → per the unit the line quotes its price in (as the SO line quotes it).
         $unitId     = $soItem->price_unit_id !== null
             ? (int) $soItem->price_unit_id
             : ($soItem->unit_id !== null ? (int) $soItem->unit_id : null);
@@ -677,10 +682,11 @@ class InvoiceService
     }
 
     /**
-     * What a line bills, by invoice type.
+     * What a line bills, by invoice type — always from the SO line, which froze its
+     * BEFORE TAX price and VAT % when it was made (no costing lookup, no guessing):
      *
-     *   tax     — the costing's BEFORE-tax price plus the VAT % that costing used.
-     *   non_tax — the SO price as-is (costing AFTER-tax, VAT already inside), 0 tax.
+     *   tax     — Before Tax price, VAT % added per line (on the amount after discount)
+     *   non_tax — Before Tax × (1 + VAT %), VAT carried inside the price, 0 tax
      *
      * Shared with ProformaInvoiceService so a proforma quotes exactly what the
      * DO invoice would bill.
@@ -689,99 +695,14 @@ class InvoiceService
      */
     public function linePricing(?SalesOrderItem $soItem, string $invoiceType): array
     {
-        if ($invoiceType === 'non_tax') {
-            return ['unit_price' => $this->money((float) ($soItem?->unit_price ?? 0)), 'tax' => 0.0];
-        }
+        // The stored 8 dp, not the model's 4 dp cast: a Before Tax price derived by ÷ 1.18
+        // needs its tail so that × 1.18 lands back on the old After Tax price to the cent.
+        $net = (float) ($soItem?->getRawOriginal('unit_price') ?? $soItem?->unit_price ?? 0);
+        $pct = $soItem?->vat_pct !== null ? (float) $soItem->vat_pct : Vat::defaultPct();
 
-        return $this->taxPricingForSoItem($soItem);
-    }
-
-    /**
-     * The Tax-invoice price pair of an SO line: its rolls' confirmed-costing
-     * before-tax price (restated per the LINE's unit) and the VAT % the costing
-     * applied. When the rolls carry no costing — or disagree — the SO price has
-     * the Tax master's VAT (in force on $on, today by default) stripped out
-     * instead, so before-tax + VAT still lands on the price the SO quoted.
-     *
-     * @return array{unit_price: float, tax: float}
-     */
-    private function taxPricingForSoItem(?SalesOrderItem $soItem, ?DateTimeInterface $on = null): array
-    {
-        $soPrice  = (float) ($soItem?->unit_price ?? 0);
-        $vat      = $this->taxes->rate(Tax::VAT, $on);
-        $fallback = [
-            'unit_price' => $this->money($soPrice / (1 + $vat / 100)),
-            'tax'        => $vat,
-        ];
-
-        if ($soItem === null) {
-            return $fallback;
-        }
-
-        // The GRN lines behind this SO line's allocated rolls
-        $grnItemIds = DB::table('inv_sales_order_pieces as sp')
-            ->join('inv_grn_item_pieces as p', 'p.id', '=', 'sp.piece_id')
-            ->where('sp.so_item_id', $soItem->id)
-            ->whereNotNull('p.grn_item_id')
-            ->distinct()
-            ->pluck('p.grn_item_id');
-
-        // Quantity-tracked lines have no rolls to trace — their costing is found
-        // by product + colour, and only its VAT % is trusted blindly (see below).
-        $isQtyLine = $grnItemIds->isEmpty()
-            && Product::whereKey($soItem->product_id)->first(['id', 'stock_tracking'])?->isRollTracked() === false;
-
-        $pairs = $isQtyLine
-            ? collect([$this->pricing->latestCostingPricingFor(
-                (int) $soItem->product_id,
-                $soItem->attribute_id !== null ? (int) $soItem->attribute_id : null,
-                $soItem->variant_id !== null ? (int) $soItem->variant_id : null,
-            )])->filter()->values()
-            : $grnItemIds
-                ->map(fn ($id) => $this->pricing->costingPricingForGrnItem((int) $id))
-                ->filter()
-                ->unique(fn (array $p) => $p['before_tax_price'] . '|' . $p['vat_pct'])
-                ->values();
-
-        // Lines are split by selling price at allocation, so one price pair is the
-        // normal case; none (uncosted) or several (shouldn't happen) → fallback.
-        if ($pairs->count() !== 1) {
-            return $fallback;
-        }
-
-        $pair = $pairs->first();
-
-        // before_tax_price is per the stocking UOM; it must be restated per the unit the
-        // line QUOTES its price in — price_unit_id when set (a yard line billing the
-        // per-metre price keeps factor 1), else the quantity's unit (legacy lines).
-        $factor     = 1.0;
-        $unitId     = $soItem->price_unit_id !== null
-            ? (int) $soItem->price_unit_id
-            : ($soItem->unit_id !== null ? (int) $soItem->unit_id : null);
-        $baseUnitId = Product::where('id', $soItem->product_id)->value('base_unit_type_id');
-
-        if ($unitId !== null && $baseUnitId !== null && $unitId !== (int) $baseUnitId) {
-            $rate = $this->units->tryFactor($unitId, (int) $baseUnitId);
-            if ($rate === null || $rate <= 0.0) {
-                return $fallback; // no rate — better the derived price than a wrong-unit one
-            }
-            $factor = $rate;
-        }
-
-        // A quantity line's price was typed on the SO, not derived from the costing.
-        // When it differs from the costing price, bill the SO price (VAT stripped at
-        // the costing's rate) — the invoice must charge what the SO quoted.
-        if ($isQtyLine && abs($pair['selling_price'] * $factor - $soPrice) > 0.005) {
-            return [
-                'unit_price' => $this->money($soPrice / (1 + $pair['vat_pct'] / 100)),
-                'tax'        => $pair['vat_pct'],
-            ];
-        }
-
-        return [
-            'unit_price' => $this->money($pair['before_tax_price'] * $factor),
-            'tax'        => $pair['vat_pct'],
-        ];
+        return $invoiceType === 'non_tax'
+            ? ['unit_price' => $this->money(Vat::gross($net, $pct)), 'tax' => 0.0]
+            : ['unit_price' => $this->money($net), 'tax' => $pct];
     }
 
     /**

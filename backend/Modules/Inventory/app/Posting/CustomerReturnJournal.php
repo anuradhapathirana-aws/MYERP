@@ -35,7 +35,7 @@ final class CustomerReturnJournal
         $return->loadMissing(['items', 'customer', 'invoice:id,invoice_no,company_id']);
 
         $invoiceItems = InvoiceItem::whereKey($return->items->pluck('invoice_item_id')->filter()->all())
-            ->get(['id', 'vat_inclusive_pct', 'sscl_pct'])
+            ->get(['id', 'vat_inclusive_pct', 'sscl_pct', 'vat_on_net'])
             ->keyBy('id');
 
         $tax  = 0.0;
@@ -50,6 +50,7 @@ final class CustomerReturnJournal
                 (float) $item->discount,
                 $source?->vat_inclusive_pct === null ? null : (float) $source->vat_inclusive_pct,
                 $source?->sscl_pct === null ? null : (float) $source->sscl_pct,
+                (bool) ($source?->vat_on_net ?? false),
             );
 
             $tax  += $split['vat'];

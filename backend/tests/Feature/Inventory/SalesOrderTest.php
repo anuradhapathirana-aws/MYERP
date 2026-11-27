@@ -206,10 +206,12 @@ class SalesOrderTest extends TestCase
             ->assertJsonPath('data.so_no', "SO-{$year}-0001")
             ->assertJsonPath('data.status', 'draft')
             ->assertJsonPath('data.subtotal', 1000)
-            // 1000 - 100 (disc) = 900 line total, + 50 transport — the sent tax is ignored
-            ->assertJsonPath('data.grand_total', 950)
+            // Prices are Before Tax and the SO never adds a Tax %: 1000 - 100 (disc) = 900
+            // line total; VAT 18% of 900 = 162 (what the invoice will add); + 50 transport
             ->assertJsonPath('data.items.0.tax', 0)
-            ->assertJsonPath('data.items.0.line_total', 900);
+            ->assertJsonPath('data.items.0.vat_pct', 18)
+            ->assertJsonPath('data.vat_amount', 162)
+            ->assertJsonPath('data.grand_total', 1112);
     }
 
     public function test_store_with_confirmed_status_persists_confirmed(): void

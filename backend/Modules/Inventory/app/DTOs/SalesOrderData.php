@@ -10,7 +10,7 @@ use Modules\Inventory\Http\Requests\UpdateSalesOrderRequest;
 
 final class SalesOrderData
 {
-    /** @param array<array{product_id:int, unit_id:?int, attribute_id:?int, quantity:?float, unit_price:float, discount:float, tax:float, remarks:?string, piece_codes:?array<string>, piece_takes:?array<string, float>}> $items */
+    /** @param array<array{product_id:int, unit_id:?int, attribute_id:?int, quantity:?float, unit_price:float, discount:float, tax:float, vat_pct:?float, remarks:?string, piece_codes:?array<string>, piece_takes:?array<string, float>}> $items */
     public function __construct(
         public readonly ?string $referenceNo,
         public readonly int     $customerId,

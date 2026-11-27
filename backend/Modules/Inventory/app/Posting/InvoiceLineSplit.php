@@ -10,8 +10,11 @@ namespace Modules\Inventory\Posting;
  * Shared by InvoiceJournal and CustomerReturnJournal so a return reverses an
  * invoice by exactly the same arithmetic it was posted with.
  *
- *   Tax line      line_total = gross - gross x d% + gross x t%
+ *   Tax line      (old, vat_on_net = false) VAT on the gross before discount:
+ *                 line_total = gross - gross x d% + gross x t%
  *                 VAT = gross x t% = line_total x t / (100 - d + t)
+ *                 (new, vat_on_net = true) VAT on the amount after discount:
+ *                 line_total = net + net x t%,  VAT = line_total x t / (100 + t)
  *   Non-Tax line  VAT is inside the price at vat_inclusive_pct (p):
  *                 VAT = line_total x p / (100 + p)
  *   SSCL          inside the before-VAT price at sscl_pct (s), as the costing
@@ -28,11 +31,12 @@ final class InvoiceLineSplit
         float $discountPct,
         ?float $vatInclusivePct,
         ?float $ssclPct,
+        bool $vatOnNet = false,
     ): array {
         $vat = 0.0;
 
         if ($taxPct > 0) {
-            $base = 100 - $discountPct + $taxPct;
+            $base = $vatOnNet ? 100 + $taxPct : 100 - $discountPct + $taxPct;
             $vat  = $base > 0 ? $amount * $taxPct / $base : 0.0;
         } elseif ($vatInclusivePct !== null && $vatInclusivePct > 0) {
             $vat = $amount * $vatInclusivePct / (100 + $vatInclusivePct);

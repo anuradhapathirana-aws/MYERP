@@ -225,7 +225,7 @@ export default function SalesOrderViewPage() {
                   <th className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Product</th>
                   <th className="w-32 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Colour / Variant</th>
                   <th className="w-16 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">UOM</th>
-                  <th className="w-24 px-2 py-1.5 text-right text-[10px] font-bold uppercase tracking-wider text-slate-500">Unit Price</th>
+                  <th className="w-24 px-2 py-1.5 text-right text-[10px] font-bold uppercase tracking-wider text-slate-500" title="Before Tax — the invoice adds VAT">Unit Price Before Tax</th>
                   <th className="w-24 px-2 py-1.5 text-right text-[10px] font-bold uppercase tracking-wider text-slate-500">Quantity</th>
                   <th className="w-24 px-2 py-1.5 text-right text-[10px] font-bold uppercase tracking-wider text-green-600">Delivered</th>
                   <th className="w-16 px-2 py-1.5 text-right text-[10px] font-bold uppercase tracking-wider text-amber-500">Disc%</th>
@@ -312,13 +312,14 @@ export default function SalesOrderViewPage() {
                     <div className="flex items-center gap-4 text-xs">
                       <span className="font-bold uppercase tracking-wider text-indigo-600">Summary</span>
                       <span className="text-slate-500">Sub Total: <Money value={so.subtotal} className="font-bold text-slate-700" /></span>
+                      <span className="text-sky-600" title="VAT the invoice adds on the Before Tax amount">VAT: <Money value={so.vat_amount} className="font-bold" /></span>
                       <span className="text-slate-500">Transport: <Money value={so.transport_charge} className="font-bold text-slate-700" /></span>
                       <span className="text-slate-500">Total Qty: <span className="font-bold text-slate-700">{so.total_quantity != null ? Number(so.total_quantity).toLocaleString(undefined, { maximumFractionDigits: 2 }) : '—'}</span></span>
                     </div>
                   </td>
                   <td colSpan={2} className="px-3 py-1.5 text-right">
                     <div className="flex flex-col items-end leading-tight">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">Net Total</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">Total After Tax</span>
                       <Money value={so.grand_total} className="text-base font-black text-indigo-700" />
                     </div>
                   </td>

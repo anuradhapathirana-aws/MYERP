@@ -762,9 +762,32 @@ class CustomerReturnService
     /**
      * The base-UOM selling price the delivery posted its qty_out at (DeliveryOrderService
      * rebases the SO line price the same way) — so the return reverses the same value.
+     *
+     * Read off the delivery's own stock posting first: SO prices switched from After Tax
+     * to Before Tax, so a DO posted before the switch went out at the old price and the
+     * live SO price no longer matches it.
      */
     private function deliveryPrice(InvoiceItem $item, float $factor): float
     {
+        $doId = $item->do_item_id !== null
+            ? DeliveryOrderItem::whereKey($item->do_item_id)->value('do_id')
+            : null;
+
+        if ($doId !== null) {
+            $posted = StockTransaction::where('reference_type', StockReferenceType::CODE_SALES_DELIVERY)
+                ->where('reference_id', $doId)
+                ->where('product_id', $item->product_id)
+                ->where('attribute_id', $item->attribute_id)
+                ->where('variant_id', $item->variant_id)
+                ->where('qty_out', '>', 0)
+                ->orderBy('id')
+                ->value('unit_price');
+
+            if ($posted !== null) {
+                return Quantity::roundPrice((float) $posted);
+            }
+        }
+
         $soPrice = (float) (SalesOrderItem::whereKey($item->so_item_id)->value('unit_price') ?? 0);
 
         return $factor > 0 ? Quantity::roundPrice($soPrice / $factor) : 0.0;

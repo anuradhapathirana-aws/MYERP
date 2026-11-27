@@ -258,22 +258,23 @@ class ProductPricingTest extends TestCase
         $seed    = $this->makeGrn($product, unitPrice: 1327.20);
         $this->giveCostedShipment($seed['grn']->id, $seed['item']->id, $product->id);
 
-        // 1,357.20 × 1.0125 × 1.18 = 1,621.5147 — no margin, so selling below it loses money
+        // Before Tax: 1,357.20 × 1.0125 (SSCL) = 1,374.165 — no margin, no VAT (SO prices
+        // are Before Tax), so selling below it loses money
         $scan = $this->actingAs($this->user)
             ->getJson('/api/v1/sales-orders/scan-piece/' . $seed['piece']->piece_code)
             ->assertOk();
-        $this->assertEqualsWithDelta(1621.5147, $scan->json('data.cost_floor'), 0.0001);
+        $this->assertEqualsWithDelta(1374.165, $scan->json('data.cost_floor'), 0.0001);
         $this->assertEquals(1327.20, $scan->json('data.grn_unit_price')); // unchanged meaning
 
         $rolls = $this->actingAs($this->user)
             ->getJson("/api/v1/sales-orders/available-pieces/{$product->id}")
             ->assertOk();
-        $this->assertEqualsWithDelta(1621.5147, $rolls->json('data.pieces.0.cost_floor'), 0.0001);
+        $this->assertEqualsWithDelta(1374.165, $rolls->json('data.pieces.0.cost_floor'), 0.0001);
 
         $price = $this->actingAs($this->user)
             ->getJson("/api/v1/sales-orders/product-price/{$product->id}")
             ->assertOk();
-        $this->assertEqualsWithDelta(1621.5147, $price->json('data.cost_floor'), 0.0001);
+        $this->assertEqualsWithDelta(1374.165, $price->json('data.cost_floor'), 0.0001);
     }
 
     public function test_an_uncosted_roll_falls_back_to_its_grn_cost(): void

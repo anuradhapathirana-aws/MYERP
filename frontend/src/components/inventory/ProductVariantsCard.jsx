@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { Layers, Lock, Plus, Trash2, Wand2 } from 'lucide-react'
 import { confirmDelete, showWarning } from '../../utils/alerts'
 import { PRICE_FIELDS, variantKey, variantLabel } from '../../utils/productVariants'
+import { afterTaxOf } from '../../utils/vat'
+import { fmtMoney } from '../../utils/currency'
 
 const INPUT_CLS = 'block w-full rounded-md border-2 border-slate-200 bg-slate-50 px-1.5 py-0.5 text-xs text-slate-800 placeholder-slate-400 outline-none transition-all focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/15'
 const INPUT_ERR_CLS = 'block w-full rounded-md border-2 border-red-300 bg-red-50/40 px-1.5 py-0.5 text-xs text-slate-800 outline-none focus:border-red-500 focus:bg-white focus:ring-2 focus:ring-red-500/15'
@@ -262,6 +264,11 @@ export default function ProductVariantsCard({ variants, onChange, productAttribu
                             title="Empty = product price"
                             className={`${INPUT_CLS} text-right`}
                           />
+                          {key === 'selling_price' && afterTaxOf(prices[key]) != null && (
+                            <p className="mt-0.5 text-right text-[9px] leading-none text-slate-400" title="Before Tax + VAT — shown for reference">
+                              After Tax: {fmtMoney(afterTaxOf(prices[key]))}
+                            </p>
+                          )}
                         </td>
                       ))}
                       <td className="sticky right-0 bg-white px-1.5 py-1 text-center">

@@ -22,7 +22,7 @@ use Tests\TestCase;
  * Costing redesign: per-product cost build-up, every amount per BASE unit.
  *   before_tax = fob/cif (GRN price) + Σ expenses + margin
  *                + sscl% × (fob/cif + expenses + margin)   [default 1.25%]
- *   after_tax  = before_tax + vat%              (= selling_price)
+ *                = selling_price (VAT is the invoice's — never part of a costing)
  * Confirm keeps the one-GRN-per-confirmed-costing lock and mirrors
  * landed/selling onto the product price list.
  */
@@ -145,7 +145,8 @@ class CostingTest extends TestCase
 
         // fob 1000 + expenses (150+50) + margin 60 = 1260
         // sscl 1.25% × 1260 = 15.75, rounded UP to 16 → before_tax = 1276
-        // vat 18% × 1276 = 229.68 → after_tax = 1505.68
+        // VAT is not part of a costing (the invoice adds it): apply_vat is ignored,
+        // so the selling price IS the before-tax price, 1276
         $response = $this->actingAs($this->user)
             ->postJson('/api/v1/costings', $this->validPayload(
                 [$grn['grn']->id],
@@ -170,8 +171,8 @@ class CostingTest extends TestCase
         $this->assertEquals(16.0, $item['sscl_amount_base']);       // 1.25% of (fob + expenses + margin) = 15.75, ceiled
         $this->assertEquals(60.0, $item['margin_amount_base']);
         $this->assertEquals(1276.0, $item['before_tax_price_base']);
-        $this->assertEquals(229.68, $item['vat_amount_base']);      // 18% of before-tax
-        $this->assertEquals(1505.68, $item['selling_price_base']);
+        $this->assertEquals(0.0, $item['vat_amount_base']);         // no VAT in a costing
+        $this->assertEquals(1276.0, $item['selling_price_base']);   // selling = Before Tax
 
         // The typed expense rows round-trip
         $expenses = collect($item['expenses'])->keyBy('expense_type_id');
@@ -185,8 +186,8 @@ class CostingTest extends TestCase
         $this->assertEquals(12000.0, $response->json('data.total_landed_cost'));
         $this->assertEquals(160.0, $response->json('data.sscl_amount'));
         $this->assertEquals(12760.0, $response->json('data.gross_fob_cif_value')); // Before-Tax Value
-        $this->assertEquals(2296.8, $response->json('data.vat_amount'));
-        $this->assertEquals(15056.8, $response->json('data.total_price_with_vat')); // After-Tax Value
+        $this->assertEquals(0.0, $response->json('data.vat_amount'));            // no VAT in a costing
+        $this->assertEquals(12760.0, $response->json('data.total_price_with_vat')); // = Before Tax value
     }
 
     public function test_sscl_applies_to_the_full_cost_plus_margin_sum(): void
@@ -212,7 +213,7 @@ class CostingTest extends TestCase
         $this->assertEquals(1519.0, $response->json('data.items.0.before_tax_price_base'));
     }
 
-    public function test_line_sscl_and_vat_overrides_beat_header_defaults(): void
+    public function test_line_sscl_override_beats_header_default_and_vat_is_ignored(): void
     {
         $product = Product::factory()->create();
         $grnA = $this->makeGrn($product, qty: 5, unitPrice: 1000);
@@ -233,15 +234,16 @@ class CostingTest extends TestCase
 
         $items = collect($response->json('data.items'))->keyBy('grn_item_id');
 
-        $a = $items[$grnA['item']->id]; // overridden: sscl 5% = 50, before 1050, vat 8% = 84
+        // VAT (header or a line override) is ignored — the invoice adds VAT
+        $a = $items[$grnA['item']->id]; // overridden: sscl 5% = 50, before 1050
         $this->assertEquals(50.0, $a['sscl_amount_base']);
-        $this->assertEquals(84.0, $a['vat_amount_base']);
-        $this->assertEquals(1134.0, $a['selling_price_base']);
+        $this->assertEquals(0.0, $a['vat_amount_base']);
+        $this->assertEquals(1050.0, $a['selling_price_base']);
 
-        $b = $items[$grnB['item']->id]; // defaults: sscl 1.25% = 12.50 ceiled to 13, before 1013, vat 18% = 182.34
+        $b = $items[$grnB['item']->id]; // defaults: sscl 1.25% = 12.50 ceiled to 13, before 1013
         $this->assertEquals(13.0, $b['sscl_amount_base']);
-        $this->assertEquals(182.34, $b['vat_amount_base']);
-        $this->assertEquals(1195.34, $b['selling_price_base']);
+        $this->assertEquals(0.0, $b['vat_amount_base']);
+        $this->assertEquals(1013.0, $b['selling_price_base']);
     }
 
     public function test_sscl_and_vat_toggles_off_leave_before_and_after_tax_equal(): void
@@ -326,7 +328,7 @@ class CostingTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.status', 'confirmed');
 
-        // landed 1100 → cost_price ; after-tax selling 1320 → selling_price
+        // landed 1100 → cost_price ; Before Tax selling 1320 → selling_price
         $pivot = DB::table('inv_product_sales_channels')->find($pivotId);
         $this->assertSame(1100.0, (float) $pivot->cost_price);
         $this->assertSame(1320.0, (float) $pivot->selling_price);

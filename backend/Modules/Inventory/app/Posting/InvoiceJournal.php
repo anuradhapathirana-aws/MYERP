@@ -56,6 +56,7 @@ final class InvoiceJournal
                 (float) $item->discount,
                 $item->vat_inclusive_pct === null ? null : (float) $item->vat_inclusive_pct,
                 $item->sscl_pct === null ? null : (float) $item->sscl_pct,
+                (bool) $item->vat_on_net,
             );
 
             $tax  += $split['vat'];

@@ -121,6 +121,7 @@ export default function SalesOrderRollPickerModal({
       grn_unit_price: p.grn_unit_price,
       cost_floor:     p.cost_floor ?? null,
       selling_price:  p.selling_price ?? null,
+      vat_pct:        p.vat_pct ?? null,
       price_source:   p.price_source ?? null,
       attribute_id:   p.attribute_id ?? null,
       color:          p.color ?? '',
@@ -151,7 +152,7 @@ export default function SalesOrderRollPickerModal({
               {uom && (
                 <p className="mt-px text-[9px] text-indigo-400/80">
                   Weights and prices are per <span className="font-bold text-indigo-500">{uom}</span> — the stocking UOM.
-                  Selling = each roll&rsquo;s confirmed-costing <span className="font-semibold">Selling / Stocking UOM</span> price.
+                  Before Tax = each roll&rsquo;s confirmed-costing Before Tax price (the invoice adds VAT).
                 </p>
               )}
             </div>
@@ -234,9 +235,9 @@ export default function SalesOrderRollPickerModal({
                   </th>
                   <th
                     className="px-2 py-1.5 text-right text-[10px] font-bold uppercase tracking-wider text-slate-500"
-                    title={`The roll's confirmed-costing "Selling / Stocking UOM" price${uom ? ` — per ${uom}` : ''}. This is what the sales order line is priced at; it is re-expressed if the line sells in another unit.`}
+                    title={`The roll's confirmed-costing Before Tax price${uom ? ` — per ${uom}` : ''}. This is what the sales order line is priced at; it is re-expressed if the line sells in another unit.`}
                   >
-                    Selling{uom && <span className="ml-0.5 font-semibold normal-case text-indigo-500">(/{uom})</span>}
+                    Before Tax{uom && <span className="ml-0.5 font-semibold normal-case text-indigo-500">(/{uom})</span>}
                   </th>
                   <th
                     className="px-2 py-1.5 text-right text-[10px] font-bold uppercase tracking-wider text-slate-500"
@@ -275,7 +276,7 @@ export default function SalesOrderRollPickerModal({
                       <td className={`px-2 py-1 text-right tabular-nums ${p.selling_price != null && Number(p.grn_unit_price) > Number(p.selling_price) ? 'font-semibold text-amber-600' : 'text-emerald-700'}`}
                           title={p.selling_price != null && Number(p.grn_unit_price) > Number(p.selling_price)
                             ? 'GRN cost is above this roll\'s selling price — selling at this price makes a loss'
-                            : p.price_source === 'costing' ? `Confirmed costing — "Selling / Stocking UOM"${uom ? ` (per ${uom})` : ''} for this roll's shipment` : p.price_source === 'price_list' ? 'Price-list fallback — this roll\'s shipment has no confirmed costing' : undefined}>
+                            : p.price_source === 'costing' ? `Confirmed costing — Before Tax price${uom ? ` (per ${uom})` : ''} for this roll's shipment` : p.price_source === 'price_list' ? 'Price-list fallback — this roll\'s shipment has no confirmed costing' : undefined}>
                         {p.selling_price != null ? <Money value={p.selling_price} /> : '—'}
                         {/* Old stock at old price, new at new — say which shipment set this. */}
                         {p.selling_price != null && p.price_source && (

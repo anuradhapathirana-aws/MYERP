@@ -63,7 +63,8 @@ class AmountRoundingTest extends TestCase
         foreach ($lines as $line) {
             $product = Product::factory()->create();
             ProductLocationStore::create(['product_id' => $product->id, 'current_stock' => 100000]);
-            $items[] = ['product_id' => $product->id, 'discount' => 0, 'tax' => 0, ...$line];
+            // VAT-free: these tests are about rounding; the SO total would otherwise add VAT
+            $items[] = ['product_id' => $product->id, 'discount' => 0, 'tax' => 0, 'vat_pct' => 0, ...$line];
         }
 
         $id = $this->actingAs($this->user)->postJson('/api/v1/sales-orders', [

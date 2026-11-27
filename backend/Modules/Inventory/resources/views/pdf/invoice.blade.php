@@ -171,7 +171,14 @@
      */
     $valueOfSupply = $invoice->items->sum(fn ($it) => (float) $it->quantity * (float) $it->unit_price);
     $discount      = $invoice->items->sum(fn ($it) => (float) $it->quantity * (float) $it->unit_price * ((float) $it->discount / 100));
-    $vat           = $invoice->items->sum(fn ($it) => (float) $it->quantity * (float) $it->unit_price * ((float) $it->tax / 100));
+    // VAT is whatever each stored line_total carries above its discounted value — so it
+    // reconciles for old lines (VAT on gross) and new ones (VAT after discount) alike.
+    $vat           = $invoice->items->sum(function ($it) {
+        $gross = (float) $it->quantity * (float) $it->unit_price;
+
+        return (float) $it->line_total - ($gross - $gross * (float) $it->discount / 100);
+    });
+    $vat           = abs($vat) < 0.005 ? 0.0 : $vat;
     $transport     = (float) $invoice->transport_charge;
 
     // "@ 18%" is only truthful when every line carries the same rate; a mixed-rate
@@ -360,7 +367,7 @@
         <th>Description of Goods or Services</th>
         <th style="width:70px;">Quantity</th>
         <th style="width:66px;">Unit Price</th>
-        <th style="width:96px;">Amount Excluding VAT ({{ $currency }}.)</th>
+        <th style="width:96px;">{{ $isTaxInvoice ? 'Amount Excluding VAT' : 'Amount' }} ({{ $currency }}.)</th>
       </tr>
     </thead>
     <tbody>
@@ -427,12 +434,15 @@
       <td class="amt">{{ $money($transport) }}</td>
     </tr>
     @endif
+    {{-- A Non-Tax invoice's prices already carry the VAT inside — no VAT row --}}
+    @if($isTaxInvoice)
     <tr>
       <td>VAT Amount (Total Value of Supply {{ $vatRate }}):</td>
       <td class="amt">{{ $money($vat) }}</td>
     </tr>
+    @endif
     <tr class="grand">
-      <td>Total Amount including VAT:</td>
+      <td>{{ $isTaxInvoice ? 'Total Amount including VAT:' : 'Total Amount (prices inclusive of VAT):' }}</td>
       <td class="amt">{{ $currency }} {{ $money($invoice->grand_total) }}</td>
     </tr>
   </table>

@@ -498,29 +498,25 @@ class QuantityTrackedProductTest extends TestCase
 
     // ── Invoice: tax pricing for quantity lines ───────────────────────────────
 
-    public function test_tax_invoice_uses_costing_price_when_so_price_matches(): void
-    {
-        $line = $this->taxInvoiceLine(soPrice: 1500, beforeTax: 1339.29, afterTax: 1500, vatPct: 12);
+    // The SO line is the only price source: it holds the BEFORE TAX price and the VAT %
+    // the invoice adds — no costing lookup, no dividing a price back down.
 
-        $this->assertEquals(1339.29, (float) $line['unit_price']);
-        $this->assertEquals(12.0, (float) $line['tax']);
+    public function test_tax_invoice_bills_the_so_before_tax_price(): void
+    {
+        $line = $this->taxInvoiceLine(soPrice: 1250, beforeTax: 1250, afterTax: 1400, vatPct: 12);
+
+        $this->assertEquals(1250.0, (float) $line['unit_price']);
+        // The SO line took the default rate (costings no longer carry VAT)
+        $this->assertEquals(18.0, (float) $line['tax']);
     }
 
-    public function test_tax_invoice_keeps_typed_so_price_at_costing_vat_rate(): void
+    public function test_tax_invoice_keeps_a_typed_so_price_as_is(): void
     {
-        // Costing sells at 1400 incl. 12% VAT, but the SO quoted 1500.
+        // Costing sells at 1250 Before Tax, but the SO quoted 1500 — the invoice bills the SO.
         $line = $this->taxInvoiceLine(soPrice: 1500, beforeTax: 1250, afterTax: 1400, vatPct: 12);
 
-        $this->assertEquals(1339.29, (float) $line['unit_price']); // 1500 / 1.12
-        $this->assertEquals(12.0, (float) $line['tax']);
-    }
-
-    public function test_tax_invoice_respects_costing_without_vat(): void
-    {
-        $line = $this->taxInvoiceLine(soPrice: 1500, beforeTax: 1500, afterTax: 1500, vatPct: 18, applyVat: false);
-
         $this->assertEquals(1500.0, (float) $line['unit_price']);
-        $this->assertEquals(0.0, (float) $line['tax']);
+        $this->assertEquals(18.0, (float) $line['tax']);
     }
 
     // ── Stock reconciliation: counted per colour ──────────────────────────────

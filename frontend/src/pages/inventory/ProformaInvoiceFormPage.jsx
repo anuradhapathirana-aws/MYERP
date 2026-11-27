@@ -51,8 +51,8 @@ const priceText = (n) => roundAmountInput(Number(n) || 0)
 
 /**
  * Every line holds BOTH price sets, exactly like the invoice:
- *   so_unit_price             Non-Tax — after-tax price, VAT inside
- *   tax_unit_price + tax_vat_pct  Tax — before-tax price, VAT added
+ *   so_unit_price             Non-Tax — After Tax price (Before Tax + VAT, VAT inside)
+ *   tax_unit_price + tax_vat_pct  Tax — Before Tax price, VAT added
  * The Tax / Non-Tax toggle swaps unit_price / tax between them, so the
  * customer total does not change when the type changes.
  */
@@ -102,7 +102,8 @@ function emptyLine() {
 function calcLine(line, isTax) {
   const gross = (parseFloat(line.quantity) || 0) * roundAmount(parseFloat(line.unit_price) || 0)
   const disc  = gross * (parseFloat(line.discount) || 0) / 100
-  const vat   = isTax ? gross * (parseFloat(line.tax) || 0) / 100 : 0
+  // VAT is charged on the amount after the discount
+  const vat   = isTax ? (gross - disc) * (parseFloat(line.tax) || 0) / 100 : 0
   return roundAmount(gross - disc + vat)
 }
 

@@ -219,7 +219,9 @@ class CustomerReturnTest extends TestCase
             'customer_id'     => $this->customer->id,
             'sales_person_id' => $this->user->id,
             'status'          => 'confirmed',
-            'items'           => $items,
+            // These tests are about return maths, not VAT: sell VAT-free so a Non Tax
+            // invoice bills exactly the SO price (Before Tax + 0%).
+            'items'           => array_map(fn (array $i) => $i + ['vat_pct' => 0], $items),
         ]);
         $response->assertCreated();
 
@@ -476,6 +478,20 @@ class CustomerReturnTest extends TestCase
     }
 
     // ── Stock ───────────────────────────────────────────────────────────────
+
+    public function test_return_reverses_stock_at_the_price_the_delivery_posted(): void
+    {
+        $sale = $this->invoicedManualSale(10, 50);
+
+        // The SO price changes after delivery (the switch to Before Tax prices rewrote
+        // every SO line) — the return must still reverse the value the DO posted.
+        DB::table('inv_sales_order_items')->update(['unit_price' => 42.37288136]);
+
+        $this->confirm($this->createReturn($this->payload($sale['invoice'], [['quantity' => 4]])))->assertOk();
+
+        $txn = StockTransaction::where('reference_type', StockReferenceType::CODE_CUSTOMER_RETURN)->sole();
+        $this->assertEqualsWithDelta(50.0, (float) $txn->unit_price, 0.0001);
+    }
 
     public function test_manual_line_return_posts_stock_back_into_the_chosen_store(): void
     {

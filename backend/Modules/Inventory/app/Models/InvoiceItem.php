@@ -28,6 +28,7 @@ class InvoiceItem extends Model
         'vat_inclusive_pct',
         'sscl_pct',
         'line_total',
+        'vat_on_net',
         'remarks',
     ];
 
@@ -48,6 +49,7 @@ class InvoiceItem extends Model
         'vat_inclusive_pct' => 'decimal:2',
         'sscl_pct'     => 'decimal:2',
         'line_total'   => 'decimal:4',
+        'vat_on_net'   => 'boolean',
     ];
 
     public function invoice(): BelongsTo

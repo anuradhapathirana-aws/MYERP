@@ -231,6 +231,7 @@ function emptyItem() {
     quantity:        '',
     unit_price:      '',
     discount:        '',
+    vat_pct:       '', // VAT % the invoice adds on the Before Tax price (from costing / server default)
     pieces:        [], // [{ piece_code, weight, roll_no, grn_unit_price, attribute_id, color }] — non-empty = roll-backed line
     attribute_id:    '', // colour — derived from rolls, or picked manually on no-roll lines
     color_name:      '',
@@ -308,8 +309,8 @@ function rollCapacityBase(row) {
   return row.pieces.reduce((sum, p) => sum + (parseFloat(p.weight) || 0), 0)
 }
 
-// No tax on an SO: its prices are the costing's AFTER-tax figure (VAT inside), and
-// the invoice decides Tax / Non-Tax billing — a tax column here would add VAT twice.
+// Prices are BEFORE TAX: the line amount is net of discount, and the VAT the invoice
+// will add (on the amount after discount) is shown separately in the footer.
 //
 // Rounds exactly as SalesOrderService does on save: the selling price to the Amount
 // decimals setting first, then the line — so the screen total is the stored total.
@@ -317,18 +318,27 @@ function calcItem(row, discountEnabled) {
   const qty     = rowQty(row)
   const price   = roundAmount(parseFloat(row.unit_price) || 0)
   const discPct = discountEnabled ? (parseFloat(row.discount) || 0) : 0
+  const vatPct  = parseFloat(row.vat_pct) || 0
   const gross   = qty * price
   const amount  = roundAmount(gross - gross * (discPct / 100))
-  return { qty, gross, discAmt: gross - amount, amount }
+  const taxAmt  = amount * (vatPct / 100)
+  return { qty, gross, discAmt: gross - amount, taxAmt, amount }
 }
 
 /** A selling price as the input should hold it: rounded to the setting ('' when unknown). */
 const priceText = (price) => (price == null ? '' : roundAmountInput(price))
 
+// After Tax hint for a Before Tax price input
+const afterTax = (row) => {
+  const price = parseFloat(row.unit_price)
+  const vat   = parseFloat(row.vat_pct)
+  return price > 0 && vat > 0 ? price * (1 + vat / 100) : null
+}
+
 // Below-cost guard basis: the dearest attached roll's break-even price (cost_floor =
-// its costing's landed cost + SSCL + VAT, no margin; the GRN cost when never costed),
+// its costing's landed cost + SSCL, no margin, no VAT; the GRN cost when never costed),
 // or the newest costing's break-even price (cost_hint) for manual no-roll lines.
-// SO prices are AFTER-tax, so the basis includes VAT too. Null = unknown.
+// SO prices are BEFORE TAX, so the basis is too. Null = unknown.
 //
 // Every cost the API returns is PER THE STOCKING UOM (see ProductPricingService), while
 // the line is priced in the UOM the customer buys in — so the two must be brought into
@@ -673,6 +683,7 @@ export default function SalesOrderFormPage() {
         quantity:     it.quantity,
         unit_price:   it.unit_price,
         discount:     it.discount || '',
+        vat_pct:      it.vat_pct != null ? String(it.vat_pct) : '',
         proforma_item_id: it.proforma_item_id ?? null,
         attribute_id: it.attribute_id != null ? String(it.attribute_id) : '',
         color_name:   it.variant?.name ?? it.attribute?.name ?? '',
@@ -756,6 +767,7 @@ export default function SalesOrderFormPage() {
       grn_unit_price: scan.grn_unit_price,
       cost_floor:     scan.cost_floor ?? null,
       selling_price:  scan.selling_price ?? null,
+      vat_pct:        scan.vat_pct ?? null,
       price_source:   scan.price_source ?? null,
       attribute_id:   scan.piece.attribute_id ?? null,
       color:          scan.piece.color ?? '',
@@ -792,6 +804,7 @@ export default function SalesOrderFormPage() {
         base_unit_type_id:     scan.product.base_unit_type_id ?? null,
         base_unit_category_id: scan.product.base_unit_category_id ?? null,
         unit_price:   priceText(scan.selling_price),
+        vat_pct:      scan.vat_pct != null ? String(scan.vat_pct) : '',
         no_selling_price: scan.selling_price == null,
         attribute_id: scan.piece.attribute_id != null ? String(scan.piece.attribute_id) : '',
         color_name:   scan.piece.color ?? '',
@@ -931,7 +944,7 @@ export default function SalesOrderFormPage() {
     // Prefill unit price from the product's price-list selling price (editable);
     // keep the latest GRN cost on the row as the below-cost warning basis.
     getProductSalePrice(product.id)
-      .then(({ unit_price, cost_price, cost_floor }) => {
+      .then(({ unit_price, cost_price, cost_floor, vat_pct }) => {
         setItems((prev) => prev.map((row) => {
           if (row._key !== rowKey) return row
 
@@ -944,6 +957,7 @@ export default function SalesOrderFormPage() {
             ...row,
             unit_price:       !row.unit_price && listPrice != null ? priceText(listPrice) : row.unit_price,
             cost_hint:        cost_floor ?? cost_price ?? null,
+            vat_pct:          row.vat_pct || (vat_pct != null ? String(vat_pct) : ''),
             no_selling_price: unit_price == null,
           }
         }))
@@ -1055,6 +1069,7 @@ export default function SalesOrderFormPage() {
           // rolls without a resolved price keep the line's existing price.
           // A line recalled from a proforma keeps the quoted price
           unit_price:   !base.proforma_item_id && rollPrice != null ? priceText(rollPrice) : base.unit_price,
+          vat_pct:      !base.proforma_item_id && groupPieces[0].vat_pct != null ? String(groupPieces[0].vat_pct) : base.vat_pct,
           attribute_id: groupPieces[0].attribute_id != null ? String(groupPieces[0].attribute_id) : '',
           color_name:   groupPieces[0].color ?? '',
           expanded:     false,
@@ -1140,6 +1155,7 @@ export default function SalesOrderFormPage() {
         color_name:       line.variant?.name ?? row.color_name,
         quantity:         String(line.remaining_quantity),
         unit_price:       priceText(line.so_unit_price),
+        vat_pct:          line.vat_pct != null ? String(line.vat_pct) : row.vat_pct,
         discount:         Number(line.discount) > 0 ? String(line.discount) : '',
         proforma_item_id: line.proforma_item_id,
       } : row))
@@ -1181,6 +1197,7 @@ export default function SalesOrderFormPage() {
         grn_unit_price: p.grn_unit_price,
         cost_floor:     p.cost_floor ?? null,
         selling_price:  p.selling_price ?? null,
+        vat_pct:        p.vat_pct ?? null,
         price_source:   p.price_source ?? null,
         attribute_id:   p.attribute_id ?? null,
         color:          p.color ?? '',
@@ -1259,20 +1276,23 @@ export default function SalesOrderFormPage() {
   /* ── Totals ───────────────────────────────────────────────── */
   const totals = items.reduce(
     (acc, row) => {
-      const { qty, gross, discAmt, amount } = calcItem(row, discountEnabled)
+      const { qty, gross, discAmt, taxAmt, amount } = calcItem(row, discountEnabled)
       return {
         qty:   acc.qty   + qty,
         gross: acc.gross + gross,
         disc:  acc.disc  + discAmt,
+        tax:   acc.tax   + taxAmt,
         total: acc.total + amount,
       }
     },
-    { qty: 0, gross: 0, disc: 0, total: 0 },
+    { qty: 0, gross: 0, disc: 0, tax: 0, total: 0 },
   )
   totals.total = roundAmount(totals.total)
   totals.disc  = roundAmount(totals.disc)
+  totals.tax   = roundAmount(totals.tax)
   const transportCharge = roundAmount(parseFloat(form.transport_charge) || 0)
-  const netAmount       = roundAmount(totals.total + transportCharge)
+  // Lines are Before Tax; the customer pays them + VAT + transport
+  const netAmount       = roundAmount(totals.total + totals.tax + transportCharge)
 
   /* ── Save ─────────────────────────────────────────────────── */
   // Where to go after a successful save: back to the list (or to the proforma this
@@ -1404,6 +1424,7 @@ export default function SalesOrderFormPage() {
         quantity:     rowQty(r),
         unit_price:   roundAmount(parseFloat(r.unit_price) || 0),
         discount:     discountEnabled ? (parseFloat(r.discount) || 0) : 0,
+        vat_pct:      r.vat_pct !== '' && r.vat_pct != null ? parseFloat(r.vat_pct) : null,
         piece_codes:  r.pieces.map((p) => p.piece_code),
         proforma_item_id: r.proforma_item_id || null,
       })),
@@ -1569,7 +1590,7 @@ export default function SalesOrderFormPage() {
             <th className="w-32 px-1.5 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">Quantity</th>
             {/* Price is wider than Quantity by one step: its cell also carries the inline
                 Price-UOM dropdown, so the input itself ends up the same size. */}
-            <th className="w-36 px-1.5 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">Unit Price ({CURRENCY})</th>
+            <th className="w-36 px-1.5 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500" title="Before Tax — the invoice adds VAT">Unit Price Before Tax ({CURRENCY})</th>
             <th className="w-24 px-1.5 py-1.5 text-right text-[10px] font-bold uppercase tracking-wider text-slate-500">Gross ({CURRENCY})</th>
             {discountEnabled && <th className="w-16 px-1.5 py-1.5 text-center text-[10px] font-bold uppercase tracking-wider text-amber-500">Disc%</th>}
             <th className="w-24 px-1.5 py-1.5 text-right text-[10px] font-bold uppercase tracking-wider text-slate-700">Amount ({CURRENCY})</th>
@@ -1788,6 +1809,11 @@ export default function SalesOrderFormPage() {
                               Below cost ({fmtMoneyWithSymbol(rowCostBasis(row) * factor)}/{conv?.lineSymbol ?? ''})
                             </p>
                           )}
+                          {afterTax(row) != null && (
+                            <span className="text-[9px] leading-none text-slate-400" title={`Before Tax + ${row.vat_pct}% VAT`}>
+                              After Tax: {fmt(afterTax(row))}
+                            </span>
+                          )}
                         </div>
                       )
                     })()}
@@ -1857,12 +1883,14 @@ export default function SalesOrderFormPage() {
                 <span className="font-bold uppercase tracking-wider text-indigo-600">Summary</span>
                 <span className="text-slate-500">Gross: <Money value={totals.gross} className="font-bold text-slate-700" /></span>
                 {discountEnabled && <span className="text-amber-600">Disc: -<Money value={totals.disc} className="font-bold" /></span>}
+                <span className="text-slate-500">Before Tax: <Money value={totals.total} className="font-bold text-slate-700" /></span>
+                <span className="text-sky-600" title="VAT the invoice adds on the Before Tax amount">VAT: +<Money value={totals.tax} className="font-bold" /></span>
                 {transportCharge > 0 && <span className="text-slate-500">Transport: <Money value={transportCharge} className="font-bold text-slate-700" /></span>}
               </div>
             </td>
             <td className="px-3 py-1.5 text-right">
               <div className="flex flex-col items-end leading-tight">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">Net Total</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">Total After Tax</span>
                 <Money value={netAmount} className="text-base font-black text-indigo-700" />
               </div>
             </td>
@@ -1966,7 +1994,7 @@ export default function SalesOrderFormPage() {
               </div>
               <div>
                 <label className={LABEL_CLS}>
-                  Unit Price ({CURRENCY}{priceConversionFor(row)?.priceSymbol ? `/${priceConversionFor(row).priceSymbol}` : ''})
+                  Unit Price Before Tax ({CURRENCY}{priceConversionFor(row)?.priceSymbol ? `/${priceConversionFor(row).priceSymbol}` : ''})
                 </label>
                 <div className="flex items-center gap-0.5">
                   <input
@@ -2046,7 +2074,7 @@ export default function SalesOrderFormPage() {
         <div className="flex gap-2">
           <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-1.5 text-center">
             <Money value={netAmount} className="block text-sm font-black leading-tight text-indigo-700" />
-            <div className="text-[9px] font-bold uppercase tracking-wider text-indigo-400">Net Amount</div>
+            <div className="text-[9px] font-bold uppercase tracking-wider text-indigo-400">Total After Tax</div>
           </div>
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-1.5 text-center">
             <div className="text-sm font-black leading-tight text-slate-700 tabular-nums">{totals.qty.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
@@ -2241,7 +2269,7 @@ export default function SalesOrderFormPage() {
                   />
                 </div>
                 <div className="flex flex-col items-end leading-tight">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">Net Total</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">Total After Tax</span>
                   <Money value={netAmount} className="text-base font-black text-indigo-700" />
                 </div>
               </div>

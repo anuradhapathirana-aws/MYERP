@@ -263,6 +263,10 @@ class CostingService
             //
             // A variant line (Red / M) writes its own variant price instead — otherwise
             // the last variant costed would reprice every variant of the product.
+            //
+            // The BEFORE TAX price is what goes over: prices are stored before tax and
+            // the invoice adds VAT (older costings still carry an after-tax figure in
+            // selling_price_base — never synced again).
             CostingItem::where('costing_id', $locked->id)
                 ->orderBy('id')
                 ->get()
@@ -271,13 +275,14 @@ class CostingService
                         (int) $item->product_id,
                         (int) $item->variant_id,
                         $item->base_unit_id !== null ? (int) $item->base_unit_id : null,
-                        (float) $item->selling_price_base,
+                        (float) $item->landed_unit_cost_base,
+                        (float) ((float) $item->before_tax_price_base > 0 ? $item->before_tax_price_base : $item->selling_price_base),
                     )
                     : $this->pricing->syncFromCosting(
                         (int) $item->product_id,
                         $item->base_unit_id !== null ? (int) $item->base_unit_id : null,
                         (float) $item->landed_unit_cost_base,
-                        (float) $item->selling_price_base,
+                        (float) ((float) $item->before_tax_price_base > 0 ? $item->before_tax_price_base : $item->selling_price_base),
                     ));
 
             return $this->find($locked->id);
@@ -423,8 +428,8 @@ class CostingService
         return $this->computeBreakdown($grns, null, [
             'apply_sscl' => (bool) ($input['apply_sscl'] ?? true),
             'sscl_pct'   => (float) ($input['sscl_pct'] ?? app(TaxService::class)->configuredRate(Tax::SSCL)),
-            'apply_vat'  => (bool) ($input['apply_vat'] ?? true),
-            'vat_pct'    => (float) ($input['vat_pct'] ?? app(TaxService::class)->rate(Tax::VAT)),
+            'apply_vat'  => false,
+            'vat_pct'    => 0.0,
             'items'      => (array) ($input['items'] ?? []),
         ], $charges);
     }
@@ -496,7 +501,11 @@ class CostingService
      * product's BASE (stocking) unit:
      *
      *   before_tax = fob/cif + Σ expenses + margin + ceil(sscl% × (fob/cif + expenses + margin))
-     *   after_tax  = before_tax + vat%              (= selling_price)
+     *              = selling_price
+     *
+     * VAT is NOT part of a costing: it is not a cost and not margin. The price list
+     * and SO hold the Before Tax price and the invoice adds VAT. VAT is therefore
+     * forced off here; older costings keep the VAT figures they were saved with.
      *
      * There is no cross-line apportionment any more: every line prices itself.
      * The build-up runs per base unit (the denomination the user typed in);
@@ -509,8 +518,8 @@ class CostingService
     {
         $applySscl = $data?->applySscl ?? $raw['apply_sscl'];
         $ssclPct   = $data?->ssclPct   ?? $raw['sscl_pct'];
-        $applyVat  = $data?->applyVat  ?? $raw['apply_vat'];
-        $vatPct    = $data?->vatPct    ?? $raw['vat_pct'];
+        $applyVat  = false;
+        $vatPct    = 0.0;
         $inputs    = collect($data?->items ?? $raw['items'])->keyBy('grn_item_id');
 
         /** @var Collection<int, GoodsReceivedNoteItem> $grnItems */
@@ -609,7 +618,7 @@ class CostingService
                 'sscl_pct'              => $lineSsclPct,
                 'sscl_amount'           => round($toRecv($ssclBase), 8),
                 'sscl_amount_base'      => round($ssclBase, 8),
-                'vat_pct'               => $lineVatPct,
+                'vat_pct'               => null, // costings no longer take VAT
                 'vat_amount'            => round($toRecv($vatBase), 8),
                 'vat_amount_base'       => round($vatBase, 8),
                 'before_tax_price'      => round($toRecv($beforeTaxBase), 8),
@@ -680,8 +689,8 @@ class CostingService
             'note'             => $data->note,
             'apply_sscl'       => $data->applySscl,
             'sscl_pct'         => $data->ssclPct,
-            'apply_vat'        => $data->applyVat,
-            'vat_pct'          => $data->vatPct,
+            'apply_vat'        => false, // VAT is the invoice's, not the costing's
+            'vat_pct'          => 0,
         ]);
     }
 

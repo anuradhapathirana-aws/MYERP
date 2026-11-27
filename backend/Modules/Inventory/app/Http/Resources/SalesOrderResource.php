@@ -29,6 +29,8 @@ class SalesOrderResource extends JsonResource
             'status_label'     => $this->status->label(),
             'subtotal'         => (float) $this->subtotal,
             'transport_charge' => (float) $this->transport_charge,
+            // Lines are Before Tax; vat_amount is what the invoice adds; grand_total pays all
+            'vat_amount'       => (float) $this->vat_amount,
             'grand_total'      => (float) $this->grand_total,
             'remarks'          => $this->remarks,
 

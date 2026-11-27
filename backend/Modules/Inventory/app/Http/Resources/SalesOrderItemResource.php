@@ -29,6 +29,7 @@ class SalesOrderItemResource extends JsonResource
             'unit_price'   => (float) $this->unit_price,
             'discount'     => (float) $this->discount,
             'tax'          => (float) $this->tax,
+            'vat_pct'      => $this->vat_pct !== null ? (float) $this->vat_pct : null,
             'line_total'   => (float) $this->line_total,
             'remarks'      => $this->remarks,
 

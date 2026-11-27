@@ -37,7 +37,7 @@ use Modules\Inventory\Support\VariantReportFilters;
  * pricing work at all. When asked for, a product+colour's price is:
  *
  *   1. the newest CONFIRMED costing line for that exact product+colour
- *      (inv_costing_items.selling_price_base — already per the stocking UOM, computed
+ *      (its BEFORE TAX price — before_tax_price_base, already per the stocking UOM, computed
  *      with the GRN line's frozen conversion factor). A GRN can live in only one
  *      confirmed costing, but a product is costed once per shipment, so "newest" means
  *      the price the most recent shipment sells at — the same "old stock at old price,
@@ -205,7 +205,8 @@ class AvailableStockReportService
 
         DB::table('inv_costing_items as ci')
             ->joinSub($latestCostingIds, 'lci', 'lci.id', '=', 'ci.id')
-            ->get(['ci.product_id', 'ci.attribute_id', 'ci.variant_id', 'ci.selling_price_base'])
+            // Before Tax: older costings also hold an After Tax figure in selling_price_base
+            ->get(['ci.product_id', 'ci.attribute_id', 'ci.variant_id', DB::raw('COALESCE(NULLIF(ci.before_tax_price_base, 0), ci.selling_price_base) as selling_price_base')])
             ->each(function ($row) use (&$costed): void {
                 if ($row->selling_price_base !== null) {
                     $costed[$this->key((int) $row->product_id, $row->attribute_id, $row->variant_id)] = (float) $row->selling_price_base;

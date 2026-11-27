@@ -18,6 +18,7 @@ class ProductVariantPrice extends Model
     protected $fillable = [
         'variant_id',
         'sales_channel_id',
+        'cost_price',
         'selling_price',
         'wholesale_price',
         'min_price',
@@ -27,6 +28,7 @@ class ProductVariantPrice extends Model
     protected $casts = [
         'variant_id'       => 'integer',
         'sales_channel_id' => 'integer',
+        'cost_price'       => 'decimal:4',
         'selling_price'    => 'decimal:4',
         'wholesale_price'  => 'decimal:4',
         'min_price'        => 'decimal:4',

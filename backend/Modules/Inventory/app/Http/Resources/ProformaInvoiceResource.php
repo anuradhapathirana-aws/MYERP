@@ -27,6 +27,8 @@ class ProformaInvoiceResource extends JsonResource
             'status'             => $this->status->value,
             'status_label'       => $this->status->label(),
             'invoice_type'       => $this->invoice_type,
+            // Default VAT % (config) for lines that carry no rate of their own
+            'default_vat_pct'    => \Modules\Inventory\Support\Vat::defaultPct(),
             'invoice_type_label' => $this->invoice_type === 'tax' ? 'Tax' : 'Non Tax',
             'subtotal'           => (float) $this->subtotal,
             'transport_charge'   => (float) $this->transport_charge,

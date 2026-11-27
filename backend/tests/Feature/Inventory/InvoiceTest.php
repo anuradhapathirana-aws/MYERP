@@ -12,6 +12,7 @@ use Modules\Inventory\Models\CustomerMaster;
 use Modules\Inventory\Models\GoodsReceivedNote;
 use Modules\Inventory\Models\GoodsReceivedNoteItem;
 use Modules\Inventory\Models\GrnItemPiece;
+use Modules\Inventory\Models\InvoiceItem;
 use Modules\Inventory\Models\Product;
 use Modules\Inventory\Models\SalesOrder;
 use Spatie\Permission\Models\Permission;
@@ -191,7 +192,8 @@ class InvoiceTest extends TestCase
         ['so' => $so, 'pieces' => $pieces] = $this->makeConfirmedSoWithRolls([10.0, 20.0], unitPrice: 1000, discount: 10, transport: 500);
         $doId = $this->makeConfirmedDo($so, $pieces);
 
-        // Non-Tax: the SO (after-tax) price as-is, no VAT added
+        // Non-Tax: the SO's Before Tax price + the line's VAT (default 18%) as ONE price,
+        // VAT carried inside, no VAT split
         $this->actingAs($this->user)
             ->postJson('/api/v1/invoices', ['do_id' => $doId, 'invoice_date' => '2026-07-11', 'invoice_type' => 'non_tax'])
             ->assertCreated()
@@ -199,13 +201,13 @@ class InvoiceTest extends TestCase
             ->assertJsonPath('data.status', 'draft')
             ->assertJsonPath('data.invoice_type', 'non_tax')
             ->assertJsonPath('data.items.0.quantity', 30)
-            ->assertJsonPath('data.items.0.unit_price', 1000)
+            ->assertJsonPath('data.items.0.unit_price', 1180)
             ->assertJsonPath('data.items.0.discount', 10)
             ->assertJsonPath('data.items.0.tax', 0)
-            // 30 * 1000 = 30000 gross, -10% = 27000, + transport 500 (first invoice of the SO)
-            ->assertJsonPath('data.subtotal', 30000)
+            // 30 * 1180 = 35400 gross, -10% = 31860, + transport 500 (first invoice of the SO)
+            ->assertJsonPath('data.subtotal', 35400)
             ->assertJsonPath('data.transport_charge', 500)
-            ->assertJsonPath('data.grand_total', 27500);
+            ->assertJsonPath('data.grand_total', 32360);
     }
 
     /** The invoice form's "Recall DO" picker: invoiced=0 lists only confirmed DOs still awaiting billing. */
@@ -233,32 +235,46 @@ class InvoiceTest extends TestCase
         $this->assertSame([$doA], $billed);
     }
 
-    public function test_tax_invoice_bills_costing_before_tax_price_plus_vat(): void
+    public function test_tax_invoice_bills_so_before_tax_price_plus_vat(): void
     {
-        // SO priced at the costing's AFTER-tax price (1180 = 1000 + 18% VAT)
-        ['so' => $so, 'pieces' => $pieces] = $this->makeConfirmedSoWithRolls([10.0, 20.0], unitPrice: 1180);
+        // SO lines hold the BEFORE TAX price (the costing's before-tax 1000)
+        ['so' => $so, 'pieces' => $pieces] = $this->makeConfirmedSoWithRolls([10.0, 20.0], unitPrice: 1000);
         $this->giveConfirmedCosting($pieces[0]->grn_item_id, beforeTax: 1000, afterTax: 1180, vatPct: 18);
         $doId = $this->makeConfirmedDo($so, $pieces);
 
-        // Tax: Before-Tax price per line + the costing's VAT %
+        // Tax: the SO's Before Tax price per line + its VAT %
         $this->actingAs($this->user)
             ->postJson('/api/v1/invoices', ['do_id' => $doId, 'invoice_date' => '2026-07-11', 'invoice_type' => 'tax'])
             ->assertCreated()
             ->assertJsonPath('data.invoice_type', 'tax')
             ->assertJsonPath('data.items.0.unit_price', 1000)
             ->assertJsonPath('data.items.0.tax', 18)
-            // 30 × 1000 = 30000, +18% VAT = 35400 — same money as 30 × 1180
+            // 30 × 1000 = 30000, +18% VAT = 35400 — same money as a Non Tax 30 × 1180
             ->assertJsonPath('data.subtotal', 30000)
             ->assertJsonPath('data.grand_total', 35400);
     }
 
-    public function test_tax_invoice_backcomputes_price_when_rolls_are_uncosted(): void
+    public function test_tax_invoice_charges_vat_after_the_discount(): void
     {
-        ['so' => $so, 'pieces' => $pieces] = $this->makeConfirmedSoWithRolls([10.0, 20.0], unitPrice: 1180);
+        ['so' => $so, 'pieces' => $pieces] = $this->makeConfirmedSoWithRolls([10.0, 20.0], unitPrice: 1000, discount: 10);
         $doId = $this->makeConfirmedDo($so, $pieces);
 
-        // No costing: strip the default 18% out of the SO price (1180 ÷ 1.18 = 1000),
-        // then the 18% Tax puts it back — the customer total stays the SO's.
+        // 30 × 1000 = 30000, -10% = 27000, VAT 18% of 27000 = 4860 → 31860
+        // (VAT on the gross would wrongly make it 32400)
+        $response = $this->actingAs($this->user)
+            ->postJson('/api/v1/invoices', ['do_id' => $doId, 'invoice_date' => '2026-07-11', 'invoice_type' => 'tax'])
+            ->assertCreated();
+
+        $this->assertEqualsWithDelta(31860.0, (float) $response->json('data.grand_total'), 0.01);
+        $this->assertTrue((bool) InvoiceItem::findOrFail($response->json('data.items.0.id'))->vat_on_net);
+    }
+
+    public function test_tax_invoice_adds_vat_to_so_price_when_rolls_are_uncosted(): void
+    {
+        ['so' => $so, 'pieces' => $pieces] = $this->makeConfirmedSoWithRolls([10.0, 20.0], unitPrice: 1000);
+        $doId = $this->makeConfirmedDo($so, $pieces);
+
+        // No costing: nothing is guessed — the SO's Before Tax price + the default 18%
         $response = $this->actingAs($this->user)
             ->postJson('/api/v1/invoices', ['do_id' => $doId, 'invoice_date' => '2026-07-11', 'invoice_type' => 'tax'])
             ->assertCreated()

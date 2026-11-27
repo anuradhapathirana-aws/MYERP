@@ -22,7 +22,7 @@ use Modules\Inventory\Models\ProductVariantValue;
  */
 class ProductVariantService
 {
-    private const PRICE_FIELDS = ['selling_price', 'wholesale_price', 'min_price', 'max_price'];
+    private const PRICE_FIELDS = ['cost_price', 'selling_price', 'wholesale_price', 'min_price', 'max_price'];
 
     /**
      * Reconcile the product's variants with the submitted rows. Must run inside

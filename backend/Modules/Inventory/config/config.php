@@ -19,4 +19,18 @@ return [
         'symbol'   => env('INVENTORY_CURRENCY_SYMBOL', 'Rs'),
         'decimals' => (int) env('INVENTORY_CURRENCY_DECIMALS', 2),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Tax
+    |--------------------------------------------------------------------------
+    |
+    | Prices are stored BEFORE tax (price list, SO lines); the invoice adds VAT.
+    | default_vat_pct is the rate a line takes when its costing names none. Read
+    | through Support\Vat, never inline.
+    |
+    */
+    'tax' => [
+        'default_vat_pct' => (float) env('INVENTORY_DEFAULT_VAT_PCT', 18),
+    ],
 ];

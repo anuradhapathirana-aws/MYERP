@@ -43,7 +43,9 @@ function calcLine(row) {
   const discPct = parseFloat(row.discount)   || 0
   const taxPct  = parseFloat(row.tax)        || 0
   const gross   = qty * price
-  return gross - (gross * discPct / 100) + (gross * taxPct / 100)
+  // VAT is charged on the amount after the discount
+  const net     = gross - (gross * discPct / 100)
+  return net + (net * taxPct / 100)
 }
 
 export default function InvoiceFormPage() {
@@ -74,7 +76,7 @@ export default function InvoiceFormPage() {
   // arriving from a DO view page (?do=), user-picked on a fresh New Invoice.
   const [doId, setDoId]     = useState(doFromUrl ?? '')
   const [errors, setErrors] = useState({})
-  // tax: costing Before-Tax prices + VAT added per line · non_tax: SO (after-tax) prices, no VAT
+  // tax: SO Before Tax prices + VAT added per line · non_tax: Before Tax + VAT as one price, no VAT split
   const [invoiceType, setInvoiceType] = useState('tax')
 
   // The serial's QQQQ segment is the billed customer's code, so there's nothing
@@ -430,9 +432,9 @@ export default function InvoiceFormPage() {
                 )}
               </h2>
             </div>
-            {/* Tax: Before-Tax prices + VAT per line · Non Tax: After-Tax prices, no VAT */}
+            {/* Tax: Before Tax prices + VAT per line · Non Tax: After Tax prices (VAT inside), no VAT split */}
             <div className="flex items-center gap-1.5">
-              <span className="text-[9px] font-semibold uppercase tracking-wider text-indigo-400" title="Tax invoice bills the costing Before-Tax price and adds VAT per line. Non Tax bills the After-Tax price (VAT already inside) with 0 tax.">
+              <span className="text-[9px] font-semibold uppercase tracking-wider text-indigo-400" title="Tax invoice bills the SO Before Tax price and adds VAT per line (after discount). Non Tax bills the After Tax price (Before Tax + VAT, VAT inside) with no VAT split.">
                 Invoice Type
               </span>
               {!isEdit && source?.default_invoice_type && (
@@ -447,7 +449,7 @@ export default function InvoiceFormPage() {
                 <button
                   type="button"
                   onClick={() => applyInvoiceType('tax')}
-                  title="Unit Price = costing Before-Tax price · VAT % added per line"
+                  title="Unit Price = SO Before Tax price · VAT % added per line (after discount)"
                   className={`px-2.5 py-0.5 transition-colors ${invoiceType === 'tax' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}`}
                 >
                   Tax
@@ -455,7 +457,7 @@ export default function InvoiceFormPage() {
                 <button
                   type="button"
                   onClick={() => applyInvoiceType('non_tax')}
-                  title="Unit Price = After-Tax price (VAT already included) · no VAT added"
+                  title="Unit Price = After Tax price (SO Before Tax + VAT, VAT inside) · no VAT split"
                   className={`border-l-2 border-indigo-200 px-2.5 py-0.5 transition-colors ${invoiceType === 'non_tax' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}`}
                 >
                   Non Tax

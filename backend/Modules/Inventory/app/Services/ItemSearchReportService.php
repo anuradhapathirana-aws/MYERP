@@ -133,7 +133,8 @@ class ItemSearchReportService
 
         $latestCosting = DB::table('inv_costing_items as ci')
             ->joinSub($latestCostingIds, 'lci', 'lci.id', '=', 'ci.id')
-            ->select('ci.grn_id', 'ci.product_id', 'ci.attribute_id', 'ci.variant_id', 'ci.selling_price_base');
+            // Before Tax: older costings also hold an After Tax figure in selling_price_base
+            ->select('ci.grn_id', 'ci.product_id', 'ci.attribute_id', 'ci.variant_id', DB::raw('COALESCE(NULLIF(ci.before_tax_price_base, 0), ci.selling_price_base) as selling_price_base'));
 
         $query = DB::table('inv_stock_transactions as st')
             ->join('inv_goods_received_notes as g', 'g.id', '=', 'st.reference_id')

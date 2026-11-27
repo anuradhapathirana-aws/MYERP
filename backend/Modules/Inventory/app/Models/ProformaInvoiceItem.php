@@ -29,6 +29,7 @@ class ProformaInvoiceItem extends Model
         'discount',
         'tax',
         'line_total',
+        'vat_on_net',
         'stock_status',
         'available_qty',
         'remarks',
@@ -48,6 +49,7 @@ class ProformaInvoiceItem extends Model
         'discount'       => 'decimal:4',
         'tax'            => 'decimal:4',
         'line_total'     => 'decimal:4',
+        'vat_on_net'     => 'boolean',
         'available_qty'  => 'decimal:4',
     ];
 

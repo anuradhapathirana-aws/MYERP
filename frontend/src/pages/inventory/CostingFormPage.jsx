@@ -138,9 +138,10 @@ function QtyChips({ groups }) {
  *   expenses   = Σ typed amounts per expense type
  *   sscl       = sscl% × (fob/cif + expenses + margin); default 1.25 — rounded UP to the whole rupee
  *   before_tax = fob/cif + expenses + margin + sscl
- *   after_tax  = before_tax + VAT%
  *
- * before_tax feeds non-VAT invoices later, after_tax feeds VAT invoices. */
+ * before_tax IS the selling price: it goes to the price list and SO lines, and the
+ * invoice adds VAT (Tax invoice: shown; Non Tax invoice: inside the price). Costings
+ * no longer take VAT — older confirmed ones still show the VAT they were saved with. */
 /* Colour lines of one product in one GRN share one set of costing inputs —
  * the price never changes with the colour, so the user types it once. */
 function groupKeyOf(line) {
@@ -293,8 +294,8 @@ export default function CostingFormPage() {
     note:             '',
     apply_sscl:       true,
     sscl_pct:         1.25,
-    apply_vat:        true,
-    vat_pct:          18,
+    apply_vat:        false, // VAT is the invoice's, not the costing's
+    vat_pct:          0,
   })
   const [docNoPreview, setDocNoPreview] = useState('')
   const [refNoPreview, setRefNoPreview] = useState('')
@@ -410,8 +411,10 @@ export default function CostingFormPage() {
       note:             c.note ?? '',
       apply_sscl:       Boolean(c.apply_sscl),
       sscl_pct:         c.sscl_pct,
-      apply_vat:        Boolean(c.apply_vat),
-      vat_pct:          c.vat_pct,
+      // Only a confirmed (older) costing keeps its VAT figures, read-only; a draft
+      // re-saves without VAT.
+      apply_vat:        c.status === 'confirmed' ? Boolean(c.apply_vat) : false,
+      vat_pct:          c.status === 'confirmed' ? c.vat_pct : 0,
     })
 
     const linkedGrnIds = (c.costing_grns ?? []).map((cg) => cg.grn_id)
@@ -640,7 +643,9 @@ export default function CostingFormPage() {
   const isConfirmed = existingData?.data?.status === 'confirmed'
   const readOnly    = isConfirmed || (!isEdit && Boolean(id))
   const typeLabel   = form.costing_type?.toUpperCase()
-  const COLS        = 13
+  // Legacy VAT columns: only on an older confirmed costing that was saved with VAT
+  const showVat     = readOnly && Boolean(form.apply_vat)
+  const COLS        = showVat ? 13 : 11
 
   /* ════════════════════════════════════════════════════════════ */
   return (
@@ -801,7 +806,7 @@ export default function CostingFormPage() {
               extra={
                 <div className="flex items-center gap-2 text-[10px]">
                   <span className="text-slate-400">
-                    {typeLabel} + Expenses + Margin{form.apply_sscl ? ' + SSCL' : ''} = Before-Tax{form.apply_vat ? ' → +VAT = After-Tax' : ''} · per base unit
+                    {typeLabel} + Expenses + Margin{form.apply_sscl ? ' + SSCL' : ''} = Before Tax (selling price){showVat ? ' → +VAT = After Tax' : ''} · per base unit
                   </span>
                   {breakdownItems.length > 0 && (
                     <span className="flex items-center gap-1 text-slate-500">
@@ -835,10 +840,10 @@ export default function CostingFormPage() {
                     <th className="px-2 py-2 text-right font-semibold uppercase tracking-wider text-slate-500" title="Sum of the expense amounts typed in the line's panel">+Expenses</th>
                     <th className="px-2 py-2 text-right font-semibold uppercase tracking-wider text-slate-500" title="Addon margin amount per base unit">+Margin</th>
                     <th className="px-2 py-2 text-right font-semibold uppercase tracking-wider text-slate-500" title={`SSCL % of (${typeLabel} + Expenses + Margin)`}>+SSCL</th>
-                    <th className="px-2 py-2 text-right font-semibold uppercase tracking-wider text-slate-500" title="Selling price before VAT — what non-VAT invoices bill">Before-Tax</th>
-                    <th className="px-2 py-2 text-right font-semibold uppercase tracking-wider text-slate-500">+VAT</th>
-                    <th className="px-2 py-2 text-right font-semibold uppercase tracking-wider text-slate-500" title="Selling price including VAT — what VAT invoices bill">After-Tax</th>
-                    <th className="px-2 py-2 text-right font-semibold uppercase tracking-wider text-slate-500" title="After-tax price × full received quantity">Line Total</th>
+                    <th className="px-2 py-2 text-right font-semibold uppercase tracking-wider text-slate-500" title="Selling price Before Tax — goes to the price list and SO lines; the invoice adds VAT">Before Tax</th>
+                    {showVat && <th className="px-2 py-2 text-right font-semibold uppercase tracking-wider text-slate-500" title="Older costing — VAT shown for reference only">+VAT</th>}
+                    {showVat && <th className="px-2 py-2 text-right font-semibold uppercase tracking-wider text-slate-500" title="Older costing — After Tax shown for reference only">After Tax</th>}
+                    <th className="px-2 py-2 text-right font-semibold uppercase tracking-wider text-slate-500" title={showVat ? 'After Tax price × full received quantity' : 'Before Tax price × full received quantity'}>Line Total</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -903,10 +908,12 @@ export default function CostingFormPage() {
                               +<RangeUnit range={group.sscl} symbol={baseSym} />
                             </td>
                             <td className="px-2 py-1 text-right font-semibold"><RangeUnit range={group.before} symbol={baseSym} className="text-slate-800" /></td>
-                            <td className={`px-2 py-1 text-right ${group.vat.max > 0 ? 'text-amber-600' : 'text-slate-300'}`} title={`VAT ${fmt(rep.eff_vat_pct)}% of before-tax`}>
-                              +<RangeUnit range={group.vat} symbol={baseSym} />
-                            </td>
-                            <td className="px-2 py-1 text-right font-bold"><RangeUnit range={group.after} symbol={baseSym} className="text-indigo-700" /></td>
+                            {showVat && (
+                              <td className={`px-2 py-1 text-right ${group.vat.max > 0 ? 'text-amber-600' : 'text-slate-300'}`} title={`VAT ${fmt(rep.eff_vat_pct)}% of Before Tax`}>
+                                +<RangeUnit range={group.vat} symbol={baseSym} />
+                              </td>
+                            )}
+                            {showVat && <td className="px-2 py-1 text-right font-bold"><RangeUnit range={group.after} symbol={baseSym} className="text-indigo-700" /></td>}
                             <td className="px-2 py-1 text-right font-medium tabular-nums text-indigo-700"><Money value={group.lineTotal} /></td>
                           </tr>
                           {isOpen && (
@@ -942,9 +949,9 @@ export default function CostingFormPage() {
                       <td className={`px-2 py-1.5 text-right tabular-nums text-emerald-700 ${footCell}`}>+<Money value={totals.expensesValue} /></td>
                       <td className={`px-2 py-1.5 text-right tabular-nums text-slate-700 ${footCell}`}>+<Money value={totals.marginValue} /></td>
                       <td className={`px-2 py-1.5 text-right tabular-nums text-amber-700 ${footCell}`}>+<Money value={totals.ssclValue} /></td>
-                      <td className={`px-2 py-1.5 text-right tabular-nums text-slate-800 ${footCell}`} title="Total Before-Tax selling value"><Money value={totals.beforeTaxValue} /></td>
-                      <td className={`px-2 py-1.5 text-right tabular-nums text-amber-700 ${footCell}`}>+<Money value={totals.vatValue} /></td>
-                      <td className={`px-2 py-1.5 text-right tabular-nums text-indigo-700 ${footCell}`} title="Total After-Tax selling value"><Money value={totals.afterTaxValue} /></td>
+                      <td className={`px-2 py-1.5 text-right tabular-nums text-slate-800 ${footCell}`} title="Total Before Tax selling value"><Money value={totals.beforeTaxValue} /></td>
+                      {showVat && <td className={`px-2 py-1.5 text-right tabular-nums text-amber-700 ${footCell}`}>+<Money value={totals.vatValue} /></td>}
+                      {showVat && <td className={`px-2 py-1.5 text-right tabular-nums text-indigo-700 ${footCell}`} title="Total After Tax selling value"><Money value={totals.afterTaxValue} /></td>}
                       <td className={`px-2 py-1.5 text-right tabular-nums text-indigo-700 ${footCell}`}><Money value={totals.afterTaxValue} /></td>
                     </tr>
                   )}
@@ -1022,13 +1029,20 @@ export default function CostingFormPage() {
 
               <SummaryRow label="Total Margin" value={totals.marginValue} valueClass="text-slate-700" unit={CURRENCY} />
 
-              {/* Before-Tax value — what non-VAT invoices will bill */}
+              {/* Before Tax value — the selling value; the invoice adds VAT */}
               <div className="mt-1 flex items-center justify-between rounded bg-slate-100 px-2 py-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600">Before-Tax Value</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600" title="Selling price Before Tax — goes to the price list and SO lines; the invoice adds VAT">Before Tax Value</span>
                 <span className="text-sm font-bold tabular-nums text-slate-800">{fmt(totals.beforeTaxValue)} <span className="text-[9px] font-normal text-slate-400">{CURRENCY}</span></span>
               </div>
 
-              {/* VAT toggle */}
+              {!showVat && (
+                <p className="mt-0.5 text-[9px] leading-tight text-slate-400">
+                  Before Tax goes to the price list and sales orders · the invoice adds VAT.
+                </p>
+              )}
+
+              {/* Older confirmed costings only: the VAT they were saved with, for reference */}
+              {showVat && (<>
               <div className="flex items-center justify-between py-1">
                 <div className="flex items-center gap-1.5">
                   <CheckToggle checked={form.apply_vat} onChange={(v) => setField('apply_vat', v)} label="VAT" disabled={readOnly} />
@@ -1045,16 +1059,16 @@ export default function CostingFormPage() {
                 <span className={`text-xs ${form.apply_vat ? 'text-amber-600' : 'text-slate-300'}`}><Money value={totals.vatValue} /></span>
               </div>
 
-              {/* After-Tax value — what VAT invoices will bill */}
               <div className="border-t-2 border-indigo-200 mt-1 pt-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-700">After-Tax Value</span>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-700">After Tax Value</span>
                   <span className="text-base font-black text-indigo-700">{fmt(totals.afterTaxValue)} <span className="text-[10px] font-bold text-indigo-400">{CURRENCY}</span></span>
                 </div>
                 <p className="mt-0.5 text-[9px] leading-tight text-slate-400">
-                  Before-Tax feeds Non-VAT invoices · After-Tax feeds VAT invoices.
+                  Older costing — VAT shown for reference. The price list uses the Before Tax price.
                 </p>
               </div>
+              </>)}
 
             </div>
           </div>
@@ -1123,6 +1137,8 @@ function RowGroup({ children }) {
  * each field is the same money for the group's FULL quantity. The colour lines
  * are listed read-only underneath with their exact per-line prices. */
 function GroupCostingPanel({ group, lc, baseSym, typeLabel, expenseTypes, form, readOnly, hasData, onExpense, onField, onReset }) {
+  // VAT rows only on an older confirmed costing that was saved with VAT
+  const legacyVat = readOnly && Boolean(form.apply_vat)
   const perUnitTag = <span className="text-[9px] font-normal text-slate-400">/{baseSym || 'unit'}</span>
   const baseQty    = group.totalBaseQty
   const rep        = group.rep
@@ -1236,9 +1252,10 @@ function GroupCostingPanel({ group, lc, baseSym, typeLabel, expenseTypes, form, 
           </div>
 
           <div className="my-0.5 border-t border-slate-200" />
-          <BuildUpRow label="= Before-Tax" value={rep.before_tax_price_base} tag={perUnitTag} totalText={total(rep.before_tax_price_base)} labelClass="font-bold text-slate-700" valueClass="font-bold text-slate-800" />
+          <BuildUpRow label="= Before Tax" value={rep.before_tax_price_base} tag={perUnitTag} totalText={total(rep.before_tax_price_base)} labelClass="font-bold text-slate-700" valueClass="font-bold text-slate-800" />
 
-          {/* VAT — % of the before-tax price */}
+          {/* Older confirmed costings only: VAT — % of the Before Tax price */}
+          {legacyVat && (<>
           <div className="flex items-center justify-between gap-1 py-0.5">
             <div className="flex items-center gap-1">
               <span className="text-[10px] text-slate-500">+ VAT</span>
@@ -1257,7 +1274,8 @@ function GroupCostingPanel({ group, lc, baseSym, typeLabel, expenseTypes, form, 
           </div>
 
           <div className="my-0.5 border-t-2 border-indigo-200" />
-          <BuildUpRow label="= After-Tax" value={rep.after_tax_price_base} tag={perUnitTag} totalText={`${fmt(group.lineTotal)} ${CURRENCY}`} labelClass="font-bold text-indigo-700" valueClass="font-black text-indigo-700" />
+          <BuildUpRow label="= After Tax" value={rep.after_tax_price_base} tag={perUnitTag} totalText={`${fmt(group.lineTotal)} ${CURRENCY}`} labelClass="font-bold text-indigo-700" valueClass="font-black text-indigo-700" />
+          </>)}
           <div className="mt-0.5 flex items-center justify-between text-[9px] text-slate-400">
             <span>Group total ({fmt(baseQty)} {baseSym || 'unit'}, {group.lines.length} line{group.lines.length !== 1 ? 's' : ''})</span>
             <span className="font-bold tabular-nums text-indigo-600">{fmt(group.lineTotal)} {CURRENCY}</span>
@@ -1300,8 +1318,8 @@ function GroupCostingPanel({ group, lc, baseSym, typeLabel, expenseTypes, form, 
                 <th className="px-2 py-1 font-semibold uppercase tracking-wider text-slate-400">Colour / Variant</th>
                 <th className="px-2 py-1 text-right font-semibold uppercase tracking-wider text-slate-400">Received</th>
                 <th className="px-2 py-1 text-right font-semibold uppercase tracking-wider text-slate-400">{typeLabel}</th>
-                <th className="px-2 py-1 text-right font-semibold uppercase tracking-wider text-slate-400">Before-Tax</th>
-                <th className="px-2 py-1 text-right font-semibold uppercase tracking-wider text-slate-400">After-Tax</th>
+                <th className="px-2 py-1 text-right font-semibold uppercase tracking-wider text-slate-400">Before Tax</th>
+                {legacyVat && <th className="px-2 py-1 text-right font-semibold uppercase tracking-wider text-slate-400">After Tax</th>}
                 <th className="px-2 py-1 text-right font-semibold uppercase tracking-wider text-slate-400">Line Total</th>
               </tr>
             </thead>
@@ -1314,7 +1332,7 @@ function GroupCostingPanel({ group, lc, baseSym, typeLabel, expenseTypes, form, 
                   </td>
                   <td className="px-2 py-0.5 text-right"><PerUnit value={line.fob_base} symbol={baseSym} className="text-slate-600" /></td>
                   <td className="px-2 py-0.5 text-right"><PerUnit value={line.before_tax_price_base} symbol={baseSym} className="font-semibold text-slate-700" /></td>
-                  <td className="px-2 py-0.5 text-right"><PerUnit value={line.after_tax_price_base} symbol={baseSym} className="font-bold text-indigo-700" /></td>
+                  {legacyVat && <td className="px-2 py-0.5 text-right"><PerUnit value={line.after_tax_price_base} symbol={baseSym} className="font-bold text-indigo-700" /></td>}
                   <td className="px-2 py-0.5 text-right tabular-nums font-medium text-indigo-700"><Money value={line.line_total} /></td>
                 </tr>
               ))}

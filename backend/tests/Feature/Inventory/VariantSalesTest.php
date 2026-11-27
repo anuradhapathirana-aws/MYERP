@@ -168,7 +168,7 @@ class VariantSalesTest extends TestCase
         $this->assertSame(1, DB::table('inv_customer_return_items')->where('variant_id', $this->redL->id)->count());
     }
 
-    public function test_tax_invoice_uses_the_variants_own_costing_price(): void
+    public function test_tax_invoice_bills_the_variant_lines_before_tax_price(): void
     {
         $grnId = (int) DB::table('inv_goods_received_notes')->value('id');
 
@@ -188,7 +188,7 @@ class VariantSalesTest extends TestCase
             ]);
         }
 
-        // Same colour, different variants: each line bills its own variant's costing.
+        // The SO line holds the Before Tax price; the Tax invoice bills it + VAT.
         $soId = $this->postSo([$this->soLine($this->redL, 2, 1180)])->assertCreated()->json('data.id');
         $this->deliver((int) $soId, 2)->assertOk();
         $doId = DB::table('inv_delivery_orders')->where('so_id', $soId)->value('id');
@@ -198,7 +198,7 @@ class VariantSalesTest extends TestCase
             ->assertCreated()
             ->json('data.items.0');
 
-        $this->assertEquals(1000, $line['unit_price']);
+        $this->assertEquals(1180, $line['unit_price']);
         $this->assertEquals(18, $line['tax']);
     }
 
@@ -254,8 +254,9 @@ class VariantSalesTest extends TestCase
             ['product_id' => $this->product->id, 'variant_id' => $this->redL->id],
         ]])->assertOk()->json('data');
 
-        $this->assertEquals(1750, $preview[0]['unit_price']); // own variant price
-        $this->assertEquals(1500, $preview[1]['unit_price']); // product price fallback
+        // Non Tax price = Before Tax × 1.18
+        $this->assertEquals(2065, $preview[0]['unit_price']); // own variant price 1750
+        $this->assertEquals(1770, $preview[1]['unit_price']); // product price fallback 1500
 
         $stock = $this->actingAs($this->user)->postJson('/api/v1/proforma-invoices/stock-check', ['lines' => [
             ['product_id' => $this->product->id, 'variant_id' => $this->redM->id, 'quantity' => 5],

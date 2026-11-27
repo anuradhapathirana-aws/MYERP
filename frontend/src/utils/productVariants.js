@@ -1,7 +1,8 @@
 // Product variant helpers shared by the Product form and document line pickers.
 
 export const PRICE_FIELDS = [
-  { key: 'selling_price',   label: 'Selling' },
+  { key: 'cost_price',      label: 'Cost' },          // landed cost — filled by costing confirm
+  { key: 'selling_price',   label: 'Before Tax' },    // selling price Before Tax; the invoice adds VAT
   { key: 'wholesale_price', label: 'Wholesale' },
   { key: 'min_price',       label: 'Min' },
   { key: 'max_price',       label: 'Max' },
@@ -31,6 +32,7 @@ export function variantsFromApi(variants = []) {
     is_active:     Boolean(v.is_active),
     in_use:        Boolean(v.in_use),
     prices:        Object.fromEntries((v.prices ?? []).map((p) => [String(p.sales_channel_id), {
+      cost_price:      p.cost_price      != null ? String(p.cost_price)      : '',
       selling_price:   p.selling_price   != null ? String(p.selling_price)   : '',
       wholesale_price: p.wholesale_price != null ? String(p.wholesale_price) : '',
       min_price:       p.min_price       != null ? String(p.min_price)       : '',
@@ -50,6 +52,7 @@ export function variantsToPayload(rows) {
     prices:    Object.entries(v.prices)
       .map(([channelId, p]) => ({
         sales_channel_id: Number(channelId),
+        cost_price:       toNum(p.cost_price),
         selling_price:    toNum(p.selling_price),
         wholesale_price:  toNum(p.wholesale_price),
         min_price:        toNum(p.min_price),

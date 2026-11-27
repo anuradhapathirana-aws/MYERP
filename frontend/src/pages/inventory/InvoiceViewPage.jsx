@@ -139,8 +139,8 @@ export default function InvoiceViewPage() {
             <span
               className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${inv.invoice_type === 'tax' ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-500'}`}
               title={inv.invoice_type === 'tax'
-                ? 'Tax invoice — lines bill the Before-Tax price and add VAT per line'
-                : 'Non Tax invoice — lines bill the After-Tax price (VAT inside), no VAT added'}
+                ? 'Tax invoice — lines bill the Before Tax price and add VAT per line (after discount)'
+                : 'Non Tax invoice — lines bill the After Tax price (VAT inside), no VAT split'}
             >
               {inv.invoice_type_label ?? (inv.invoice_type === 'tax' ? 'Tax Invoice' : 'Non Tax Invoice')}
             </span>

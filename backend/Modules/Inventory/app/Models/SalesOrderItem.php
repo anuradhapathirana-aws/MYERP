@@ -28,6 +28,7 @@ class SalesOrderItem extends Model
         'unit_price',
         'discount',
         'tax',
+        'vat_pct',
         'line_total',
         'remarks',
     ];
@@ -48,6 +49,7 @@ class SalesOrderItem extends Model
         'unit_price'   => 'decimal:4',
         'discount'     => 'decimal:4',
         'tax'          => 'decimal:4',
+        'vat_pct'      => 'decimal:2',
         'line_total'   => 'decimal:4',
     ];
 

@@ -108,6 +108,7 @@ class ProductResource extends JsonResource
                     'prices' => $v->relationLoaded('prices')
                         ? $v->prices->map(fn ($p) => [
                             'sales_channel_id' => $p->sales_channel_id,
+                            'cost_price'       => $p->cost_price      !== null ? (float) $p->cost_price      : null,
                             'selling_price'    => $p->selling_price   !== null ? (float) $p->selling_price   : null,
                             'wholesale_price'  => $p->wholesale_price !== null ? (float) $p->wholesale_price : null,
                             'min_price'        => $p->min_price       !== null ? (float) $p->min_price       : null,

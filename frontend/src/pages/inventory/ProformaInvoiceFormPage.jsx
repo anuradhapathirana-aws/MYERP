@@ -43,15 +43,12 @@ const CELL_SELECT = `${CELL_INPUT} cursor-pointer`
 
 /** Offer validity used when the user hasn't picked a date (mirrors the backend default). */
 const DEFAULT_VALID_DAYS = 14
-/** VAT % assumed when a line's price set does not carry one (same as the invoice). */
-const FALLBACK_VAT_PCT = 18
-
 const round2 = (n) => String(Number((Number(n) || 0).toFixed(2)))
 
 /**
  * Every line holds BOTH price sets, exactly like the invoice:
- *   so_unit_price             Non-Tax — after-tax price, VAT inside
- *   tax_unit_price + tax_vat_pct  Tax — before-tax price, VAT added
+ *   so_unit_price             Non-Tax — After Tax price (Before Tax + VAT, VAT inside)
+ *   tax_unit_price + tax_vat_pct  Tax — Before Tax price, VAT added
  * The Tax / Non-Tax toggle swaps unit_price / tax between them, so the
  * customer total does not change when the type changes.
  */
@@ -99,7 +96,8 @@ function emptyLine() {
 function calcLine(line, isTax) {
   const gross = (parseFloat(line.quantity) || 0) * (parseFloat(line.unit_price) || 0)
   const disc  = gross * (parseFloat(line.discount) || 0) / 100
-  const vat   = isTax ? gross * (parseFloat(line.tax) || 0) / 100 : 0
+  // VAT is charged on the amount after the discount
+  const vat   = isTax ? (gross - disc) * (parseFloat(line.tax) || 0) / 100 : 0
   return gross - disc + vat
 }
 
@@ -132,6 +130,8 @@ export default function ProformaInvoiceFormPage() {
   const [productSearch, setProductSearch] = useState({ key: null, query: '', results: [], open: false })
   const searchTimerRef = useRef(null)
   const cellRefs       = useRef({}) // { [lineKey]: { product, qty, price, disc, vat } }
+  // Default VAT % (server config) — for lines whose price set carries no rate of their own
+  const defaultVatRef  = useRef(null)
   const isTax = invoiceType === 'tax'
 
   /* ── Masters ── */
@@ -159,6 +159,8 @@ export default function ProformaInvoiceFormPage() {
     if (!existing?.data) return
     const pf = existing.data
     setInvoiceType(pf.invoice_type ?? 'non_tax')
+    const defaultVat = Number(pf.default_vat_pct) || 0
+    defaultVatRef.current = defaultVat
     setForm({
       customer_id:      pf.customer_id ? String(pf.customer_id) : '',
       proforma_date:    pf.proforma_date ?? '',
@@ -193,8 +195,8 @@ export default function ProformaInvoiceFormPage() {
           }
         : {
             so_unit_price:  Number(it.unit_price),
-            tax_vat_pct:    FALLBACK_VAT_PCT,
-            tax_unit_price: Number(it.unit_price) / (1 + FALLBACK_VAT_PCT / 100),
+            tax_vat_pct:    defaultVat,
+            tax_unit_price: Number(it.unit_price) / (1 + defaultVat / 100),
           }),
     }))
     setLines(hydrated.length ? hydrated : [emptyLine()])
@@ -344,6 +346,8 @@ export default function ProformaInvoiceFormPage() {
       unit_id:      unit_id ? Number(unit_id) : null,
     }])
       .then(([p]) => {
+        // A price-list / no-price line carries the server's default VAT %
+        if (p?.source !== 'costing' && p?.tax_vat_pct != null) defaultVatRef.current = Number(p.tax_vat_pct)
         if (!p || p.unit_price == null) return // no price anywhere — stays manual
         setLines((prev) => prev.map((l) => {
           if (l._key !== key) return l
@@ -375,7 +379,7 @@ export default function ProformaInvoiceFormPage() {
   const changePrice = (key, value) => setLines((prev) => prev.map((l) => {
     if (l._key !== key) return l
     const price = parseFloat(value)
-    const vat   = l.tax_vat_pct ?? FALLBACK_VAT_PCT
+    const vat   = l.tax_vat_pct ?? defaultVatRef.current ?? 0
     if (!(price >= 0)) return { ...l, unit_price: value }
     return invoiceTypeRef.current === 'tax'
       ? { ...l, unit_price: value, tax_unit_price: price, so_unit_price: price * (1 + vat / 100), tax_vat_pct: vat }

@@ -2,6 +2,7 @@
 
 namespace Modules\Inventory\Providers;
 
+use Modules\Inventory\Console\Commands\NetPricingReport;
 use Modules\Inventory\Console\Commands\RecalculateStockBalances;
 use Modules\Inventory\Console\Commands\VerifyVariantBackfill;
 use Modules\Inventory\Console\Commands\WarmPieceQrCodes;
@@ -14,6 +15,7 @@ class InventoryServiceProvider extends ModuleServiceProvider
 
     /** @var string[] */
     protected array $commands = [
+        NetPricingReport::class,
         RecalculateStockBalances::class,
         VerifyVariantBackfill::class,
         WarmPieceQrCodes::class,

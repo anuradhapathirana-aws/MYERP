@@ -146,7 +146,7 @@ export default function SalesOrdersPage() {
                     <th className="w-24 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Order Date</th>
                     <th className="w-24 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Expected</th>
                     <th className="w-20 px-3 py-2 text-right font-semibold uppercase tracking-wider text-slate-500">Qty</th>
-                    <th className="w-24 px-3 py-2 text-right font-semibold uppercase tracking-wider text-slate-500">Net Total</th>
+                    <th className="w-24 px-3 py-2 text-right font-semibold uppercase tracking-wider text-slate-500">Total After Tax</th>
                     <th className="w-24 px-3 py-2 font-semibold uppercase tracking-wider text-slate-500">Status</th>
                     <th className="w-24 px-3 py-2 text-right font-semibold uppercase tracking-wider text-slate-500">Actions</th>
                   </tr>

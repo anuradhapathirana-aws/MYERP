@@ -101,6 +101,7 @@ class UpdateProductRequest extends FormRequest
             'variants.*.is_active'                  => ['nullable', 'boolean'],
             'variants.*.prices'                     => ['nullable', 'array'],
             'variants.*.prices.*.sales_channel_id'  => ['required', 'integer', 'exists:inv_sales_channels,id'],
+            'variants.*.prices.*.cost_price'        => ['nullable', 'numeric', 'min:0'],
             'variants.*.prices.*.selling_price'     => ['nullable', 'numeric', 'min:0'],
             'variants.*.prices.*.wholesale_price'   => ['nullable', 'numeric', 'min:0'],
             'variants.*.prices.*.min_price'         => ['nullable', 'numeric', 'min:0'],

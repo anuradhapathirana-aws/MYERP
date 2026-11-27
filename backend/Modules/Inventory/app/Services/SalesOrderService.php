@@ -15,6 +15,7 @@ use Modules\Inventory\Models\SalesOrder;
 use Modules\Inventory\Models\SalesOrderItem;
 use Modules\Inventory\Models\SalesOrderPiece;
 use Modules\Inventory\Support\Quantity;
+use Modules\Inventory\Support\Vat;
 
 /**
  * Sales orders are commitment documents only — no stock transactions are
@@ -261,12 +262,13 @@ class SalesOrderService
             ] : null,
             // Cost of this roll's shipment — snapshot basis, NOT the sale price.
             'grn_unit_price'     => $this->grnCostPerBase($piece),
-            // Shipment-specific sale price: confirmed-costing price for this
-            // roll's GRN line, price-list fallback (null = neither configured).
+            // Shipment-specific BEFORE TAX sale price: confirmed-costing price for
+            // this roll's GRN line, price-list fallback (null = neither configured).
             'selling_price'      => $resolved['price'] ?? null,
             'price_source'       => $resolved['source'] ?? null,
-            // Costing "Before-Tax" price (VAT stripped) — Tax invoices bill this.
             'before_tax_price'   => $resolved['before_tax_price'] ?? null,
+            // The VAT % the invoice adds on top (costing's own, else the default)
+            'vat_pct'            => $resolved['vat_pct'] ?? Vat::defaultPct(),
             'available'          => $available,
             'unavailable_reason' => $reason,
         ];
@@ -305,11 +307,11 @@ class SalesOrderService
                 'store'          => $piece->store?->store_name,
                 'location'       => $piece->location?->location_name ?? $piece->location?->name,
                 'grn_unit_price' => $this->grnCostPerBase($piece),
-                // Shipment-specific sale price (confirmed costing → price list)
+                // Shipment-specific BEFORE TAX sale price (confirmed costing → price list)
                 'selling_price'  => $resolve($piece)['price'],
                 'price_source'   => $resolve($piece)['source'],
-                // Costing "Before-Tax" price — null on price-list fallback rolls
                 'before_tax_price' => $resolve($piece)['before_tax_price'],
+                'vat_pct'        => $resolve($piece)['vat_pct'],
                 'attribute_id'   => $piece->grnItem?->attribute_id,
                 'color'          => $piece->grnItem?->attribute?->attribute_name,
             ])
@@ -325,9 +327,10 @@ class SalesOrderService
             'count'         => $pieces->count(),
             'total_weight'  => (float) $pieces->sum('weight'),
             'base_uom'      => $baseUnit?->symbol ?? $baseUnit?->name,
-            // Price-list sale price (per product) — fallback shown when a roll
-            // has no confirmed costing.
+            // Price-list BEFORE TAX sale price (per product) — fallback shown when
+            // a roll has no confirmed costing.
             'selling_price' => $this->pricing->sellingPriceFor($productId),
+            'vat_pct'       => Vat::defaultPct(),
         ];
     }
 
@@ -349,6 +352,8 @@ class SalesOrderService
         return $this->pricing->pricingFor($productId) + [
             'base_unit_type_id' => $baseUnit?->id,
             'base_uom'          => $baseUnit?->symbol ?? $baseUnit?->name,
+            // selling_price is BEFORE TAX; the invoice adds this VAT %
+            'vat_pct'           => Vat::defaultPct(),
         ];
     }
 
@@ -433,9 +438,15 @@ class SalesOrderService
                 'quantity'   => $qty,
                 'conversion_factor' => $converted['factor'],
                 'base_quantity'     => $converted['qty'],
+                // BEFORE TAX price, frozen with the VAT % the invoice will add
                 'unit_price' => (float) ($row['unit_price'] ?? 0),
+                'vat_pct'    => isset($row['vat_pct']) && $row['vat_pct'] !== '' && $row['vat_pct'] !== null
+                    ? (float) $row['vat_pct']
+                    : Vat::defaultPct(),
                 'discount'   => (float) ($row['discount'] ?? 0),
-                'tax'        => (float) ($row['tax'] ?? 0),
+                // VAT is never added on the SO — the invoice decides it (a Tax % here on
+                // top of the price used to double-charge VAT). Kept 0 for the column.
+                'tax'        => 0.0,
                 'line_total' => 0,
                 'remarks'    => $row['remarks'] ?? null,
             ]);
@@ -651,9 +662,7 @@ class SalesOrderService
     {
         $gross = (float) $item->quantity * (float) $item->unit_price;
 
-        $item->line_total = $gross
-            - ($gross * (float) $item->discount / 100)
-            + ($gross * (float) $item->tax / 100);
+        $item->line_total = $gross - ($gross * (float) $item->discount / 100);
 
         $item->save();
     }
@@ -663,10 +672,14 @@ class SalesOrderService
         $so->refresh();
         $subtotal   = (float) $so->items()->sum(DB::raw('quantity * unit_price'));
         $lineTotals = (float) $so->items()->sum(DB::raw('line_total'));
+        // Line totals are BEFORE TAX (after discount); the VAT the invoice will add is
+        // shown on the SO too, so grand_total is what the customer actually pays.
+        $vat        = (float) $so->items()->sum(DB::raw('line_total * COALESCE(vat_pct, 0) / 100'));
 
         $so->update([
             'subtotal'    => $subtotal,
-            'grand_total' => $lineTotals + (float) $so->transport_charge,
+            'vat_amount'  => round($vat, 4),
+            'grand_total' => $lineTotals + $vat + (float) $so->transport_charge,
         ]);
     }
 }

@@ -334,8 +334,9 @@ class ProformaInvoiceTest extends TestCase
             ->assertJsonPath('data.proforma.customer_id', $this->customer->id)
             ->assertJsonPath('data.proforma.transport_charge', 300)
             ->assertJsonPath('data.lines.0.remaining_quantity', 10)
-            // SO prices carry VAT inside: 1000 + 18% = 1180
-            ->assertJsonPath('data.lines.0.so_unit_price', 1180)
+            // SO prices are Before Tax: a Tax proforma's 1000 goes over as-is, with its 18%
+            ->assertJsonPath('data.lines.0.so_unit_price', 1000)
+            ->assertJsonPath('data.lines.0.vat_pct', 18)
             ->assertJsonPath('data.lines.0.discount', 5)
             ->assertJsonPath('data.lines.0.stock_status', 'in_stock');
     }
@@ -498,7 +499,7 @@ class ProformaInvoiceTest extends TestCase
 
     // ── Tax / Non-Tax price sets (same pair the invoice toggle switches) ────
 
-    public function test_price_preview_from_price_list_strips_default_vat(): void
+    public function test_price_preview_from_price_list_adds_default_vat(): void
     {
         $p         = Product::factory()->create();
         $channelId = DB::table('inv_sales_channels')->insertGetId(['sales_channel_name' => 'Retail', 'created_at' => now(), 'updated_at' => now()]);
@@ -507,13 +508,14 @@ class ProformaInvoiceTest extends TestCase
             'unit_type_id' => $p->base_unit_type_id, 'created_at' => now(), 'updated_at' => now(),
         ]);
 
-        // Non-Tax keeps VAT inside (1180); Tax = 1180 ÷ 1.18 = 1000 + 18% — same customer total
+        // The price list is Before Tax (1180): Tax = 1180 + 18%; Non-Tax = 1180 × 1.18 = 1392.40
+        // (VAT inside) — same customer total either way
         $this->actingAs($this->user)
             ->postJson('/api/v1/proforma-invoices/price-preview', ['lines' => [['product_id' => $p->id, 'unit_id' => $p->base_unit_type_id]]])
             ->assertOk()
             ->assertJsonPath('data.0.source', 'price_list')
-            ->assertJsonPath('data.0.unit_price', 1180)
-            ->assertJsonPath('data.0.tax_unit_price', 1000)
+            ->assertJsonPath('data.0.unit_price', 1392.4)
+            ->assertJsonPath('data.0.tax_unit_price', 1180)
             ->assertJsonPath('data.0.tax_vat_pct', 18);
     }
 

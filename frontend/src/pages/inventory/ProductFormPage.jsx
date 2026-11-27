@@ -16,6 +16,8 @@ import TreeSelect from '../../components/TreeSelect'
 import ProductVariantsCard from '../../components/inventory/ProductVariantsCard'
 import { variantsFromApi, variantsToPayload } from '../../utils/productVariants'
 import { showError, showSuccess } from '../../utils/alerts'
+import { afterTaxOf } from '../../utils/vat'
+import { fmtMoney } from '../../utils/currency'
 
 const PRODUCT_TYPES   = ['Inventory', 'Fabric', 'Finished Good', 'Raw Material', 'Service']
 // How stock is counted: Roll = QR-labelled rolls on GRN/SO/DO; Quantity = plain qty (+ colour).
@@ -618,7 +620,7 @@ function CostDetailCard({ row, idx, salesChannels, allUnitTypes, usedChannelIds,
   )
 
   const sellingPriceField = (
-    <Field label="Selling Price" required error={re.selling_price} touched={rt.selling_price}>
+    <Field label="Selling Price (Before Tax)" required error={re.selling_price} touched={rt.selling_price}>
       <CostInput
         value={row.selling_price}
         onChange={handle('selling_price')}
@@ -626,6 +628,11 @@ function CostDetailCard({ row, idx, salesChannels, allUnitTypes, usedChannelIds,
         min="0" step="0.0001" placeholder="0.00"
         error={re.selling_price} touched={rt.selling_price}
       />
+      {afterTaxOf(row.selling_price) != null && (
+        <p className="mt-0.5 text-[10px] leading-none text-slate-400" title="Before Tax + VAT — what a Non Tax invoice bills; shown for reference">
+          After Tax: {fmtMoney(afterTaxOf(row.selling_price))}
+        </p>
+      )}
     </Field>
   )
 

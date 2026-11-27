@@ -120,6 +120,8 @@ class SalesOrderController extends Controller
             'cost_price'        => $pricing['cost_price'],
             'base_unit_type_id' => $pricing['base_unit_type_id'],
             'base_uom'          => $pricing['base_uom'],
+            // unit_price is BEFORE TAX; the invoice adds this VAT %
+            'vat_pct'           => $pricing['vat_pct'],
         ]]);
     }
 }

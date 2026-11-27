@@ -16,6 +16,8 @@ use Modules\Inventory\Models\Invoice;
 use Modules\Inventory\Models\Product;
 use Modules\Inventory\Models\ProformaInvoice;
 use Modules\Inventory\Models\ProformaInvoiceItem;
+use Modules\Inventory\Support\Quantity;
+use Modules\Inventory\Support\Vat;
 
 /**
  * Proforma invoices — the quotation-stage document. Raised BEFORE any sales
@@ -40,9 +42,6 @@ class ProformaInvoiceService
     private const MONEY_SCALE = 2;
 
     private const EPSILON = 0.0001;
-
-    /** VAT % assumed when a product carries no confirmed costing (same as InvoiceService). */
-    private const FALLBACK_VAT_PCT = 18.0;
 
     public function __construct(
         private readonly ProformaInvoicingTracker $tracker,
@@ -151,12 +150,11 @@ class ProformaInvoiceService
      * Both price sets of a quote line, per the line's unit — the same pair a DO
      * invoice switches between with its Tax / Non-Tax toggle:
      *
-     *   unit_price               Non-Tax: the after-tax price, VAT inside (what an SO line holds)
-     *   tax_unit_price + tax_vat_pct  Tax: before-tax price, VAT added per line
+     *   unit_price               Non-Tax: Before Tax × (1 + VAT %), VAT carried inside
+     *   tax_unit_price + tax_vat_pct  Tax: the Before Tax price, VAT added per line
      *
-     * Source: the product's newest confirmed costing (selling + before-tax price and
-     * its VAT %); without one, the price-list selling price with the default VAT
-     * stripped out — so before-tax + VAT always lands on the Non-Tax price.
+     * Source: the product's newest confirmed costing (its Before Tax price and VAT %);
+     * without one, the price-list selling price (Before Tax) with the default VAT.
      *
      * @param  array<int, array{product_id:int, attribute_id:?int, unit_id:?int}> $lines
      * @return array<int, array{unit_price:?float, tax_unit_price:?float, tax_vat_pct:float, source:?string}>
@@ -171,25 +169,28 @@ class ProformaInvoiceService
 
             $costing = $this->pricing->latestCostingPricingFor($productId, $attributeId, $variantId);
             if ($costing !== null) {
+                $net = $costing['before_tax_price'] * $factor;
+                $pct = (float) $costing['vat_pct'];
+
                 return [
-                    'unit_price'     => $this->money($costing['selling_price'] * $factor),
-                    'tax_unit_price' => $this->money($costing['before_tax_price'] * $factor),
-                    'tax_vat_pct'    => (float) $costing['vat_pct'],
+                    'unit_price'     => $this->money(Vat::gross($net, $pct)),
+                    'tax_unit_price' => $this->money($net),
+                    'tax_vat_pct'    => $pct,
                     'source'         => 'costing',
                 ];
             }
 
             $list = $this->pricing->sellingPriceFor($productId, $variantId);
             if ($list === null) {
-                return ['unit_price' => null, 'tax_unit_price' => null, 'tax_vat_pct' => self::FALLBACK_VAT_PCT, 'source' => null];
+                return ['unit_price' => null, 'tax_unit_price' => null, 'tax_vat_pct' => Vat::defaultPct(), 'source' => null];
             }
 
-            $nonTax = $list * $factor;
+            $net = $list * $factor;
 
             return [
-                'unit_price'     => $this->money($nonTax),
-                'tax_unit_price' => $this->money($nonTax / (1 + self::FALLBACK_VAT_PCT / 100)),
-                'tax_vat_pct'    => self::FALLBACK_VAT_PCT,
+                'unit_price'     => $this->money(Vat::gross($net)),
+                'tax_unit_price' => $this->money($net),
+                'tax_vat_pct'    => Vat::defaultPct(),
                 'source'         => 'price_list',
             ];
         }, array_values($lines));
@@ -338,8 +339,9 @@ class ProformaInvoiceService
 
     /**
      * What "Create SO from Proforma" pre-fills: the customer, and every line with
-     * quantity still to recall, priced as an SO line (SO prices carry VAT inside,
-     * so a tax proforma's before-tax price + VAT becomes the SO price) and with
+     * quantity still to recall, priced as an SO line — BEFORE TAX plus its VAT %
+     * (a Tax proforma's price already is Before Tax; a Non Tax one carries the VAT
+     * inside, so it is taken back out — unrounded, so it bills back to the cent) and with
      * today's stock so the form can hold back lines that cannot ship yet.
      *
      * @return array<string, mixed>
@@ -359,7 +361,9 @@ class ProformaInvoiceService
                 $remaining = max(0.0, (float) $item->quantity - (float) $item->getAttribute('recalled_quantity'));
                 $stock     = $this->stock->check((int) $item->product_id, $item->attribute_id, $item->unit_id, $remaining, $item->variant_id);
                 $price     = (float) $item->unit_price;
-                $soPrice   = $proforma->invoice_type === 'tax' ? $price * (1 + (float) $item->tax / 100) : $price;
+                $isTax     = $proforma->invoice_type === 'tax' && (float) $item->tax > 0;
+                $vatPct    = $isTax ? (float) $item->tax : Vat::defaultPct();
+                $soPrice   = $proforma->invoice_type === 'tax' ? $price : Vat::net($price, $vatPct);
 
                 return [
                     'proforma_item_id' => $item->id,
@@ -376,7 +380,8 @@ class ProformaInvoiceService
                     'quantity'         => (float) $item->quantity,
                     'recalled_quantity' => (float) $item->getAttribute('recalled_quantity'),
                     'remaining_quantity' => round($remaining, 4),
-                    'so_unit_price'    => $this->money($soPrice),
+                    'so_unit_price'    => Quantity::roundPrice($soPrice),
+                    'vat_pct'          => $vatPct,
                     'discount'         => (float) $item->discount,
                     'available_qty'    => $stock['available_qty'],
                     'stock_status'     => $stock['stock_status'],
@@ -421,7 +426,9 @@ class ProformaInvoiceService
             $tax      = $proforma->invoice_type === 'non_tax' ? 0.0 : (float) ($line['tax'] ?? 0);
             $gross    = $qty * $price;
 
-            $lineTotal = $this->money($gross - ($gross * $discount / 100) + ($gross * $tax / 100));
+            // VAT on the amount AFTER the discount
+            $net       = $gross - ($gross * $discount / 100);
+            $lineTotal = $this->money($net + ($net * $tax / 100));
             $unitId    = !empty($line['unit_id']) ? (int) $line['unit_id'] : null;
 
             ProformaInvoiceItem::create([
@@ -440,6 +447,7 @@ class ProformaInvoiceService
                 'discount'         => $discount,
                 'tax'              => $tax,
                 'line_total'       => $lineTotal,
+                'vat_on_net'       => true,
                 'remarks'          => $line['remarks'] ?? null,
             ]);
 
